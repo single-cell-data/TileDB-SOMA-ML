@@ -1,3 +1,10 @@
+# Copyright (c) 2021-2024 The Chan Zuckerberg Initiative Foundation
+# Copyright (c) 2021-2024 TileDB, Inc.
+#
+# Licensed under the MIT License.
+
+from __future__ import annotations
+
 import abc
 import functools
 from typing import List
@@ -30,7 +37,7 @@ class Encoder(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+    def transform(self, df: pd.DataFrame) -> npt.ArrayLike:
         """Transform the obs :class:`pandas.DataFrame` into a :class:`pandas.DataFrame` of encoded values."""
         pass
 
@@ -63,8 +70,8 @@ class LabelEncoder(Encoder):
         """Fit the encoder with ``obs``."""
         self._encoder.fit(obs[self.col].unique())
 
-    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Transform the obs :class:`pandas.DataFrame` into a :class:`pandas.DataFrame` of encoded values."""
+    def transform(self, df: pd.DataFrame) -> npt.ArrayLike:
+        """Transform the obs :class:`pandas.DataFrame` into a :class:`numpy.typing.ArrayLike` of encoded values."""
         return self._encoder.transform(df[self.col])  # type: ignore
 
     def inverse_transform(self, encoded_values: npt.ArrayLike) -> npt.ArrayLike:
@@ -98,9 +105,11 @@ class BatchEncoder(Encoder):
         self._encoder = LabelEncoder()
 
     def _join_cols(self, df: pd.DataFrame):  # type: ignore
-        return functools.reduce(lambda a, b: a + b, [df[c].astype(str) for c in self.cols])
+        return functools.reduce(
+            lambda a, b: a + b, [df[c].astype(str) for c in self.cols]
+        )
 
-    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+    def transform(self, df: pd.DataFrame) -> npt.ArrayLike:
         """Transform the obs :class:`pandas.DataFrame` into a :class:`pandas.DataFrame` of encoded values."""
         arr = self._join_cols(df)
         return self._encoder.transform(arr)  # type: ignore

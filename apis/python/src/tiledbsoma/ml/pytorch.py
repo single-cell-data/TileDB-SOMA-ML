@@ -1,3 +1,10 @@
+# Copyright (c) 2021-2024 The Chan Zuckerberg Initiative Foundation
+# Copyright (c) 2021-2024 TileDB, Inc.
+#
+# Licensed under the MIT License.
+
+from __future__ import annotations
+
 import gc
 import itertools
 import logging
@@ -13,23 +20,23 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import psutil
-import tiledbsoma as soma
 import torch
 import torchdata.datapipes.iter as pipes
-from attr import define
+from attrs import define
 from numpy.random import Generator
 from pyarrow import Table
 from scipy import sparse
+from somacore.query._eager_iter import EagerIterator as _EagerIterator
 from torch import Tensor
 from torch import distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 
-from ... import get_default_soma_context
-from ..util._eager_iter import _EagerIterator
+import tiledbsoma as soma
+
 from .encoders import Encoder, LabelEncoder
 
-pytorch_logger = logging.getLogger("cellxgene_census.experimental.pytorch")
+pytorch_logger = logging.getLogger("tiledbsoma.ml.pytorch")
 
 # TODO: Rename to reflect the correct order of the Tensors within the tuple: (X, obs)
 ObsAndXDatum = Tuple[Tensor, Tensor]
@@ -84,7 +91,10 @@ class Stats:
     """The number of chunks retrieved"""
 
     def __str__(self) -> str:
-        return f"{self.n_soma_chunks=}, {self.n_obs=}, {self.nnz=}, " f"elapsed={timedelta(seconds=self.elapsed)}"
+        return (
+            f"{self.n_soma_chunks=}, {self.n_obs=}, {self.nnz=}, "
+            f"elapsed={timedelta(seconds=self.elapsed)}"
+        )
 
     def __add__(self, other: "Stats") -> "Stats":
         self.n_obs += other.n_obs
@@ -94,16 +104,32 @@ class Stats:
         return self
 
 
-@contextmanager
-def _open_experiment(
-    uri: str,
-    aws_region: Optional[str] = None,
-) -> soma.Experiment:
-    """Internal method for opening a SOMA ``Experiment`` as a context manager."""
-    context = get_default_soma_context().replace(tiledb_config={"vfs.s3.region": aws_region} if aws_region else {})
+@define(frozen=True, kw_only=True)
+class ExperimentLocator:
+    """State required to open the Experiment.
 
-    with soma.Experiment.open(uri, context=context) as exp:
-        yield exp
+    Necessary as we will likely be invoked across multiple processes.
+    """
+
+    uri: str
+    tiledb_timestamp_ms: int
+    tiledb_config: Dict[str, Union[str, float]]
+
+    @classmethod
+    def create(cls, experiment: soma.Experiment) -> "ExperimentLocator":
+        return ExperimentLocator(
+            uri=experiment.uri,
+            tiledb_timestamp_ms=experiment.tiledb_timestamp_ms,
+            tiledb_config=experiment.context.tiledb_config,
+        )
+
+    @contextmanager
+    def open_experiment(self) -> Iterator[soma.Experiment]:
+        context = soma.SOMATileDBContext(tiledb_config=self.tiledb_config)
+        with soma.Experiment.open(
+            self.uri, tiledb_timestamp=self.tiledb_timestamp_ms, context=context
+        ) as exp:
+            yield exp
 
 
 def _tables_to_np(
@@ -156,7 +182,9 @@ class _ObsAndXSOMAIterator(Iterator[_SOMAChunk]):
             # The result is again a list of numpy arrays.
             self.obs_joinids_chunks_iter = (
                 shuffle_rng.permutation(np.concatenate(grouped_chunks))
-                for grouped_chunks in list_split(obs_joinids_chunked, shuffle_chunk_count)
+                for grouped_chunks in list_split(
+                    obs_joinids_chunked, shuffle_chunk_count
+                )
             )
         else:
             self.obs_joinids_chunks_iter = iter(obs_joinids_chunked)
@@ -196,13 +224,18 @@ class _ObsAndXSOMAIterator(Iterator[_SOMAChunk]):
 
         # note: the `blockwise` call is employed for its ability to reindex the axes of the sparse matrix,
         # but the blockwise iteration feature is not used (block_size is set to retrieve the chunk as a single block)
-        blockwise_iter = self.X.read(coords=(obs_joinids_chunk, self.var_joinids)).blockwise(
-            axis=0, size=len(obs_joinids_chunk), eager=False
-        )
+        blockwise_iter = self.X.read(
+            coords=(obs_joinids_chunk, self.var_joinids)
+        ).blockwise(axis=0, size=len(obs_joinids_chunk), eager=False)
 
         X_batch: ChunkX
         if not self.return_sparse_X:
-            res = next(_tables_to_np(blockwise_iter.tables(), shape=(obs_batch.shape[0], len(self.var_joinids))))
+            res = next(
+                _tables_to_np(
+                    blockwise_iter.tables(),
+                    shape=(obs_batch.shape[0], len(self.var_joinids)),
+                )
+            )
             X_batch, nnz = res[0], res[2]
         else:
             X_batch = next(blockwise_iter.scipy(compress=True))[0]
@@ -317,7 +350,9 @@ class _ObsAndXIterator(Iterator[ObsAndXDatum]):
 
         while n_obs < self.batch_size:
             try:
-                obs_partial, X_partial = self._read_partial_torch_batch(self.batch_size - n_obs)
+                obs_partial, X_partial = self._read_partial_torch_batch(
+                    self.batch_size - n_obs
+                )
                 n_obs += len(obs_partial)
                 obss.append(obs_partial)
                 Xs.append(X_partial)
@@ -371,7 +406,9 @@ class _ObsAndXIterator(Iterator[ObsAndXDatum]):
             # GC memory from previous soma_chunk
             self.soma_chunk = None
             pre_gc, _, gc_elapsed = run_gc()
-            self.max_process_mem_usage_bytes = max(self.max_process_mem_usage_bytes, pre_gc[0].uss)
+            self.max_process_mem_usage_bytes = max(
+                self.max_process_mem_usage_bytes, pre_gc[0].uss
+            )
 
             self.soma_chunk: _SOMAChunk = next(self.soma_chunk_iter)
             self.stats += self.soma_chunk.stats
@@ -540,8 +577,7 @@ class ExperimentDataPipe(pipes.IterDataPipe[Dataset[ObsAndXDatum]]):  # type: ig
         Lifecycle:
             experimental
         """
-        self.exp_uri = experiment.uri
-        self.aws_region = experiment.context.tiledb_config.get("vfs.s3.region")
+        self.experiment_locator = ExperimentLocator.create(experiment)
         self.measurement_name = measurement_name
         self.layer_name = X_name
         self.obs_query = obs_query
@@ -570,7 +606,9 @@ class ExperimentDataPipe(pipes.IterDataPipe[Dataset[ObsAndXDatum]]):  # type: ig
             if len(encoders) != len({enc.name for enc in encoders}):
                 raise ValueError("Encoders must have unique names")
 
-            self.obs_column_names = list(dict.fromkeys(itertools.chain(*[enc.columns for enc in encoders])))
+            self.obs_column_names = list(
+                dict.fromkeys(itertools.chain(*[enc.columns for enc in encoders]))
+            )
 
     def _init(self) -> None:
         if self._initialized:
@@ -578,7 +616,7 @@ class ExperimentDataPipe(pipes.IterDataPipe[Dataset[ObsAndXDatum]]):  # type: ig
 
         pytorch_logger.debug("Initializing ExperimentDataPipe")
 
-        with _open_experiment(self.exp_uri, self.aws_region) as exp:
+        with self.experiment_locator.open_experiment() as exp:
             query = exp.axis_query(
                 measurement_name=self.measurement_name,
                 obs_query=self.obs_query,
@@ -665,14 +703,20 @@ class ExperimentDataPipe(pipes.IterDataPipe[Dataset[ObsAndXDatum]]):  # type: ig
             dist_partition=dist.get_rank() if dist.is_initialized() else 0,
             num_dist_partitions=dist.get_world_size() if dist.is_initialized() else 1,
         )
-        obs_joinids_chunked_partition: List[npt.NDArray[np.int64]] = self._subset_ids_to_partition(
-            obs_joinids_chunked, partition, partitions
-        )
+        obs_joinids_chunked_partition: List[
+            npt.NDArray[np.int64]
+        ] = self._subset_ids_to_partition(obs_joinids_chunked, partition, partitions)
 
-        with _open_experiment(self.exp_uri, self.aws_region) as exp:
+        with self.experiment_locator.open_experiment() as exp:
+            X = exp.ms[self.measurement_name].X[self.layer_name]
+            if not isinstance(X, soma.SparseNDArray):
+                raise NotImplementedError(
+                    "ExperimentDataPipe only supported on X layers which are of type SparseNDArray"
+                )
+
             obs_and_x_iter = _ObsAndXIterator(
                 obs=exp.obs,
-                X=exp.ms[self.measurement_name].X[self.layer_name],
+                X=X,
                 obs_column_names=self.obs_column_names,
                 obs_joinids_chunked=obs_joinids_chunked_partition,
                 var_joinids=self._var_joinids,
@@ -687,15 +731,22 @@ class ExperimentDataPipe(pipes.IterDataPipe[Dataset[ObsAndXDatum]]):  # type: ig
 
             yield from obs_and_x_iter
 
-            self.max_process_mem_usage_bytes = obs_and_x_iter.max_process_mem_usage_bytes
+            self.max_process_mem_usage_bytes = (
+                obs_and_x_iter.max_process_mem_usage_bytes
+            )
             pytorch_logger.debug(
-                "max process memory usage=" f"{self.max_process_mem_usage_bytes / (1024 ** 3):.3f} GiB"
+                "max process memory usage="
+                f"{self.max_process_mem_usage_bytes / (1024 ** 3):.3f} GiB"
             )
 
     @staticmethod
-    def _chunk_ids(ids: npt.NDArray[np.int64], chunk_size: int) -> List[npt.NDArray[np.int64]]:
+    def _chunk_ids(
+        ids: npt.NDArray[np.int64], chunk_size: int
+    ) -> List[npt.NDArray[np.int64]]:
         num_chunks = max(1, ceil(len(ids) / chunk_size))
-        pytorch_logger.debug(f"Shuffling {len(ids)} obs joinids into {num_chunks} chunks of {chunk_size}")
+        pytorch_logger.debug(
+            f"Shuffling {len(ids)} obs joinids into {num_chunks} chunks of {chunk_size}"
+        )
         return np.array_split(ids, num_chunks)
 
     def __len__(self) -> int:
@@ -736,11 +787,11 @@ class ExperimentDataPipe(pipes.IterDataPipe[Dataset[ObsAndXDatum]]):  # type: ig
 
     # TODO: This does not work in multiprocessing mode, as child process's stats are not collected
     def stats(self) -> Stats:
-        """Get data loading stats for this :class:`cellxgene_census.experimental.ml.pytorch.ExperimentDataPipe`.
+        """Get data loading stats for this :class:`tiledbsoma.ml.pytorch.ExperimentDataPipe`.
 
         Returns:
-            The :class:`cellxgene_census.experimental.ml.pytorch.Stats` object for this
-            :class:`cellxgene_census.experimental.ml.pytorch.ExperimentDataPipe`.
+            The :class:`tiledbsoma.ml.pytorch.Stats` object for this
+            :class:`tiledbsoma.ml.pytorch.ExperimentDataPipe`.
 
         Lifecycle:
             experimental
@@ -749,7 +800,7 @@ class ExperimentDataPipe(pipes.IterDataPipe[Dataset[ObsAndXDatum]]):  # type: ig
 
     @property
     def shape(self) -> Tuple[int, int]:
-        """Get the shape of the data that will be returned by this :class:`cellxgene_census.experimental.ml.pytorch.ExperimentDataPipe`.
+        """Get the shape of the data that will be returned by this :class:`tiledbsoma.ml.pytorch.ExperimentDataPipe`.
         This is the number of obs (cell) and var (feature) counts in the returned data. If used in multiprocessing mode
         (i.e. :class:`torch.utils.data.DataLoader` instantiated with num_workers > 0), the obs (cell) count will reflect
         the size of the partition of the data assigned to the active process.
@@ -796,7 +847,7 @@ def experiment_dataloader(
     **dataloader_kwargs: Any,
 ) -> DataLoader:
     """Factory method for :class:`torch.utils.data.DataLoader`. This method can be used to safely instantiate a
-    :class:`torch.utils.data.DataLoader` that works with :class:`cellxgene_census.experimental.ml.pytorch.ExperimentDataPipe`,
+    :class:`torch.utils.data.DataLoader` that works with :class:`tiledbsoma.ml.pytorch.ExperimentDataPipe`,
     since some of the :class:`torch.utils.data.DataLoader` constructor parameters are not applicable when using a
     :class:`torchdata.datapipes.iter.IterDataPipe` (``shuffle``, ``batch_size``, ``sampler``, ``batch_sampler``,
     ``collate_fn``).
@@ -804,15 +855,15 @@ def experiment_dataloader(
     Args:
         datapipe:
             An :class:`torchdata.datapipes.iter.IterDataPipe`, which can be an
-            :class:`cellxgene_census.experimental.ml.pytorch.ExperimentDataPipe` or any other
+            :class:`tiledbsoma.ml.pytorch.ExperimentDataPipe` or any other
             :class:`torchdata.datapipes.iter.IterDataPipe` that has been chained to the
-            :class:`cellxgene_census.experimental.ml.pytorch.ExperimentDataPipe`.
+            :class:`tiledbsoma.ml.pytorch.ExperimentDataPipe`.
         num_workers:
             Number of worker processes to use for data loading. If ``0``, data will be loaded in the main process.
         **dataloader_kwargs:
             Additional keyword arguments to pass to the :class:`torch.utils.data.DataLoader` constructor,
             except for ``shuffle``, ``batch_size``, ``sampler``, ``batch_sampler``, and ``collate_fn``, which are not
-            supported when using :class:`cellxgene_census.experimental.ml.pytorch.ExperimentDataPipe`.
+            supported when using :class:`tiledbsoma.ml.pytorch.ExperimentDataPipe`.
 
     Returns:
         A :class:`torch.utils.data.DataLoader`.
@@ -832,7 +883,9 @@ def experiment_dataloader(
         "collate_fn",
     ]
     if set(unsupported_dataloader_args).intersection(dataloader_kwargs.keys()):
-        raise ValueError(f"The {','.join(unsupported_dataloader_args)} DataLoader params are not supported")
+        raise ValueError(
+            f"The {','.join(unsupported_dataloader_args)} DataLoader params are not supported"
+        )
 
     if num_workers > 0:
         _init_multiprocessing()

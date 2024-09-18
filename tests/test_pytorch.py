@@ -26,13 +26,14 @@ from tiledbsoma._collection import CollectionBase
 # This supports the pytest `ml` mark, which can be used to disable all PyTorch-dependent
 # tests.
 try:
+    from torch.utils.data._utils.worker import WorkerInfo
+
     from tiledbsoma_ml.pytorch import (
         ExperimentAxisQueryIterable,
         ExperimentAxisQueryIterableDataset,
         ExperimentAxisQueryIterDataPipe,
         experiment_dataloader,
     )
-    from torch.utils.data._utils.worker import WorkerInfo
 except ImportError:
     # this should only occur when not running `ml`-marked tests
     pass
@@ -538,11 +539,11 @@ def test_distributed__returns_data_partition_for_rank(
     """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode,
     using mocks to avoid having to do real PyTorch distributed setup."""
 
-    with patch("torch.distributed.is_initialized") as mock_dist_is_initialized, patch(
-        "torch.distributed.get_rank"
-    ) as mock_dist_get_rank, patch(
-        "torch.distributed.get_world_size"
-    ) as mock_dist_get_world_size:
+    with (
+        patch("torch.distributed.is_initialized") as mock_dist_is_initialized,
+        patch("torch.distributed.get_rank") as mock_dist_get_rank,
+        patch("torch.distributed.get_world_size") as mock_dist_get_world_size,
+    ):
         mock_dist_is_initialized.return_value = True
         mock_dist_get_rank.return_value = rank
         mock_dist_get_world_size.return_value = world_size
@@ -593,13 +594,12 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
     DataLoader multiprocessing mode, using mocks to avoid having to do distributed pytorch
     setup or real DataLoader multiprocessing."""
 
-    with patch("torch.utils.data.get_worker_info") as mock_get_worker_info, patch(
-        "torch.distributed.is_initialized"
-    ) as mock_dist_is_initialized, patch(
-        "torch.distributed.get_rank"
-    ) as mock_dist_get_rank, patch(
-        "torch.distributed.get_world_size"
-    ) as mock_dist_get_world_size:
+    with (
+        patch("torch.utils.data.get_worker_info") as mock_get_worker_info,
+        patch("torch.distributed.is_initialized") as mock_dist_is_initialized,
+        patch("torch.distributed.get_rank") as mock_dist_get_rank,
+        patch("torch.distributed.get_world_size") as mock_dist_get_world_size,
+    ):
         mock_get_worker_info.return_value = WorkerInfo(
             id=worker_id, num_workers=num_workers, seed=1234
         )

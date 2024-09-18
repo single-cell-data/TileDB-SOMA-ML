@@ -16,7 +16,7 @@ dependencies = [
     "pyarrow",
     "scipy"
 ]
-requires-python = ">= 3.8"
+requires-python = ">= 3.9"
 description = "Machine learning tools for use with tiledbsoma"
 readme = "README.md"
 authors = [
@@ -39,7 +39,6 @@ classifiers = [
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -47,9 +46,9 @@ classifiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/single-cell-data/TileDB-SOMA.git"
-Issues = "https://github.com/single-cell-data/TileDB-SOMA/issues"
-Changelog = "https://github.com/single-cell-data/TileDB-SOMA/blob/main/CHANGELOG.md"
+Repository = "https://github.com/TileDB-Inc/TileDB-SOMA-ML.git"
+Issues = "https://github.com/TileDB-Inc/TileDB-SOMA-ML/issues"
+Changelog = "https://github.com/TileDB-Inc/TileDB-SOMA-ML/blob/main/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
 version = {attr = "tiledbsoma_ml.__version__"}
@@ -65,7 +64,7 @@ show_error_codes = true
 ignore_missing_imports = true
 warn_unreachable = true
 strict = true
-python_version = 3.8
+python_version = 3.9
 plugins = "numpy.typing.mypy_plugin"
 
 [tool.ruff]
@@ -73,7 +72,7 @@ lint.select = ["E", "F", "B", "I"]
 lint.ignore = ["E501"]  # line too long
 lint.extend-select = ["I001"]  # unsorted-imports
 fix = true
-target-version = "py38"
+target-version = "py39"
 line-length = 120
 
 

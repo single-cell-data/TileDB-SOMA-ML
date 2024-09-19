@@ -8,12 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased] - yyyy-mm-dd
 
-Porting and enhancing initial code contribution from the Chan Zuckerberg Initiative Foundation  
+Port and enhance contribution from the Chan Zuckerberg Initiative Foundation
 [CELLxGENE](https://cellxgene.cziscience.com/) project.
+
+This is not a one-for-one migration of the contributed code. Substantial changes have
+been made to the package utility (e.g., multi-GPU support), improve API usability, etc.
 
 ### Added
 
-- Initial commits via PR [#2823](https://github.com/single-cell-data/TileDB-SOMA/pull/2823)
+- Initial commits via [PR #1](https://github.com/single-cell-data/TileDB-SOMA-ML/pull/1)
+- Refine package dependency pins and compatibility tests via [PR #2](https://github.com/single-cell-data/TileDB-SOMA-ML/pull/2)
 
 ### Changed
 

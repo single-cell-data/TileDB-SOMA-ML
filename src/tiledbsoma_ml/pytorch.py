@@ -37,12 +37,11 @@ import numpy.typing as npt
 import pandas as pd
 import pyarrow as pa
 import scipy.sparse as sparse
+import tiledbsoma as soma
 import torch
 import torchdata
 from somacore.query._eager_iter import EagerIterator as _EagerIterator
 from typing_extensions import Self, TypeAlias
-
-import tiledbsoma as soma
 
 logger = logging.getLogger("tiledbsoma_ml.pytorch")
 

@@ -15,10 +15,9 @@ import numpy.typing as npt
 import pandas as pd
 import pyarrow as pa
 import pytest
+import tiledbsoma as soma
 from scipy import sparse
 from scipy.sparse import coo_matrix, spmatrix
-
-import tiledbsoma as soma
 from tiledbsoma import Experiment, _factory
 from tiledbsoma._collection import CollectionBase
 

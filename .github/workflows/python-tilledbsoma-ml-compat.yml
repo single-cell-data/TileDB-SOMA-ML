@@ -5,18 +5,20 @@ on:
     branches: ["*"]
     paths-ignore:
       - "scripts/**"
+      - "notebooks/**"
   push:
     branches: [main]
     paths-ignore:
       - "scripts/**"
+      - "notebooks/**"
 
 jobs:
   unit_tests:
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-latest", "macos-latest"]
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        os: ["ubuntu-latest"]  # could add 'macos-latest', but the matrix is already huge...
+        python-version: ["3.9", "3.10", "3.11"]  # TODO: add 3.12 when tiledbsoma releases wheels for it.
         pkg-version:
           - "tiledbsoma~=1.9.0 'numpy<2.0.0'"
           - "tiledbsoma~=1.10.0 'numpy<2.0.0'"
@@ -24,9 +26,6 @@ jobs:
           - "tiledbsoma~=1.12.0"
           - "tiledbsoma~=1.13.0"
           - "tiledbsoma~=1.14.0"
-        exclude: # TODO: remove mac-os/3.12 exclusion when tiledbsoma supports it
-          - python-version: 3.12
-            os: macos-latest
 
     runs-on: ${{ matrix.os }}
 

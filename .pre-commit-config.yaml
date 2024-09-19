@@ -5,14 +5,14 @@ repos:
       - id: black
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.2
+    rev: v0.6.5
     hooks:
       - id: ruff
         name: "ruff for tiledbsoma_ml"
         args: ["--config=pyproject.toml"]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.1
+    rev: v1.11.2
     hooks:
       - id: mypy
         pass_filenames: false

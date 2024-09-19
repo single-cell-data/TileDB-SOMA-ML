@@ -38,7 +38,7 @@ jobs:
       - name: Install prereqs
         run: |
           pip install --upgrade pip pytest setuptools
-          pip install tiledbsoma=${{ tiledbsoma-version }} .
+          pip install tiledbsoma=${{ matrix.tiledbsoma-version }} .
 
       - name: Run tests
         run: pytest -v tests

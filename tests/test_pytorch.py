@@ -40,11 +40,11 @@ except ImportError:
 
 # These control which classes are tested (for most, but not all tests).
 # Centralized to allow easy add/delete of specific test parameters.
-PipeClassType = (
-    ExperimentAxisQueryIterable
-    | ExperimentAxisQueryIterDataPipe
-    | ExperimentAxisQueryIterableDataset
-)
+PipeClassType = Union[
+    ExperimentAxisQueryIterable,
+    ExperimentAxisQueryIterDataPipe,
+    ExperimentAxisQueryIterableDataset,
+]
 PipeClassImplementation = (
     ExperimentAxisQueryIterable,
     ExperimentAxisQueryIterDataPipe,

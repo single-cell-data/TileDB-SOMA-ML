@@ -154,10 +154,19 @@ def soma_experiment(
 )
 @pytest.mark.parametrize("return_sparse_X", [True, False])
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_non_batched(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
     return_sparse_X: bool,
@@ -188,8 +197,8 @@ def test_non_batched(
 
         else:
             assert isinstance(row[0], np.ndarray)
-            assert row[0].shape == (3,)
-            assert row[0].tolist() == [0, 1, 0]
+            assert np.squeeze(row[0]).shape == (3,)
+            assert np.squeeze(row[0]).tolist() == [0, 1, 0]
 
         assert isinstance(row[1], pd.DataFrame)
         assert row[1].shape == (1, 1)
@@ -203,10 +212,19 @@ def test_non_batched(
 )
 @pytest.mark.parametrize("return_sparse_X", [True, False])
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_uneven_soma_and_result_batches(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
     return_sparse_X: bool,
@@ -247,10 +265,19 @@ def test_uneven_soma_and_result_batches(
     [(6, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_batching__all_batches_full_size(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -287,10 +314,19 @@ def test_batching__all_batches_full_size(
     ],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_unique_soma_joinids(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -314,10 +350,19 @@ def test_unique_soma_joinids(
     [(5, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_batching__partial_final_batch_size(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -345,10 +390,19 @@ def test_batching__partial_final_batch_size(
     [(3, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_batching__exactly_one_batch(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -376,10 +430,19 @@ def test_batching__exactly_one_batch(
     [(6, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_batching__empty_query_result(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -404,10 +467,19 @@ def test_batching__empty_query_result(
     [(6, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_sparse_output__non_batched(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -432,10 +504,19 @@ def test_sparse_output__non_batched(
     [(6, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_sparse_output__batched(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -464,10 +545,19 @@ def test_sparse_output__batched(
     ],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_batching__partial_soma_batches_are_concatenated(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -491,7 +581,8 @@ def test_batching__partial_soma_batches_are_concatenated(
     "obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)]
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset),
 )
 def test_multiprocessing__returns_full_result(
     PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
@@ -526,10 +617,19 @@ def test_multiprocessing__returns_full_result(
     [(3, 0), (3, 1), (3, 2), (2, 0), (2, 1)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_distributed__returns_data_partition_for_rank(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     obs_range: int,
     world_size: int,
@@ -578,10 +678,19 @@ def test_distributed__returns_data_partition_for_rank(
     ],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     obs_range: int,
     world_size: int,
@@ -633,7 +742,8 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
     [(3, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset),
 )
 def test_experiment_dataloader__non_batched(
     PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
@@ -663,7 +773,8 @@ def test_experiment_dataloader__non_batched(
     [(6, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset),
 )
 def test_experiment_dataloader__batched(
     PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
@@ -694,7 +805,8 @@ def test_experiment_dataloader__batched(
     ],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset),
 )
 def test_experiment_dataloader__batched_length(
     PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
@@ -719,7 +831,8 @@ def test_experiment_dataloader__batched_length(
     [(10, 3, pytorch_x_value_gen, batch_size) for batch_size in (1, 3, 10)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset),
 )
 def test_experiment_dataloader__collate_fn(
     PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
@@ -757,10 +870,19 @@ def test_experiment_dataloader__collate_fn(
     [(6, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test__X_tensor_dtype_matches_X_matrix(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -803,10 +925,19 @@ def test__pytorch_splitting(
     "obs_range,var_range,X_value_gen", [(16, 1, pytorch_seq_x_value_gen)]
 )
 @pytest.mark.parametrize(
-    "PipeClass", (ExperimentAxisQueryIterDataPipe, ExperimentAxisQueryIterableDataset)
+    "PipeClass",
+    (
+        ExperimentAxisQueryIterable,
+        ExperimentAxisQueryIterDataPipe,
+        ExperimentAxisQueryIterableDataset,
+    ),
 )
 def test__shuffle(
-    PipeClass: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    PipeClass: (
+        ExperimentAxisQueryIterable
+        | ExperimentAxisQueryIterDataPipe
+        | ExperimentAxisQueryIterableDataset
+    ),
     soma_experiment: Experiment,
 ) -> None:
     with soma_experiment.axis_query(measurement_name="RNA") as query:
@@ -817,7 +948,11 @@ def test__shuffle(
         )
 
         all_rows = list(iter(dp))
-        assert all(r[0].shape == (1,) for r in all_rows)
+        print([r[0].shape for r in all_rows])
+        if PipeClass is ExperimentAxisQueryIterable:
+            assert all(np.squeeze(r[0], axis=0).shape == (1,) for r in all_rows)
+        else:
+            assert all(r[0].shape == (1,) for r in all_rows)
         soma_joinids = [row[1]["soma_joinid"].iloc[0] for row in all_rows]
         X_values = [row[0][0].item() for row in all_rows]
 

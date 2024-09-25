@@ -1,0 +1,9 @@
+name: python-tiledbsoma-ml past tiledbsoma compat # Latest tiledbsoma version covered by another workflow
+on:
+  workflow_dispatch:
+
+jobs:
+  job:
+    runs-on: ubuntu-latest
+    steps:
+    # Empty job; placeholder GHA

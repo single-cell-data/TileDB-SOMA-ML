@@ -2,7 +2,7 @@ name: python-tiledbsoma-ml past tiledbsoma compat # Latest tiledbsoma version co
 
 on:
   pull_request:
-    branches: ["*"]
+    branches: ["**"]
     paths-ignore:
       - "scripts/**"
       - "notebooks/**"

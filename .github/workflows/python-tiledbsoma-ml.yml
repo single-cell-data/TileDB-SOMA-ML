@@ -1,6 +1,12 @@
 name: python-tiledbsoma-ml
 
 on:
+  pull_request:
+    branches: ["**"]
+    paths-ignore: ['scripts/**']
+  push:
+    branches: [main]
+    paths-ignore: ['scripts/**']
   workflow_dispatch:
 
 jobs:

@@ -18,22 +18,13 @@ from scipy import sparse
 from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma import Experiment, _factory
 from tiledbsoma._collection import CollectionBase
+from torch.utils.data._utils.worker import WorkerInfo
 
-# Conditionally import torch, as it will not be available in all test environments.
-# This supports the pytest `ml` mark, which can be used to disable all PyTorch-dependent
-# tests.
-try:
-    from torch.utils.data._utils.worker import WorkerInfo
-
-    from tiledbsoma_ml.pytorch import (
-        ExperimentAxisQueryIterable,
-        ExperimentAxisQueryIterableDataset,
-        ExperimentAxisQueryIterDataPipe,
-    )
-except ImportError:
-    # This should only occur when not running `ml`-marked tests
-    pass
-
+from tiledbsoma_ml.pytorch import (
+    ExperimentAxisQueryIterable,
+    ExperimentAxisQueryIterableDataset,
+    ExperimentAxisQueryIterDataPipe,
+)
 
 # These control which classes are tested (for most, but not all tests).
 # Centralized to allow easy add/delete of specific test parameters.
@@ -196,7 +187,6 @@ def test_non_batched(
 
         else:
             assert isinstance(row[0], np.ndarray)
-            print(row)
             assert np.squeeze(row[0]).shape == (3,)
             assert np.squeeze(row[0]).tolist() == [0, 1, 0]
 

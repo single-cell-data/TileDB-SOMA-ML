@@ -47,7 +47,7 @@ NDArrayNumber = npt.NDArray[np.number[Any]]
 XDatum = Union[NDArrayNumber, sparse.csr_matrix]
 XObsDatum = Tuple[XDatum, pd.DataFrame]
 """Return type of ``ExperimentAxisQueryIterableDataset`` and ``ExperimentAxisQueryIterDataPipe``,
-which pairs a slice of ``X`` rows with a cooresponding slice of ``obs``. In the default case,
+which pairs a slice of ``X`` rows with a corresponding slice of ``obs``. In the default case,
 the datum is a tuple of :class:`numpy.ndarray` and :class:`pandas.DataFrame` (for ``X`` and ``obs``
 respectively). If the object is created with ``return_sparse_X`` as True, the ``X`` slice is
 returned as a :class:`scipy.sparse.csr_matrix`. If the ``batch_size`` is 1, the :class:`numpy.ndarray`
@@ -58,7 +58,7 @@ will be returned with rank 1; in all other cases, objects are returned with rank
 class _ExperimentLocator:
     """State required to open the Experiment.
 
-    Necessary as we will likely be invoked across multiple processes.
+    Serializable across multiple processes.
 
     Private implementation class.
     """
@@ -111,8 +111,8 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         Construct a new ``ExperimentAxisQueryIterable``, suitable for use with :class:`torch.utils.data.DataLoader`.
 
         The resulting iterator will produce a tuple containing associated slices of ``X`` and ``obs`` data, as
-        a NumPy :class:`numpy.ndarray` (or optionally, :class:`scipy.sparse.csr_matrix`) and a
-        Pandas :class:`pandas.DataFrame`, respectively.
+        a NumPy :class:`numpy.ndarray` (or optionally, :class:`scipy.sparse.csr_matrix`) and a Pandas
+        :class:`pandas.DataFrame`, respectively.
 
         Args:
             query:
@@ -125,16 +125,16 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
             batch_size:
                 The number of rows of ``X`` and ``obs`` data to return in each iteration. Defaults to ``1``. A value of
                 ``1`` will result in :class:`torch.Tensor` of rank 1 being returned (a single row); larger values will
-                result in :class:`torch.Tensor`\ s of rank 2 (multiple rows). Note that a ``batch_size`` of 1 allows
-                this ``IterableDataset`` to be used with :class:`torch.utils.data.DataLoader`
-                batching, but higher performance can be achieved by performing batching in this class, and setting the ``DataLoader``'s
+                result in :class:`torch.Tensor`s of rank 2 (multiple rows). Note that a ``batch_size`` of 1 allows
+                this ``IterableDataset`` to be used with :class:`torch.utils.data.DataLoader` batching, but higher
+                performance can be achieved by performing batching in this class, and setting the ``DataLoader``'s
                 ``batch_size`` parameter to ``None``.
             io_batch_size:
                 The number of ``obs``/``X`` rows to retrieve when reading data from SOMA. This impacts
                 maximum memory utilization, larger values provide better read performance, but require more memory.
             return_sparse_X:
-                If ``True``, will return the ``X`` data as a :class:`scipy.sparse.csr_matrix`. If ``False`` (the default), will
-                return ``X`` data as a :class:`numpy.ndarray`.
+                If ``True``, will return the ``X`` data as a :class:`scipy.sparse.csr_matrix`. If ``False`` (the
+                default), will return ``X`` data as a :class:`numpy.ndarray`.
             use_eager_fetch:
                 Fetch the next SOMA chunk of ``obs`` and ``X`` data immediately after a previously fetched SOMA chunk is made
                 available for processing via the iterator. This allows network (or filesystem) requests to be made in
@@ -155,7 +155,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
 
         super().__init__()
 
-        # Anything set in the instance needs to be picklable for multi-process DataLoaders
+        # Anything set in the instance needs to be pickle-able for multi-process DataLoaders
         self.experiment_locator = _ExperimentLocator.create(query.experiment)
         self.layer_name = X_name
         self.measurement_name = query.measurement_name
@@ -228,7 +228,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
     def _init_once(self, exp: soma.Experiment | None = None) -> None:
         """One-time per worker initialization.
 
-        All operations be idempotent in order to support pipe reset().
+        All operations should be idempotent in order to support pipe reset().
 
         Private method.
         """
@@ -564,9 +564,9 @@ class ExperimentAxisQueryIterableDataset(
     >>> import tiledbsoma
     >>> import tiledbsoma_ml
     >>> with tiledbsoma.Experiment.open("my_experiment_path") as exp:
-            with exp.axis_query(measurement_name="RNA", obs_query=tiledbsoma.AxisQuery(value_filter="tissue_type=='lung'")) as query:
-                ds = tiledbsoma_ml.ExperimentAxisQueryIterableDataset(query)
-                dataloader = torch.utils.data.DataLoader(ds)
+    ...     with exp.axis_query(measurement_name="RNA", obs_query=tiledbsoma.AxisQuery(value_filter="tissue_type=='lung'")) as query:
+    ...         ds = tiledbsoma_ml.ExperimentAxisQueryIterableDataset(query)
+    ...         dataloader = torch.utils.data.DataLoader(ds)
     >>> data = next(iter(dataloader))
     >>> data
     (array([0., 0., 0., ..., 0., 0., 0.], dtype=float32),
@@ -711,7 +711,7 @@ class ExperimentAxisQueryIterableDataset(
 
 
 def _splits(total_length: int, sections: int) -> npt.NDArray[np.intp]:
-    """For `total_length` points, compute start/stop offsets that split the length into roughly equal sizes.
+    """For ``total_length`` points, compute start/stop offsets that split the length into roughly equal sizes.
 
     A total_length of L, split into N sections, will return L%N sections of size L//N+1,
     and the remainder as size L//N. This results in the same split as numpy.array_split,
@@ -738,11 +738,10 @@ def _splits(total_length: int, sections: int) -> npt.NDArray[np.intp]:
 
 if sys.version_info >= (3, 12):
     _batched = itertools.batched
-
 else:
 
     def _batched(iterable: Iterable[_T_co], n: int) -> Iterator[Tuple[_T_co, ...]]:
-        """Same as the Python 3.12+ itertools.batched -- polyfill for old Python versions."""
+        """Same as the Python 3.12+ ``itertools.batched`` -- polyfill for old Python versions."""
         if n < 1:
             raise ValueError("n must be at least one")
         it = iter(iterable)
@@ -751,13 +750,13 @@ else:
 
 
 def _get_distributed_world_rank() -> Tuple[int, int]:
-    """Return tuple containing equivalent of torch.distributed world size and rank."""
+    """Return tuple containing equivalent of ``torch.distributed`` world size and rank."""
     world_size, rank = 1, 0
     if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
         world_size = int(os.environ["WORLD_SIZE"])
         rank = int(os.environ["RANK"])
     elif "LOCAL_RANK" in os.environ and "WORLD_SIZE" in os.environ:
-        # Lightning doesn't use RANK!  LOCAL_RANK is only for the local node. There
+        # Lightning doesn't use RANK! LOCAL_RANK is only for the local node. There
         # is a NODE_RANK for the node's rank, but no way to tell the local node's
         # world. So computing a global rank is impossible(?).  Using LOCAL_RANK as a
         # proxy, which works fine on a single-CPU box. TODO: could throw/error

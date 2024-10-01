@@ -217,10 +217,9 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         ].copy()
 
         if logger.isEnabledFor(logging.DEBUG):
+            partition_size = sum([len(chunk) for chunk in obs_partition_joinids])
             logger.debug(
-                f"Process {os.getpid()} rank={rank}, world_size={world_size}, worker_id={worker_id}, "
-                f"n_workers={n_workers}, "
-                f"partition_size={sum([len(chunk) for chunk in obs_partition_joinids])}"
+                f"Process {os.getpid()} {rank=}, {world_size=}, {worker_id=}, n_workers={n_workers}, {partition_size=}"
             )
 
         return iter(obs_partition_joinids)
@@ -280,7 +279,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         world_size, rank = _get_distributed_world_rank()
         n_workers, worker_id = _get_worker_world_rank()
         logger.debug(
-            f"Iterator created rank={rank}, world_size={world_size}, worker_id={worker_id}, n_workers={n_workers}"
+            f"Iterator created {rank=}, {world_size=}, {worker_id=}, {n_workers=}"
         )
 
         with self.experiment_locator.open_experiment() as exp:

@@ -16,17 +16,16 @@ from contextlib import contextmanager
 from itertools import islice
 from math import ceil
 from typing import (
-    TYPE_CHECKING,
     Any,
     ContextManager,
     Dict,
+    Generator,
     Iterable,
     Iterator,
     Sequence,
     Tuple,
     TypeVar,
     Union,
-    cast,
 )
 
 import attrs
@@ -38,24 +37,15 @@ import tiledbsoma as soma
 import torch
 import torchdata
 from somacore.query._eager_iter import EagerIterator as _EagerIterator
-from typing_extensions import TypeAlias
 
 logger = logging.getLogger("tiledbsoma_ml.pytorch")
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
 
-if TYPE_CHECKING:
-    # Python 3.8 does not support subscripting types, so work-around by
-    # restricting this to when we are running a type checker.  TODO: remove
-    # the conditional when Python 3.8 support is dropped.
-    NDArrayNumber: TypeAlias = npt.NDArray[np.number[Any]]
-    XDatum: TypeAlias = Union[NDArrayNumber, sparse.csr_matrix]
-else:
-    NDArrayNumber: TypeAlias = np.ndarray
-    XDatum: TypeAlias = Union[np.ndarray, sparse.csr_matrix]
-
-XObsDatum: TypeAlias = Tuple[XDatum, pd.DataFrame]
+NDArrayNumber = npt.NDArray[np.number[Any]]
+XDatum = Union[NDArrayNumber, sparse.csr_matrix]
+XObsDatum = Tuple[XDatum, pd.DataFrame]
 """Return type of ``ExperimentAxisQueryIterableDataset`` and ``ExperimentAxisQueryIterDataPipe``,
 which pairs a slice of ``X`` rows with a cooresponding slice of ``obs``. In the default case,
 the datum is a tuple of :class:`numpy.ndarray` and :class:`pandas.DataFrame` (for ``X`` and ``obs``
@@ -86,12 +76,11 @@ class _ExperimentLocator:
         )
 
     @contextmanager
-    def open_experiment(self) -> Iterator[soma.Experiment]:
+    def open_experiment(self) -> Generator[soma.Experiment, None, None]:
         context = soma.SOMATileDBContext(tiledb_config=self.tiledb_config)
-        with soma.Experiment.open(
+        yield soma.Experiment.open(
             self.uri, tiledb_timestamp=self.tiledb_timestamp_ms, context=context
-        ) as exp:
-            yield exp
+        )
 
 
 class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
@@ -398,17 +387,16 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
             )
 
             # Now that X read is potentially in progress (in eager mode), go fetch obs data
-            #
-            obs_io_batch = cast(
-                pd.DataFrame,
+            # fmt: off
+            obs_io_batch = (
                 obs.read(coords=(obs_coords,), column_names=obs_column_names)
                 .concat()
                 .to_pandas()
                 .set_index("soma_joinid")
                 .reindex(obs_coords, copy=False)
-                .reset_index(),
-            )
-            obs_io_batch = obs_io_batch[self.obs_column_names]
+                .reset_index()  # demote "soma_joinid" to a column
+                [self.obs_column_names]
+            )  # fmt: on
 
             del obs_indexer, obs_coords, X_tbl
             gc.collect()

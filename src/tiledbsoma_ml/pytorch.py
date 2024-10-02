@@ -23,8 +23,10 @@ from typing import (
     Generator,
     Iterable,
     Iterator,
+    List,
     Sequence,
     Tuple,
+    Type,
     TypeVar,
     Union,
 )
@@ -48,6 +50,8 @@ _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
 
 NDArrayNumber = npt.NDArray[np.number[Any]]
+NDArrayJoinId = npt.NDArray[np.int64]
+_CSRIdxArray = npt.NDArray[np.unsignedinteger[Any]]
 XDatum = Union[NDArrayNumber, sparse.csr_matrix]
 XObsDatum = Tuple[XDatum, pd.DataFrame]
 """Return type of ``ExperimentAxisQueryIterableDataset`` and ``ExperimentAxisQueryIterDataPipe``,
@@ -191,8 +195,8 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         self.shuffle = shuffle
         self.return_sparse_X = return_sparse_X
         self.use_eager_fetch = use_eager_fetch
-        self._obs_joinids: npt.NDArray[np.int64] | None = None
-        self._var_joinids: npt.NDArray[np.int64] | None = None
+        self._obs_joinids: NDArrayJoinId | None = None
+        self._var_joinids: NDArrayJoinId | None = None
         self.seed = (
             seed if seed is not None else np.random.default_rng().integers(0, 2**32 - 1)
         )
@@ -210,7 +214,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         if not self.obs_column_names:
             raise ValueError("Must specify at least one value in `obs_column_names`")
 
-    def _create_obs_joinids_partition(self) -> Iterator[npt.NDArray[np.int64]]:
+    def _create_obs_joinids_partition(self) -> Iterator[NDArrayJoinId]:
         """Create iterator over obs id chunks with split size of (roughly) io_batch_size.
 
         As appropriate, will chunk, shuffle and apply partitioning per worker.
@@ -230,7 +234,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         Private method.
         """
         assert self._obs_joinids is not None
-        obs_joinids: npt.NDArray[np.int64] = self._obs_joinids
+        obs_joinids: NDArrayJoinId = self._obs_joinids
 
         # 1. Get the split for the model replica/GPU
         world_size, rank = _get_distributed_world_rank()
@@ -429,7 +433,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         self,
         obs: soma.DataFrame,
         X: soma.SparseNDArray,
-        obs_joinid_iter: Iterator[npt.NDArray[np.int64]],
+        obs_joinid_iter: Iterator[NDArrayJoinId],
     ) -> Iterator[Tuple[_CSR_IO_Buffer, pd.DataFrame]]:
         """Iterate over IO batches, i.e., SOMA query reads, producing tuples of ``(X: csr_array, obs: DataFrame)``.
 
@@ -472,8 +476,8 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
 
             def make_io_buffer(
                 X_tbl: pa.Table,
-                obs_coords: npt.NDArray[np.int64],
-                var_coords: npt.NDArray[np.int64],
+                obs_coords: NDArrayJoinId,
+                var_coords: NDArrayJoinId,
                 obs_indexer: soma.IntIndexer,
             ) -> _CSR_IO_Buffer:
                 """This function provides a GC after we throw off (large) garbage."""
@@ -520,7 +524,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         self,
         obs: soma.DataFrame,
         X: soma.SparseNDArray,
-        obs_joinid_iter: Iterator[npt.NDArray[np.int64]],
+        obs_joinid_iter: Iterator[NDArrayJoinId],
     ) -> Iterator[XObsDatum]:
         """Break IO batches into shuffled mini-batch-sized chunks.
 
@@ -1085,8 +1089,8 @@ class _CSR_IO_Buffer:
 
     def __init__(
         self,
-        indptr: NDArrayNumber,
-        indices: NDArrayNumber,
+        indptr: _CSRIdxArray,
+        indices: _CSRIdxArray,
         data: NDArrayNumber,
         shape: Tuple[int, int],
     ) -> None:
@@ -1103,19 +1107,19 @@ class _CSR_IO_Buffer:
 
     @staticmethod
     def from_ijd(
-        i: NDArrayNumber, j: NDArrayNumber, d: NDArrayNumber, shape: Tuple[int, int]
+        i: _CSRIdxArray, j: _CSRIdxArray, d: NDArrayNumber, shape: Tuple[int, int]
     ) -> _CSR_IO_Buffer:
         """Factory from COO"""
         nnz = len(d)
-        indptr = np.zeros((shape[0] + 1), dtype=smallest_uint_dtype(nnz))
-        indices = np.empty((nnz,), dtype=smallest_uint_dtype(shape[1]))
+        indptr: _CSRIdxArray = np.zeros((shape[0] + 1), dtype=smallest_uint_dtype(nnz))
+        indices: _CSRIdxArray = np.empty((nnz,), dtype=smallest_uint_dtype(shape[1]))
         data = np.empty((nnz,), dtype=d.dtype)
         _coo_to_csr_inner(shape[0], i, j, d, indptr, indices, data)
         return _CSR_IO_Buffer(indptr, indices, data, shape)
 
     @staticmethod
     def from_pjd(
-        p: NDArrayNumber, j: NDArrayNumber, d: NDArrayNumber, shape: Tuple[int, int]
+        p: _CSRIdxArray, j: _CSRIdxArray, d: NDArrayNumber, shape: Tuple[int, int]
     ) -> _CSR_IO_Buffer:
         """Factory from CSR"""
         return _CSR_IO_Buffer(p, j, d, shape)
@@ -1191,8 +1195,9 @@ class _CSR_IO_Buffer:
         return self
 
 
-def smallest_uint_dtype(max_val: int) -> npt.DTypeLike:
-    for dt in [np.uint16, np.uint32]:
+def smallest_uint_dtype(max_val: int) -> Type[np.unsignedinteger[Any]]:
+    dts: List[Type[np.unsignedinteger[Any]]] = [np.uint16, np.uint32]
+    for dt in dts:
         if max_val <= np.iinfo(dt).max:
             return dt
     else:
@@ -1201,9 +1206,9 @@ def smallest_uint_dtype(max_val: int) -> npt.DTypeLike:
 
 @numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
 def _csr_merge_inner(
-    As: Tuple[Tuple[NDArrayNumber, NDArrayNumber, NDArrayNumber], ...],  # P,J,D
-    Bp: NDArrayNumber,
-    Bj: NDArrayNumber,
+    As: Tuple[Tuple[_CSRIdxArray, _CSRIdxArray, NDArrayNumber], ...],  # P,J,D
+    Bp: _CSRIdxArray,
+    Bj: _CSRIdxArray,
     Bd: NDArrayNumber,
 ) -> None:
     n_rows = len(Bp) - 1
@@ -1220,8 +1225,8 @@ def _csr_merge_inner(
 def _csr_to_dense_inner(
     row_idx_start: int,
     n_rows: int,
-    indptr: NDArrayNumber,
-    indices: NDArrayNumber,
+    indptr: _CSRIdxArray,
+    indices: _CSRIdxArray,
     data: NDArrayNumber,
     out: NDArrayNumber,
 ) -> None:
@@ -1256,11 +1261,11 @@ def _count_rows(n_rows: int, Ai: NDArrayNumber, Bp: NDArrayNumber) -> NDArrayNum
 @numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
 def _coo_to_csr_inner(
     n_rows: int,
-    Ai: NDArrayNumber,
-    Aj: NDArrayNumber,
+    Ai: _CSRIdxArray,
+    Aj: _CSRIdxArray,
     Ad: NDArrayNumber,
-    Bp: NDArrayNumber,
-    Bj: NDArrayNumber,
+    Bp: _CSRIdxArray,
+    Bj: _CSRIdxArray,
     Bd: NDArrayNumber,
 ) -> None:
     nnz = len(Ai)
@@ -1311,7 +1316,7 @@ def _coo_to_csr_inner(
 
 
 @numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
-def _csr_sort_indices(Bp: NDArrayNumber, Bj: NDArrayNumber, Bd: NDArrayNumber) -> None:
+def _csr_sort_indices(Bp: _CSRIdxArray, Bj: _CSRIdxArray, Bd: NDArrayNumber) -> None:
     """In-place sort of minor axis indices"""
     n_rows = len(Bp) - 1
     for r in numba.prange(n_rows):

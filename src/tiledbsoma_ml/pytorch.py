@@ -440,7 +440,9 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
                     )
                     result = (
                         X_datum,
-                        obs_io_batch.iloc[iob_idx : iob_idx + mini_batch_size],
+                        obs_io_batch.iloc[
+                            iob_idx : iob_idx + mini_batch_size
+                        ].reset_index(drop=True),
                     )
                     iob_idx += len(result[1])
                 else:
@@ -455,7 +457,12 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
                     )
                     result = (
                         X_datum,
-                        pd.concat([result[1], obs_io_batch.iloc[0:to_take]]),
+                        pd.concat(
+                            [result[1], obs_io_batch.iloc[0:to_take]],
+                            # Index `obs_batch` from 0 to N-1, instead of disjoint, concatenated pieces of IO batches'
+                            # indices
+                            ignore_index=True,
+                        ),
                     )
                     iob_idx += to_take
 

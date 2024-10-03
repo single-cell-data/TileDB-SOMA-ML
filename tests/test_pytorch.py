@@ -249,11 +249,13 @@ def test_uneven_soma_and_result_batches(
     [(6, 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
+@pytest.mark.parametrize("return_sparse_X", [True, False])
 @pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_batching__all_batches_full_size(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
+    return_sparse_X: bool,
 ) -> None:
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         exp_data_pipe = PipeClass(
@@ -262,18 +264,24 @@ def test_batching__all_batches_full_size(
             obs_column_names=["label"],
             batch_size=3,
             use_eager_fetch=use_eager_fetch,
+            return_sparse_X=return_sparse_X,
         )
         batch_iter = iter(exp_data_pipe)
+        assert exp_data_pipe.shape == (2, 3)
 
-        batch = next(batch_iter)
-        assert batch[0].tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
-        assert batch[1].keys() == ["label"]
-        assert batch[1]["label"].tolist() == ["0", "1", "2"]
+        X_batch, obs_batch = next(batch_iter)
+        if return_sparse_X:
+            assert isinstance(X_batch, sparse.csr_matrix)
+            X_batch = X_batch.todense()
+        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
+        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
 
-        batch = next(batch_iter)
-        assert batch[0].tolist() == [[1, 0, 1], [0, 1, 0], [1, 0, 1]]
-        assert batch[1].keys() == ["label"]
-        assert batch[1]["label"].tolist() == ["3", "4", "5"]
+        X_batch, obs_batch = next(batch_iter)
+        if return_sparse_X:
+            assert isinstance(X_batch, sparse.csr_matrix)
+            X_batch = X_batch.todense()
+        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0], [1, 0, 1]]
+        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
 
         with pytest.raises(StopIteration):
             next(batch_iter)
@@ -384,35 +392,11 @@ def test_batching__empty_query_result(
             batch_size=3,
             use_eager_fetch=use_eager_fetch,
         )
+        assert exp_data_pipe.shape == (0, 3)
         batch_iter = iter(exp_data_pipe)
 
         with pytest.raises(StopIteration):
             next(batch_iter)
-
-
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClasses)
-def test_sparse_output__batched(
-    PipeClass: PipeClassType, soma_experiment: Experiment, use_eager_fetch: bool
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        exp_data_pipe = PipeClass(
-            query,
-            X_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            return_sparse_X=True,
-            use_eager_fetch=use_eager_fetch,
-        )
-        batch_iter = iter(exp_data_pipe)
-
-        batch = next(batch_iter)
-        assert isinstance(batch[0], sparse.csr_matrix)
-        assert batch[0].todense().tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
 
 
 @pytest.mark.parametrize(

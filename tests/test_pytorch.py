@@ -33,7 +33,7 @@ PipeClassType = Union[
     ExperimentAxisQueryIterDataPipe,
     ExperimentAxisQueryIterableDataset,
 ]
-PipeClassImplementation = (
+PipeClasses = (
     ExperimentAxisQueryIterable,
     ExperimentAxisQueryIterDataPipe,
     ExperimentAxisQueryIterableDataset,
@@ -157,7 +157,7 @@ def soma_experiment(
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_non_batched(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
@@ -204,7 +204,7 @@ def test_non_batched(
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_uneven_soma_and_result_batches(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
@@ -246,7 +246,7 @@ def test_uneven_soma_and_result_batches(
     [(6, 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_batching__all_batches_full_size(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
@@ -281,7 +281,7 @@ def test_batching__all_batches_full_size(
     [(range(100_000_000, 100_000_003), 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_unique_soma_joinids(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
@@ -307,7 +307,7 @@ def test_unique_soma_joinids(
     [(5, 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_batching__partial_final_batch_size(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
@@ -336,7 +336,7 @@ def test_batching__partial_final_batch_size(
     [(3, 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_batching__exactly_one_batch(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
@@ -365,7 +365,7 @@ def test_batching__exactly_one_batch(
     [(6, 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_batching__empty_query_result(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
@@ -392,7 +392,7 @@ def test_batching__empty_query_result(
     [(6, 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_sparse_output__non_batched(
     PipeClass: PipeClassType, soma_experiment: Experiment, use_eager_fetch: bool
 ) -> None:
@@ -416,7 +416,7 @@ def test_sparse_output__non_batched(
     [(6, 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_sparse_output__batched(
     PipeClass: PipeClassType, soma_experiment: Experiment, use_eager_fetch: bool
 ) -> None:
@@ -441,7 +441,7 @@ def test_sparse_output__batched(
     [(10, 1, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_batching__partial_soma_batches_are_concatenated(
     PipeClass: PipeClassType, soma_experiment: Experiment, use_eager_fetch: bool
 ) -> None:
@@ -469,7 +469,7 @@ def test_batching__partial_soma_batches_are_concatenated(
     "world_size,rank",
     [(3, 0), (3, 1), (3, 2), (2, 0), (2, 1)],
 )
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_distributed__returns_data_partition_for_rank(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
@@ -518,7 +518,7 @@ def test_distributed__returns_data_partition_for_rank(
         (3, 1, 2, 1),
     ],
 )
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
@@ -571,7 +571,7 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
     [(6, 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClassImplementation)
+@pytest.mark.parametrize("PipeClass", PipeClasses)
 def test__X_tensor_dtype_matches_X_matrix(
     PipeClass: PipeClassType, soma_experiment: Experiment, use_eager_fetch: bool
 ) -> None:

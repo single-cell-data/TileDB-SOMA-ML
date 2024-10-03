@@ -446,7 +446,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
                     )
                     iob_idx += len(result[1])
                 else:
-                    # use any remnant from previous IO batch
+                    # Use any remnant from previous IO batch
                     to_take = min(mini_batch_size - len(result[1]), iob_len - iob_idx)
                     X_datum = (
                         sparse.vstack([result[0], X_io_batch[0:to_take]])
@@ -531,7 +531,7 @@ class ExperimentAxisQueryIterDataPipe(
         batch_size = self._exp_iter.batch_size
         for X, obs in self._exp_iter:
             if batch_size == 1:
-                X = X[0]
+                X = X[0]  # This is a no-op for `csr_matrix`s
             yield X, obs
 
     def __len__(self) -> int:
@@ -678,7 +678,7 @@ class ExperimentAxisQueryIterableDataset(
         batch_size = self._exp_iter.batch_size
         for X, obs in self._exp_iter:
             if batch_size == 1:
-                X = X[0]
+                X = X[0]  # This is a no-op for `csr_matrix`s
             yield X, obs
 
     def __len__(self) -> int:

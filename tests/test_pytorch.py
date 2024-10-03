@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import pathlib
-from typing import Callable, List, Optional, Sequence, Union
+from typing import Callable, Optional, Sequence, Union
 from unittest.mock import patch
 
 import numpy as np
@@ -61,17 +61,17 @@ def pytorch_seq_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
 
 
 @pytest.fixture
-def X_layer_names() -> List[str]:
+def X_layer_names() -> list[str]:
     return ["raw"]
 
 
 @pytest.fixture
-def obsp_layer_names() -> Optional[List[str]]:
+def obsp_layer_names() -> Optional[list[str]]:
     return None
 
 
 @pytest.fixture
-def varp_layer_names() -> Optional[List[str]]:
+def varp_layer_names() -> Optional[list[str]]:
     return None
 
 

@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-import pathlib
+from pathlib import Path
 from typing import Callable, Optional, Sequence, Union
 from unittest.mock import patch
 
@@ -38,6 +38,7 @@ PipeClassImplementation = (
     ExperimentAxisQueryIterDataPipe,
     ExperimentAxisQueryIterableDataset,
 )
+XValueGen = Callable[[range, range], spmatrix]
 
 
 def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
@@ -103,7 +104,7 @@ def add_sparse_array(
     key: str,
     obs_range: range,
     var_range: range,
-    value_gen: Callable[[range, range], spmatrix],
+    value_gen: XValueGen,
 ) -> None:
     a = coll.add_new_sparse_ndarray(
         key, type=pa.float32(), shape=(obs_range.stop, var_range.stop)
@@ -114,10 +115,10 @@ def add_sparse_array(
 
 @pytest.fixture(scope="function")
 def soma_experiment(
-    tmp_path: pathlib.Path,
+    tmp_path: Path,
     obs_range: Union[int, range],
     var_range: Union[int, range],
-    X_value_gen: Callable[[range, range], sparse.spmatrix],
+    X_value_gen: XValueGen,
     obsp_layer_names: Sequence[str],
     varp_layer_names: Sequence[str],
 ) -> soma.Experiment:

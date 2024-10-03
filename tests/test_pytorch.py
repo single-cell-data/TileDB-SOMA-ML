@@ -14,6 +14,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 import tiledbsoma as soma
+from pandas._testing import assert_frame_equal
 from scipy import sparse
 from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma import Experiment, _factory
@@ -164,7 +165,7 @@ def test_non_batched(
     use_eager_fetch: bool,
     return_sparse_X: bool,
 ) -> None:
-    # batch_size should default to 1
+    """Check batches of size 1 (the default)"""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         exp_data_pipe = PipeClass(
             query,
@@ -173,29 +174,26 @@ def test_non_batched(
             use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
         )
-        assert type(exp_data_pipe.shape) is tuple
-        assert len(exp_data_pipe.shape) == 2
         assert exp_data_pipe.shape == (6, 3)
+        batch_iter = iter(exp_data_pipe)
+        for idx, (X_batch, obs_batch) in enumerate(batch_iter):
+            expected_X = [0, 1, 0] if idx % 2 == 0 else [1, 0, 1]
+            if return_sparse_X:
+                assert isinstance(X_batch, sparse.csr_matrix)
+                # Sparse slices are always 2D
+                assert X_batch.shape == (1, 3)
+                assert X_batch.todense().tolist() == [expected_X]
+            else:
+                assert isinstance(X_batch, np.ndarray)
+                if PipeClass is ExperimentAxisQueryIterable:
+                    assert X_batch.shape == (1, 3)
+                    assert X_batch.tolist() == [expected_X]
+                else:
+                    # ExperimentAxisQueryIterData{Pipe,set} "squeeze" dense single-row batches
+                    assert X_batch.shape == (3,)
+                    assert X_batch.tolist() == expected_X
 
-        row_iter = iter(exp_data_pipe)
-
-        row = next(row_iter)
-
-        if return_sparse_X:
-            # sparse slices remain 2D, always
-            assert isinstance(row[0], sparse.csr_matrix)
-            assert row[0].shape == (1, 3)
-            assert row[0].todense().tolist() == [[0, 1, 0]]
-
-        else:
-            assert isinstance(row[0], np.ndarray)
-            assert np.squeeze(row[0]).shape == (3,)
-            assert np.squeeze(row[0]).tolist() == [0, 1, 0]
-
-        assert isinstance(row[1], pd.DataFrame)
-        assert row[1].shape == (1, 1)
-        assert row[1].keys() == ["label"]
-        assert row[1]["label"].tolist() == ["0"]
+            assert_frame_equal(obs_batch, pd.DataFrame({"label": [str(idx)]}))
 
 
 @pytest.mark.parametrize(
@@ -385,30 +383,6 @@ def test_batching__empty_query_result(
 
         with pytest.raises(StopIteration):
             next(batch_iter)
-
-
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClasses)
-def test_sparse_output__non_batched(
-    PipeClass: PipeClassType, soma_experiment: Experiment, use_eager_fetch: bool
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        exp_data_pipe = PipeClass(
-            query,
-            X_name="raw",
-            obs_column_names=["label"],
-            return_sparse_X=True,
-            use_eager_fetch=use_eager_fetch,
-        )
-        batch_iter = iter(exp_data_pipe)
-
-        batch = next(batch_iter)
-        assert isinstance(batch[0], sparse.csr_matrix)
-        assert batch[0].todense().A.squeeze().tolist() == [0, 1, 0]
 
 
 @pytest.mark.parametrize(

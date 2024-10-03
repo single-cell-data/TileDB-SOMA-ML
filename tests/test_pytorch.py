@@ -209,7 +209,7 @@ def test_uneven_soma_and_result_batches(
     use_eager_fetch: bool,
     return_sparse_X: bool,
 ) -> None:
-    """This is checking that batches are correctly created when they require fetching multiple chunks."""
+    """Check that batches are correctly created when they require fetching multiple chunks."""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         exp_data_pipe = PipeClass(
             query,
@@ -220,23 +220,28 @@ def test_uneven_soma_and_result_batches(
             use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
         )
-        row_iter = iter(exp_data_pipe)
+        assert exp_data_pipe.shape == (2, 3)
+        batch_iter = iter(exp_data_pipe)
 
-        X_batch, obs_batch = next(row_iter)
-
+        X_batch, obs_batch = next(batch_iter)
+        assert X_batch.shape == (3, 3)
         if return_sparse_X:
             assert isinstance(X_batch, sparse.csr_matrix)
-            assert X_batch.todense()[0].tolist() == [[0, 1, 0]]
+            X_batch = X_batch.todense()
         else:
             assert isinstance(X_batch, np.ndarray)
-            assert X_batch[0].tolist() == [0, 1, 0]
+        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
+        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
 
-        assert isinstance(obs_batch, pd.DataFrame)
-        assert X_batch.shape[0] == obs_batch.shape[0]
+        X_batch, obs_batch = next(batch_iter)
         assert X_batch.shape == (3, 3)
-        assert obs_batch.shape == (3, 1)
-        assert ["label"] == obs_batch.keys()
-        assert obs_batch["label"].tolist() == ["0", "1", "2"]
+        if return_sparse_X:
+            assert isinstance(X_batch, sparse.csr_matrix)
+            X_batch = X_batch.todense()
+        else:
+            assert isinstance(X_batch, np.ndarray)
+        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0], [1, 0, 1]]
+        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
 
 
 @pytest.mark.parametrize(

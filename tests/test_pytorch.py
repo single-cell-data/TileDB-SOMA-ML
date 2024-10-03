@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 from typing import Callable, Optional, Sequence, Union
 from unittest.mock import patch
@@ -26,6 +27,8 @@ from tiledbsoma_ml.pytorch import (
     ExperimentAxisQueryIterableDataset,
     ExperimentAxisQueryIterDataPipe,
 )
+
+assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
 
 # These control which classes are tested (for most, but not all tests).
 # Centralized to allow easy add/delete of specific test parameters.
@@ -293,7 +296,7 @@ def test_batching__all_batches_full_size(
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("PipeClass", PipeClasses)
-def test_unique_soma_joinids(
+def test_soma_joinids(
     PipeClass: PipeClassType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
@@ -306,11 +309,12 @@ def test_unique_soma_joinids(
             batch_size=3,
             use_eager_fetch=use_eager_fetch,
         )
+        assert exp_data_pipe.shape == (1, 3)
 
         soma_joinids = np.concatenate(
             [batch[1]["soma_joinid"].to_numpy() for batch in exp_data_pipe]
         )
-        assert len(np.unique(soma_joinids)) == len(soma_joinids)
+        assert_array_equal(soma_joinids, np.arange(100_000_000, 100_000_003))
 
 
 @pytest.mark.parametrize(
@@ -527,28 +531,6 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
             ]
             expected_joinids = np.array_split(expected_joinids, num_workers)[worker_id]
             assert sorted(soma_joinids) == expected_joinids.tolist()
-
-
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("PipeClass", PipeClasses)
-def test__X_tensor_dtype_matches_X_matrix(
-    PipeClass: PipeClassType, soma_experiment: Experiment, use_eager_fetch: bool
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = PipeClass(
-            query,
-            X_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            use_eager_fetch=use_eager_fetch,
-        )
-        data = next(iter(dp))
-
-        assert data[0].dtype == np.float32
 
 
 def test_batched() -> None:

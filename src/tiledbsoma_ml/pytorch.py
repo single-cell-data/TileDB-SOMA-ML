@@ -1078,11 +1078,11 @@ class _CSR_IO_Buffer:
     Operations supported are:
     * Incrementally build a CSR from COO, allowing overlapped I/O and CSR conversion for I/O batches,
       and a final "merge" step which combines the result.
-    * Zero intermediate copy conversion of an arbitrary row slice to dense (ie., mini-batch extraction).
-    * Parallel ops where it makes sense (construction, merge, etc)
-    * Minimize memory use for index arrays
+    * Zero intermediate copy conversion of an arbitrary row slice to dense (i.e., mini-batch extraction).
+    * Parallel processing, where possible (construction, merge, etc.).
+    * Minimize memory use for index arrays.
 
-    Overall is significantly faster, and uses less memory, than the equivalent scipy.sparse operations.
+    Overall is significantly faster, and uses less memory, than the equivalent ``scipy.sparse`` operations.
     """
 
     __slots__ = ("indptr", "indices", "data", "shape")
@@ -1150,8 +1150,8 @@ class _CSR_IO_Buffer:
         return out
 
     def slice_toscipy(self, row_index: slice) -> sparse.csr_matrix:
-        """Extract slice as a sparse.csr_matrix. Does not assume any paritcular ordering of minor axis, but
-        will return a canonically ordered scipy sparse object."""
+        """Extract slice as a ``sparse.csr_matrix``. Does not assume any particular ordering of
+        minor axis, but will return a canonically ordered scipy sparse object."""
         assert isinstance(row_index, slice)
         assert row_index.step in (1, None)
         row_idx_start, row_idx_end, _ = row_index.indices(self.indptr.shape[0] - 1)
@@ -1280,10 +1280,10 @@ def _coo_to_csr_inner(
         cumsum += tmp
     Bp[n_rows] = nnz
 
-    # Reorganize all of the data. Side-effect: pointers shifted (reversed in the
+    # Reorganize all the data. Side effect: pointers shifted (reversed in the
     # subsequent section).
     #
-    # Method is concurrent (partioned by rows) if number of rows is greater
+    # Method is concurrent (partitioned by rows) if number of rows is greater
     # than 2**partition_bits. This partitioning scheme leverages the fact
     # that reads are much cheaper than writes.
     #
@@ -1307,7 +1307,7 @@ def _coo_to_csr_inner(
             Bd[dst_row] = Ad[n]
             Bp[row] += 1
 
-    # Shift the pointers by one slot (ie., start at zero)
+    # Shift the pointers by one slot (i.e., start at zero)
     prev_ptr = 0
     for n in range(n_rows + 1):
         tmp = Bp[n]

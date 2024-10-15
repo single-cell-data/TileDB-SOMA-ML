@@ -3,27 +3,36 @@
 
 A Python package containing ML tools for use with `tiledbsoma`.
 
+**NOTE:** this is a _pre-release_ package, and may be subject to breaking API changes prior to first release.
+
 ## Description
 
-The package currently contains a prototype PyTorch `IterableDataset` for use with the
+The package contains a prototype PyTorch `IterableDataset` for use with the
 [`torch.utils.data.DataLoader`](https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader)
-API.
+API. For a general introduction to PyTorch data loading,
+[see this tutorial](https://pytorch.org/tutorials/beginner/data_loading_tutorial.html).
+Additional information on the DataLoader/Dataset pattern
+[can be found here](https://pytorch.org/docs/stable/data.html).
+
+Defects and feature requests should be filed as a GitHub issue in this repo. Please include a reproducible
+test case in all bug reports.
 
 ## Getting Started
 
 ### Installing
 
-Install using your favorite package installer.  For example, with pip:
+Prior to the first release, installation is most easily accomplished by installing directly from GitHub:
 
-> pip install tiledbsoma-ml
+> pip install git+<https://github.com/single-cell-data/TileDB-SOMA-ML>
 
-Developers may install editable, from source, in the usual manner:
+Developers may install editable, from source, in the usual manner -- clone the repo and execute:
 
 > pip install -e .
 
 ### Documentation
 
-TBD
+Documentation is pending. Preliminary documentation can be found in API docstrings, and in
+the [notebooks](notebooks) directory.
 
 ## Builds
 

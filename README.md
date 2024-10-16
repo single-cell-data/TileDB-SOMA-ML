@@ -23,11 +23,15 @@ test case in all bug reports.
 
 Prior to the first release, installation is most easily accomplished by installing directly from GitHub:
 
-> pip install git+<https://github.com/single-cell-data/TileDB-SOMA-ML>
+```bash
+pip install git+https://github.com/single-cell-data/TileDB-SOMA-ML
+```
 
 Developers may install editable, from source, in the usual manner -- clone the repo and execute:
 
-> pip install -e .
+```bash
+pip install -e .
+```
 
 ### Documentation
 
@@ -38,7 +42,9 @@ the [notebooks](notebooks) directory.
 
 This is a pure Python package. To build a wheel, ensure you have the `build` package installed, and then:
 
-> python -m build .
+```bash
+python -m build .
+```
 
 ## Version History
 

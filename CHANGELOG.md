@@ -8,11 +8,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased] - yyyy-mm-dd
 
-Port and enhance contribution from the Chan Zuckerberg Initiative Foundation
+Initial release of a PyTorch Dataset for SOMA Experiments. This is a port and
+enhancement of code contributed by the Chan Zuckerberg Initiative Foundation
 [CELLxGENE](https://cellxgene.cziscience.com/) project.
 
 This is not a one-for-one migration of the contributed code. Substantial changes have
-been made to the package utility (e.g., multi-GPU support), improved API UX, etc.
+been made to the package utility (e.g., multi-GPU support), improved API UX, performance
+improvements, and more.
 
 ### Added
 

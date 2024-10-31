@@ -328,15 +328,13 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
             experimental
         """
 
-        if (
-            self.return_sparse_X
-            and torch.utils.data.get_worker_info()
-            and torch.utils.data.get_worker_info().num_workers > 0
-        ):
-            raise NotImplementedError(
-                "torch does not work with sparse tensors in multi-processing mode "
-                "(see https://github.com/pytorch/pytorch/issues/20248)"
-            )
+        if self.return_sparse_X:
+            worker_info = torch.utils.data.get_worker_info()
+            if worker_info and worker_info.num_workers > 0:
+                raise NotImplementedError(
+                    "torch does not work with sparse tensors in multi-processing mode "
+                    "(see https://github.com/pytorch/pytorch/issues/20248)"
+                )
 
         world_size, rank = _get_distributed_world_rank()
         n_workers, worker_id = _get_worker_world_rank()
@@ -426,7 +424,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
 
     def __getitem__(self, index: int) -> XObsDatum:
         raise NotImplementedError(
-            "``ExperimentAxisQueryIterable can only be iterated - does not support mapping"
+            "`ExperimentAxisQueryIterable` can only be iterated - does not support mapping"
         )
 
     def _io_batch_iter(

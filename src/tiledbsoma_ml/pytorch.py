@@ -41,7 +41,13 @@ import scipy.sparse as sparse
 import tiledbsoma as soma
 import torch
 import torchdata
-from somacore.query._eager_iter import EagerIterator as _EagerIterator
+
+try:
+    # somacore<1.0.24 / tiledbsoma<1.15
+    from somacore.query._eager_iter import EagerIterator as _EagerIterator
+except ImportError:
+    # somacore>=1.0.24 / tiledbsoma>=1.15
+    from tiledbsoma._eager_iter import EagerIterator as _EagerIterator
 from typing_extensions import Self
 
 logger = logging.getLogger("tiledbsoma_ml.pytorch")

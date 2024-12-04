@@ -45,6 +45,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.scripts]
+tdbsml = "tiledbsoma_ml.cli.main:tdbsml"
+
 [project.urls]
 Repository = "https://github.com/TileDB-Inc/TileDB-SOMA-ML.git"
 Issues = "https://github.com/TileDB-Inc/TileDB-SOMA-ML/issues"

@@ -44,6 +44,7 @@ def benchmark(cpu, use_lightning, tissue, workers, in_nb_path, out_nb_path):
             "/usr/bin/time", "-v", "-o", tmpfile,
             "papermill",
             "-p", "tissue", tissue,
+            "-p", "is_papermill", "True",
             *(["-p", "cpu", f"{cpu}"] if cpu else []),
             *(["-p", "lightning", f"{use_lightning}"] if use_lightning else []),
             *([] if workers is None else ["-p", "workers", f"{workers}"]),

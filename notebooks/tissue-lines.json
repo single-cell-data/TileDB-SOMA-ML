@@ -16,6 +16,7 @@
         "width": 1
       },
       "name": "Lightning (CPU)",
+      "showlegend": false,
       "x": [
         "Tongue\u003cbr\u003e(15,020 cells)",
         "Ovary\u003cbr\u003e(53,751 cells)",
@@ -50,6 +51,7 @@
         "width": 2
       },
       "name": "Lightning (GPU)",
+      "showlegend": false,
       "x": [
         "Tongue\u003cbr\u003e(15,020 cells)",
         "Ovary\u003cbr\u003e(53,751 cells)",
@@ -84,6 +86,7 @@
         "width": 2
       },
       "name": "Lightning (GPUx4)",
+      "showlegend": false,
       "x": [
         "Tongue\u003cbr\u003e(15,020 cells)",
         "Ovary\u003cbr\u003e(53,751 cells)",
@@ -103,6 +106,21 @@
       "type": "scatter"
     },
     {
+      "hovertemplate": "%{customdata}",
+      "line": {
+        "color": "blue"
+      },
+      "mode": "lines",
+      "name": "Lightning",
+      "x": [
+        null
+      ],
+      "y": [
+        null
+      ],
+      "type": "scatter"
+    },
+    {
       "customdata": [
         "2m14s",
         "3m6s",
@@ -118,6 +136,7 @@
         "width": 1
       },
       "name": "Torch (CPU)",
+      "showlegend": false,
       "x": [
         "Tongue\u003cbr\u003e(15,020 cells)",
         "Ovary\u003cbr\u003e(53,751 cells)",
@@ -152,6 +171,7 @@
         "width": 2
       },
       "name": "Torch (GPU)",
+      "showlegend": false,
       "x": [
         "Tongue\u003cbr\u003e(15,020 cells)",
         "Ovary\u003cbr\u003e(53,751 cells)",
@@ -186,6 +206,7 @@
         "width": 2
       },
       "name": "Torch (GPUx4)",
+      "showlegend": false,
       "x": [
         "Tongue\u003cbr\u003e(15,020 cells)",
         "Ovary\u003cbr\u003e(53,751 cells)",
@@ -201,6 +222,72 @@
         1587.19,
         4092.0,
         6028.0
+      ],
+      "type": "scatter"
+    },
+    {
+      "hovertemplate": "%{customdata}",
+      "line": {
+        "color": "red"
+      },
+      "mode": "lines",
+      "name": "Torch",
+      "x": [
+        null
+      ],
+      "y": [
+        null
+      ],
+      "type": "scatter"
+    },
+    {
+      "hovertemplate": "%{customdata}",
+      "legend": "legend2",
+      "line": {
+        "color": "#aaa",
+        "dash": "dot"
+      },
+      "mode": "lines",
+      "name": "CPU",
+      "x": [
+        null
+      ],
+      "y": [
+        null
+      ],
+      "type": "scatter"
+    },
+    {
+      "hovertemplate": "%{customdata}",
+      "legend": "legend2",
+      "line": {
+        "color": "#aaa",
+        "dash": "solid"
+      },
+      "mode": "lines",
+      "name": "GPU",
+      "x": [
+        null
+      ],
+      "y": [
+        null
+      ],
+      "type": "scatter"
+    },
+    {
+      "hovertemplate": "%{customdata}",
+      "legend": "legend2",
+      "line": {
+        "color": "#aaa",
+        "dash": "dash"
+      },
+      "mode": "lines",
+      "name": "GPUx4",
+      "x": [
+        null
+      ],
+      "y": [
+        null
       ],
       "type": "scatter"
     }
@@ -268,12 +355,12 @@
     },
     "hovermode": "x",
     "legend": {
-      "bordercolor": "#ccc",
+      "bordercolor": "#888",
       "borderwidth": 2,
       "title": {
         "text": ""
       },
-      "x": 0.03,
+      "x": 0.123,
       "y": 0.97,
       "yanchor": "top"
     },
@@ -1139,6 +1226,13 @@
       "title": {
         "text": "Wall time (s)"
       }
+    },
+    "legend2": {
+      "bordercolor": "#888",
+      "borderwidth": 2,
+      "x": 0.02,
+      "y": 0.97,
+      "yanchor": "top"
     }
   }
 }

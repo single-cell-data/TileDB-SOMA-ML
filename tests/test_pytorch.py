@@ -776,7 +776,7 @@ def test_experiment_axis_query_iterable_error_checks(
             dp[0]
 
         with pytest.raises(ValueError):
-            dp = ExperimentAxisQueryIterable(
+            ExperimentAxisQueryIterable(
                 query,
                 obs_column_names=(),
                 X_name="raw",

@@ -237,6 +237,7 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
         # 4. Partition by DataLoader worker
         n_workers, worker_id = get_worker_world_rank()
         obs_splits = splits(len(obs_joinids_chunked), n_workers)
+        print(f"{rank}/{world_size} worker {worker_id}/{n_workers}: {obs_splits=}, {len(obs_joinids_chunked)=}")
         obs_partition_joinids = obs_joinids_chunked[
             obs_splits[worker_id] : obs_splits[worker_id + 1]
         ].copy()
@@ -320,7 +321,12 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
                 )
 
             obs_joinid_iter = self._create_obs_joinids_partition()
-            _mini_batch_iter = self._mini_batch_iter(exp.obs, X, obs_joinid_iter)
+            obs_joinid_blocks = list(obs_joinid_iter)
+            block0 = obs_joinid_blocks[0]
+            sb = list(sorted(block0))
+            range0 = list(range(sb[0], sb[-1]+1))
+            print(f"{rank}/{world_size}: {len(obs_joinid_blocks)} blocks; block0: {len(block0)}, {sb[:5]}, …, {sb[-5:]}, autoinc? {sb == range0}")
+            _mini_batch_iter = self._mini_batch_iter(exp.obs, X, iter(obs_joinid_blocks))
             if self.use_eager_fetch:
                 _mini_batch_iter = _EagerIterator(
                     _mini_batch_iter, pool=exp.context.threadpool

@@ -12,9 +12,9 @@ jobs:
       id-token: write
     steps:
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Build package
         run: pip install build && python -m build && ls -l dist
       - name: Publish package distributions to Test PyPI

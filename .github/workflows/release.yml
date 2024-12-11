@@ -1,7 +1,15 @@
 name: Release
 on:
-  release:
-    types: [ 'published' ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag version to release (e.g., v1.0.0)'
+        required: true
+        default: 'v0.1.0alpha'
+      environment:
+        description: 'PyPI environment to release to (test or production)'
+        required: true
+        default: 'test'
 
 jobs:
   pypi-publish:

@@ -11,15 +11,9 @@ from . import tdbsml
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-
-class LogisticRegression(torch.nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(LogisticRegression, self).__init__()  # noqa: UP008
-        self.linear = torch.nn.Linear(input_dim, output_dim)
-
-    def forward(self, x):
-        outputs = torch.sigmoid(self.linear(x))
-        return outputs
+from ..model import LogisticRegression
+from .base import DEFAULT_CENSUS_VERSION, DEFAULT_BATCH_SIZE, DEFAULT_N_EPOCHS, DEFAULT_LEARNING_RATE, \
+    DEFAULT_IO_CHUNK_SIZE, DEFAULT_SHUFFLE_CHUNK_SIZE
 
 
 def train_epoch(model, train_dataloader, loss_fn, optimizer, device, cell_type_encoder):
@@ -55,46 +49,16 @@ def train_epoch(model, train_dataloader, loss_fn, optimizer, device, cell_type_e
     return train_loss, train_accuracy
 
 
-DEFAULT_CENSUS_VERSION = '2024-07-01'
-DEFAULT_BATCH_SIZE = 128
-DEFAULT_N_EPOCHS = 20
-DEFAULT_LEARNING_RATE = 1e-5
-DEFAULT_IO_CHUNK_SIZE = 2**16
-DEFAULT_SHUFFLE_CHUNK_SIZE = 64
-
-
-@tdbsml.command
-@option('-b', '--batch-size', type=int, default=DEFAULT_BATCH_SIZE)
-@option('-i', '--io-batch-size', type=int, default=DEFAULT_IO_CHUNK_SIZE)
-@option('-I', '--model-in-path', help='Load initial model from this path')
-@option('-l', '--learning-rate', type=float, default=DEFAULT_LEARNING_RATE)
-@option('-m', '--model-path', help='Load model from this path, and save it back to this path; equivalent to setting both `-I/--model-in-path` and `-O/--model-out-path` to this value')
-@option('-n', '--n-epochs', type=int, default=DEFAULT_N_EPOCHS)
-@option('-O', '--model-out-path', help='Save trained model to this path')
-@option('-s', '--shuffle-chunk-size', type=int, default=DEFAULT_SHUFFLE_CHUNK_SIZE)
-@option('-t', '--tissue', help='"tissue_general" obs filter')
-@option('-v', '--census-version', default=DEFAULT_CENSUS_VERSION)
-@option('-w', '--num-workers', type=int)
-def train(
+def dataloader(
+    tissue: str,
     batch_size: int,
     io_batch_size: int,
-    model_in_path: str | None,
-    learning_rate: float,
-    model_path: str | None,
-    n_epochs: int,
-    model_out_path: str | None,
     shuffle_chunk_size: int,
-    tissue: str,
     census_version: str,
     num_workers: int | None,
+    seed: int | None,
 ):
-    dist.init_process_group(backend="nccl")
-    local_rank = int(os.environ["LOCAL_RANK"])
-    torch.cuda.set_device(local_rank)
     census_url = f"s3://cellxgene-census-public-us-west-2/cell-census/{census_version}/soma/census_data/homo_sapiens/"
-    if num_workers is None:
-        num_workers = torch.cuda.device_count()
-
     experiment = soma.open(
         census_url,
         context=soma.SOMATileDBContext(tiledb_config={"vfs.s3.region": "us-west-2"}),
@@ -114,9 +78,55 @@ def train(
             batch_size=batch_size,
             io_batch_size=io_batch_size,
             shuffle_chunk_size=shuffle_chunk_size,
+            seed=seed,
         )
 
     dl = experiment_dataloader(ds, num_workers=num_workers)
+    return ds, dl, cell_type_encoder
+
+
+@tdbsml.command
+@option('-b', '--batch-size', type=int, default=DEFAULT_BATCH_SIZE)
+@option('-i', '--io-batch-size', type=int, default=DEFAULT_IO_CHUNK_SIZE)
+@option('-I', '--model-in-path', help='Load initial model from this path')
+@option('-l', '--learning-rate', type=float, default=DEFAULT_LEARNING_RATE)
+@option('-m', '--model-path', help='Load model from this path, and save it back to this path; equivalent to setting both `-I/--model-in-path` and `-O/--model-out-path` to this value')
+@option('-n', '--n-epochs', type=int, default=DEFAULT_N_EPOCHS)
+@option('-O', '--model-out-path', help='Save trained model to this path')
+@option('-s', '--shuffle-chunk-size', type=int, default=DEFAULT_SHUFFLE_CHUNK_SIZE)
+@option('-S', '--seed', type=int)
+@option('-t', '--tissue', help='"tissue_general" obs filter')
+@option('-v', '--census-version', default=DEFAULT_CENSUS_VERSION)
+@option('-w', '--num-workers', type=int)
+def train(
+    batch_size: int,
+    io_batch_size: int,
+    model_in_path: str | None,
+    learning_rate: float,
+    model_path: str | None,
+    n_epochs: int,
+    model_out_path: str | None,
+    shuffle_chunk_size: int,
+    seed: int | None,
+    tissue: str,
+    census_version: str,
+    num_workers: int | None,
+):
+    dist.init_process_group(backend="nccl")
+    local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device(local_rank)
+    if num_workers is None:
+        num_workers = torch.cuda.device_count()
+
+    ds, dl, cell_type_encoder = dataloader(
+        tissue=tissue,
+        batch_size=batch_size,
+        io_batch_size=io_batch_size,
+        shuffle_chunk_size=shuffle_chunk_size,
+        census_version=census_version,
+        num_workers=num_workers,
+        seed=seed,
+    )
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -134,6 +144,7 @@ def train(
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
+    epochs = []
     for epoch in range(n_epochs):
         ds.set_epoch(epoch)
         train_loss, train_accuracy = train_epoch(
@@ -147,6 +158,13 @@ def train(
         print(
             f"Epoch {epoch + 1}: Train Loss: {train_loss:.7f} Accuracy {train_accuracy:.4f}"
         )
+        epochs.append({
+            'tissue': tissue,
+            'seed': seed,
+            'epoch': epoch,
+            'train_loss': train_loss,
+            'train_accuracy': train_accuracy,
+        })
 
     if local_rank == 0:
         model_out_path = model_out_path or model_path

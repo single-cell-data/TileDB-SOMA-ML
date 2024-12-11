@@ -321,12 +321,7 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
                 )
 
             obs_joinid_iter = self._create_obs_joinids_partition()
-            obs_joinid_blocks = list(obs_joinid_iter)
-            block0 = obs_joinid_blocks[0]
-            sb = list(sorted(block0))
-            range0 = list(range(sb[0], sb[-1]+1))
-            print(f"{rank}/{world_size}: {len(obs_joinid_blocks)} blocks; block0: {len(block0)}, {sb[:5]}, …, {sb[-5:]}, autoinc? {sb == range0}")
-            _mini_batch_iter = self._mini_batch_iter(exp.obs, X, iter(obs_joinid_blocks))
+            _mini_batch_iter = self._mini_batch_iter(exp.obs, X, obs_joinid_iter)
             if self.use_eager_fetch:
                 _mini_batch_iter = _EagerIterator(
                     _mini_batch_iter, pool=exp.context.threadpool

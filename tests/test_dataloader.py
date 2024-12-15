@@ -15,9 +15,9 @@ from numpy.testing import assert_array_equal
 from pandas._testing import assert_frame_equal
 from tiledbsoma import Experiment
 
-from tests._utils import IterableWrappers, IterableWrapperType, pytorch_x_value_gen
+from tests._utils import IterableWrappers, pytorch_x_value_gen
 from tiledbsoma_ml import ExperimentAxisQueryIterDataPipe
-from tiledbsoma_ml.dataloader import experiment_dataloader
+from tiledbsoma_ml.dataloader import experiment_dataloader, ExperimentAxisQueryIterableWrapperType
 
 
 @pytest.mark.parametrize(
@@ -25,7 +25,7 @@ from tiledbsoma_ml.dataloader import experiment_dataloader
 )
 @pytest.mark.parametrize("PipeClass", IterableWrappers)
 def test_multiprocessing__returns_full_result(
-    PipeClass: IterableWrapperType,
+    PipeClass: ExperimentAxisQueryIterableWrapperType,
     soma_experiment: Experiment,
 ) -> None:
     """Tests that ``ExperimentAxisQueryIterDataPipe`` / ``ExperimentAxisQueryIterableDataset``
@@ -55,7 +55,7 @@ def test_multiprocessing__returns_full_result(
 )
 @pytest.mark.parametrize("PipeClass", IterableWrappers)
 def test_experiment_dataloader__non_batched(
-    PipeClass: IterableWrapperType,
+    PipeClass: ExperimentAxisQueryIterableWrapperType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -83,7 +83,7 @@ def test_experiment_dataloader__non_batched(
 )
 @pytest.mark.parametrize("PipeClass", IterableWrappers)
 def test_experiment_dataloader__batched(
-    PipeClass: IterableWrapperType,
+    PipeClass: ExperimentAxisQueryIterableWrapperType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -112,7 +112,7 @@ def test_experiment_dataloader__batched(
 )
 @pytest.mark.parametrize("PipeClass", IterableWrappers)
 def test_experiment_dataloader__batched_length(
-    PipeClass: IterableWrapperType,
+    PipeClass: ExperimentAxisQueryIterableWrapperType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -135,7 +135,7 @@ def test_experiment_dataloader__batched_length(
 )
 @pytest.mark.parametrize("PipeClass", IterableWrappers)
 def test_experiment_dataloader__collate_fn(
-    PipeClass: IterableWrapperType,
+    PipeClass: ExperimentAxisQueryIterableWrapperType,
     soma_experiment: Experiment,
     batch_size: int,
 ) -> None:

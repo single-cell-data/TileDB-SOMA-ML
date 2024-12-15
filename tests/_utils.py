@@ -15,23 +15,20 @@ from tiledbsoma_ml import (
     ExperimentAxisQueryIterableDataset,
     ExperimentAxisQueryIterDataPipe,
 )
+from tiledbsoma_ml.dataloader import ExperimentAxisQueryIterableWrapperType
 from tiledbsoma_ml.pytorch import ExperimentAxisQueryIterable
 
 assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
 
 # These control which classes are tested (for most, but not all tests).
 # Centralized to allow easy add/delete of specific test parameters.
-IterableWrapperType = Union[
-    Type[ExperimentAxisQueryIterDataPipe],
-    Type[ExperimentAxisQueryIterableDataset],
-]
 IterableWrappers = (
     ExperimentAxisQueryIterDataPipe,
     ExperimentAxisQueryIterableDataset,
 )
 PipeClassType = Union[
     Type[ExperimentAxisQueryIterable],
-    IterableWrapperType,
+    ExperimentAxisQueryIterableWrapperType,
 ]
 PipeClasses = (
     ExperimentAxisQueryIterable,

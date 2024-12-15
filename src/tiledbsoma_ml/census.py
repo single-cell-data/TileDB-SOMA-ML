@@ -1,4 +1,4 @@
-from typing import Type, Tuple
+from typing import Tuple
 
 from sklearn.preprocessing import LabelEncoder
 from somacore import AxisQuery
@@ -6,7 +6,7 @@ from tiledbsoma import Experiment, SOMATileDBContext
 from torch.utils.data import DataLoader
 
 from tiledbsoma_ml import ExperimentAxisQueryIterableDataset, experiment_dataloader, ExperimentAxisQueryIterDataPipe
-from tiledbsoma_ml.pytorch import ExperimentAxisQueryIterableWrapper, ExperimentAxisQueryIterableWrapperType
+from tiledbsoma_ml.dataloader import ExperimentAxisQueryIterableWrapper, ExperimentAxisQueryIterableWrapperType
 
 
 def census_dataloader(

@@ -5,14 +5,9 @@
 
 from __future__ import annotations
 
-import contextlib
-import gc
 import logging
 import os
-import time
-from math import ceil
 from typing import (
-    ContextManager,
     Iterable,
     Iterator,
     Sequence,
@@ -20,23 +15,26 @@ from typing import (
     Union,
 )
 
+import gc
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pyarrow as pa
 import scipy.sparse as sparse
+import time
 import torch
+from math import ceil
 from somacore import ExperimentAxisQuery
 from somacore.query._eager_iter import EagerIterator as _EagerIterator
-from tiledbsoma import DataFrame, Experiment, IntIndexer, SparseNDArray
+from tiledbsoma import DataFrame, IntIndexer, SparseNDArray
 
 from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._distributed import (
     get_distributed_world_rank,
     get_worker_world_rank,
 )
-from tiledbsoma_ml._experiment_locator import ExperimentLocator
 from tiledbsoma_ml._utils import NDArrayNumber, batched, splits
+from tiledbsoma_ml.measurement_locator import MeasurementLocator
 
 logger = logging.getLogger("tiledbsoma_ml.pytorch")
 
@@ -67,7 +65,9 @@ class BatchIterable(Iterable[Batch]):
 
     def __init__(
         self,
-        query: ExperimentAxisQuery,
+        exp_loc: Union[ExperimentAxisQuery, MeasurementLocator],
+        obs_joinids: NDArrayJoinId,
+        var_joinids: NDArrayJoinId,
         X_name: str,
         obs_column_names: Sequence[str] = ("soma_joinid",),
         batch_size: int = 1,
@@ -86,8 +86,10 @@ class BatchIterable(Iterable[Batch]):
         :class:`pandas.DataFrame`, respectively.
 
         Args:
-            query:
-                A :class:`tiledbsoma.ExperimentAxisQuery`, defining the data to iterate over.
+            obs_joinids:
+                ``obs`` soma_joinids to process, from the provided ``Experiment``
+            var_joinids:
+                ``var`` soma_joinids to process, from the provided ``Experiment``
             X_name:
                 The name of the X layer to read.
             obs_column_names:
@@ -144,11 +146,15 @@ class BatchIterable(Iterable[Batch]):
         super().__init__()
 
         # Anything set in the instance needs to be pickle-able for multi-process DataLoaders
-        self.experiment_locator = ExperimentLocator.create(query.experiment)
+        self.experiment_locator = (
+            MeasurementLocator.create(exp_loc.experiment, exp_loc.measurement_name)
+            if isinstance(exp_loc, ExperimentAxisQuery)
+            else exp_loc
+        )
         self.layer_name = X_name
-        self.measurement_name = query.measurement_name
-        self.obs_query = query._matrix_axis_query.obs
-        self.var_query = query._matrix_axis_query.var
+        # self.measurement_name = query.measurement_name
+        # self.obs_query = query._matrix_axis_query.obs
+        # self.var_query = query._matrix_axis_query.var
         self.obs_column_names = list(obs_column_names)
         self.batch_size = batch_size
         self.io_batch_size = io_batch_size
@@ -244,39 +250,13 @@ class BatchIterable(Iterable[Batch]):
 
         return iter(obs_partition_joinids)
 
-    def _init_once(self, exp: Experiment | None = None) -> None:
-        """One-time per worker initialization.
+    # @property
+    # def experiment(self) -> Experiment:
+    #     return self.experiment_locator.
 
-        All operations should be idempotent in order to support pipe reset().
-
-        Private method.
-        """
-        if self._initialized:
-            return
-
-        logger.debug(
-            f"Initializing ExperimentAxisQueryIterable (shuffle={self.shuffle})"
-        )
-
-        if exp is None:
-            # If no user-provided Experiment, open/close it ourselves
-            exp_cm: ContextManager[Experiment] = (
-                self.experiment_locator.open_experiment()
-            )
-        else:
-            # else, it is caller responsibility to open/close the experiment
-            exp_cm = contextlib.nullcontext(exp)
-
-        with exp_cm as exp:
-            with exp.axis_query(
-                measurement_name=self.measurement_name,
-                obs_query=self.obs_query,
-                var_query=self.var_query,
-            ) as query:
-                self._obs_joinids = query.obs_joinids().to_numpy()
-                self._var_joinids = query.var_joinids().to_numpy()
-
-        self._initialized = True
+    @property
+    def measurement_name(self) -> str:
+        return self.experiment_locator.measurement_name
 
     def __iter__(self) -> Iterator[Batch]:
         """Create iterator over query.
@@ -307,7 +287,6 @@ class BatchIterable(Iterable[Batch]):
             )
 
         with self.experiment_locator.open_experiment() as exp:
-            self._init_once(exp)
             X = exp.ms[self.measurement_name].X[self.layer_name]
             if not isinstance(X, SparseNDArray):
                 raise NotImplementedError(
@@ -355,7 +334,6 @@ class BatchIterable(Iterable[Batch]):
         Lifecycle:
             experimental
         """
-        self._init_once()
         assert self._obs_joinids is not None
         assert self._var_joinids is not None
         world_size, rank = get_distributed_world_rank()

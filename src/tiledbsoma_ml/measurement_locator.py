@@ -7,11 +7,11 @@ from contextlib import contextmanager
 from typing import Dict, Generator, Union
 
 import attrs
-from tiledbsoma import Experiment, SOMATileDBContext
+from tiledbsoma import Experiment, SOMATileDBContext, Measurement
 
 
 @attrs.define(frozen=True, kw_only=True)
-class ExperimentLocator:
+class MeasurementLocator:
     """State required to open the Experiment.
 
     Serializable across multiple processes.
@@ -20,13 +20,15 @@ class ExperimentLocator:
     """
 
     uri: str
+    measurement_name: str
     tiledb_timestamp_ms: int
     tiledb_config: Dict[str, Union[str, float]]
 
     @classmethod
-    def create(cls, experiment: Experiment) -> "ExperimentLocator":
-        return ExperimentLocator(
+    def create(cls, experiment: Experiment, measurement_name: str) -> "MeasurementLocator":
+        return MeasurementLocator(
             uri=experiment.uri,
+            measurement_name=measurement_name,
             tiledb_timestamp_ms=experiment.tiledb_timestamp_ms,
             tiledb_config=experiment.context.tiledb_config,
         )
@@ -37,3 +39,8 @@ class ExperimentLocator:
         yield Experiment.open(
             self.uri, tiledb_timestamp=self.tiledb_timestamp_ms, context=context
         )
+
+    @contextmanager
+    def open_measurement(self) -> Generator[Measurement, None, None]:
+        with self.open_experiment() as exp:
+            yield exp.ms[self.measurement_name]

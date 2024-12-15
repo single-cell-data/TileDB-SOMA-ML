@@ -40,6 +40,11 @@ import torchdata
 from somacore.query._eager_iter import EagerIterator as _EagerIterator
 from typing_extensions import Self
 
+from tiledbsoma_ml._distributed import (
+    get_distributed_world_rank,
+    get_worker_world_rank,
+    init_multiprocessing,
+)
 from tiledbsoma_ml._experiment_locator import ExperimentLocator
 
 logger = logging.getLogger("tiledbsoma_ml.pytorch")
@@ -206,7 +211,7 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
         obs_joinids: NDArrayJoinId = self._obs_joinids
 
         # 1. Get the split for the model replica/GPU
-        world_size, rank = _get_distributed_world_rank()
+        world_size, rank = get_distributed_world_rank()
         _gpu_splits = _splits(len(obs_joinids), world_size)
         _gpu_split = obs_joinids[_gpu_splits[rank] : _gpu_splits[rank + 1]]
 
@@ -239,7 +244,7 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
             )
 
         # 4. Partition by DataLoader worker
-        n_workers, worker_id = _get_worker_world_rank()
+        n_workers, worker_id = get_worker_world_rank()
         obs_splits = _splits(len(obs_joinids_chunked), n_workers)
         obs_partition_joinids = obs_joinids_chunked[
             obs_splits[worker_id] : obs_splits[worker_id + 1]
@@ -305,8 +310,8 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
                     "(see https://github.com/pytorch/pytorch/issues/20248)"
                 )
 
-        world_size, rank = _get_distributed_world_rank()
-        n_workers, worker_id = _get_worker_world_rank()
+        world_size, rank = get_distributed_world_rank()
+        n_workers, worker_id = get_worker_world_rank()
         logger.debug(
             f"Iterator created {rank=}, {world_size=}, {worker_id=}, {n_workers=}, seed={self.seed}, epoch={self.epoch}"
         )
@@ -367,8 +372,8 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
         self._init_once()
         assert self._obs_joinids is not None
         assert self._var_joinids is not None
-        world_size, rank = _get_distributed_world_rank()
-        n_workers, worker_id = _get_worker_world_rank()
+        world_size, rank = get_distributed_world_rank()
+        n_workers, worker_id = get_worker_world_rank()
         # Every "distributed" process must receive the same number of "obs" rows; the last ≤world_size may be dropped
         # (see _create_obs_joinids_partition).
         obs_per_proc = len(self._obs_joinids) // world_size
@@ -924,7 +929,7 @@ def experiment_dataloader(
         )
 
     if dataloader_kwargs.get("num_workers", 0) > 0:
-        _init_multiprocessing()
+        init_multiprocessing()
 
     if "collate_fn" not in dataloader_kwargs:
         dataloader_kwargs["collate_fn"] = _collate_noop
@@ -982,61 +987,6 @@ else:
         it = iter(iterable)
         while batch := tuple(islice(it, n)):
             yield batch
-
-
-def _get_distributed_world_rank() -> Tuple[int, int]:
-    """Return tuple containing equivalent of ``torch.distributed`` world size and rank."""
-    world_size, rank = 1, 0
-    if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-        world_size = int(os.environ["WORLD_SIZE"])
-        rank = int(os.environ["RANK"])
-    elif "LOCAL_RANK" in os.environ and "WORLD_SIZE" in os.environ:
-        # Lightning doesn't use RANK! LOCAL_RANK is only for the local node. There
-        # is a NODE_RANK for the node's rank, but no way to tell the local node's
-        # world. So computing a global rank is impossible(?).  Using LOCAL_RANK as a
-        # proxy, which works fine on a single-CPU box. TODO: could throw/error
-        # if NODE_RANK != 0.
-        world_size = int(os.environ["WORLD_SIZE"])
-        rank = int(os.environ["LOCAL_RANK"])
-    elif torch.distributed.is_initialized():
-        world_size = torch.distributed.get_world_size()
-        rank = torch.distributed.get_rank()
-
-    return world_size, rank
-
-
-def _get_worker_world_rank() -> Tuple[int, int]:
-    """Return number of DataLoader workers and our worker rank/id"""
-    num_workers, worker = 1, 0
-    if "WORKER" in os.environ and "NUM_WORKERS" in os.environ:
-        num_workers = int(os.environ["NUM_WORKERS"])
-        worker = int(os.environ["WORKER"])
-    else:
-        worker_info = torch.utils.data.get_worker_info()
-        if worker_info is not None:
-            num_workers = worker_info.num_workers
-            worker = worker_info.id
-    return num_workers, worker
-
-
-def _init_multiprocessing() -> None:
-    """Ensures use of "spawn" for starting child processes with multiprocessing.
-
-    Forked processes are known to be problematic:
-      https://pytorch.org/docs/stable/notes/multiprocessing.html#avoiding-and-fighting-deadlocks
-    Also, CUDA does not support forked child processes:
-      https://pytorch.org/docs/stable/notes/multiprocessing.html#cuda-in-multiprocessing
-
-    Private.
-    """
-    orig_start_method = torch.multiprocessing.get_start_method()
-    if orig_start_method != "spawn":
-        if orig_start_method:
-            logger.warning(
-                "switching torch multiprocessing start method from "
-                f'"{torch.multiprocessing.get_start_method()}" to "spawn"'
-            )
-        torch.multiprocessing.set_start_method("spawn", force=True)
 
 
 class _CSR_IO_Buffer:

@@ -10,7 +10,8 @@ from typing import Iterator, Sequence, Tuple
 from somacore import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
-from tiledbsoma_ml.batch_iterable import Batch, BatchIterable
+from tiledbsoma_ml.batch_iterable import BatchIterable
+from tiledbsoma_ml.common import Batch
 
 
 class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore[misc]
@@ -77,7 +78,7 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
     def __init__(
         self,
         query: ExperimentAxisQuery,
-        X_name: str = "raw",
+        layer_name: str = "raw",
         obs_column_names: Sequence[str] = ("soma_joinid",),
         batch_size: int = 1,
         shuffle: bool = True,
@@ -96,7 +97,7 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
         Args:
             query:
                 A :class:`tiledbsoma.ExperimentAxisQuery`, defining the data which will be iterated over.
-            X_name:
+            layer_name:
                 The name of the ``X`` layer to read.
             obs_column_names:
                 The names of the ``obs`` columns to return. At least one column name must be specified.
@@ -104,7 +105,7 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
             batch_size:
                 The number of rows of ``X`` and ``obs`` data to return in each iteration. Defaults to ``1``. A value of
                 ``1`` will result in :class:`torch.Tensor` of rank 1 being returned (a single row); larger values will
-                result in :class:`torch.Tensor`\ s of rank 2 (multiple rows).
+                result in :class:`torch.Tensor`s of rank 2 (multiple rows).
 
                 Note that a ``batch_size`` of 1 allows this ``IterableDataset`` to be used with :class:`torch.utils.data.DataLoader`
                 batching, but you will achieve higher performance by performing batching in this class, and setting the ``DataLoader``
@@ -145,7 +146,7 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
         super().__init__()
         self._exp_iter = BatchIterable(
             query=query,
-            X_name=X_name,
+            layer_name=layer_name,
             obs_column_names=obs_column_names,
             batch_size=batch_size,
             shuffle=shuffle,

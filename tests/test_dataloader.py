@@ -32,7 +32,7 @@ def test_multiprocessing__returns_full_result(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         dp = PipeClass(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["soma_joinid", "label"],
             io_batch_size=3,  # two chunks, one per worker
         )
@@ -60,7 +60,7 @@ def test_experiment_dataloader__non_batched(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         dp = PipeClass(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
             shuffle=False,
             use_eager_fetch=use_eager_fetch,
@@ -88,7 +88,7 @@ def test_experiment_dataloader__batched(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         dp = PipeClass(
             query,
-            X_name="raw",
+            layer_name="raw",
             batch_size=3,
             shuffle=False,
             use_eager_fetch=use_eager_fetch,
@@ -117,7 +117,7 @@ def test_experiment_dataloader__batched_length(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         dp = PipeClass(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
             batch_size=3,
             shuffle=False,
@@ -154,7 +154,7 @@ def test_experiment_dataloader__collate_fn(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         dp = PipeClass(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
             batch_size=batch_size,
             shuffle=False,

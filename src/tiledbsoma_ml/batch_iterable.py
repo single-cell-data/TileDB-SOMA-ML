@@ -5,25 +5,25 @@
 
 from __future__ import annotations
 
+import gc
 import logging
 import os
+import time
+from math import ceil
+from os.path import splitext
 from typing import (
     Iterable,
     Iterator,
+    Optional,
     Sequence,
     Tuple,
-    Union,
 )
 
-import gc
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 import pyarrow as pa
 import scipy.sparse as sparse
-import time
 import torch
-from math import ceil
 from somacore import ExperimentAxisQuery
 from somacore.query._eager_iter import EagerIterator as _EagerIterator
 from tiledbsoma import DataFrame, IntIndexer, SparseNDArray
@@ -33,20 +33,11 @@ from tiledbsoma_ml._distributed import (
     get_distributed_world_rank,
     get_worker_world_rank,
 )
-from tiledbsoma_ml._utils import NDArrayNumber, batched, splits
-from tiledbsoma_ml.measurement_locator import MeasurementLocator
+from tiledbsoma_ml._utils import batched, splits
+from tiledbsoma_ml.common import Batch, NDArrayJoinId, NDArrayNumber
+from tiledbsoma_ml.partition_ids import PartitionIDs
 
-logger = logging.getLogger("tiledbsoma_ml.pytorch")
-
-NDArrayJoinId = npt.NDArray[np.int64]
-XBatch = Union[NDArrayNumber, sparse.csr_matrix]
-Batch = Tuple[XBatch, pd.DataFrame]
-""""Batch" type yielded by ``ExperimentAxisQueryIterableDataset`` and ``ExperimentAxisQueryIterDataPipe``;
-pairs a slice of ``X`` rows with a corresponding slice of ``obs``. In the default case.
-a Batch is a tuple of :class:`numpy.ndarray` and :class:`pandas.DataFrame` (for ``X`` and ``obs``,
-respectively). If the iterator is created with ``return_sparse_X`` as True, the ``X`` slice is
-returned as a :class:`scipy.sparse.csr_matrix`. If the ``batch_size`` is 1, the :class:`numpy.ndarray`
-will be returned with rank 1; in all other cases, objects are returned with rank 2."""
+logger = logging.getLogger(f"tiledbsoma_ml.{splitext(__file__)[0]}")
 
 
 class BatchIterable(Iterable[Batch]):
@@ -65,10 +56,9 @@ class BatchIterable(Iterable[Batch]):
 
     def __init__(
         self,
-        exp_loc: Union[ExperimentAxisQuery, MeasurementLocator],
-        obs_joinids: NDArrayJoinId,
-        var_joinids: NDArrayJoinId,
-        X_name: str,
+        partition_ids: Optional[PartitionIDs] = None,
+        query: Optional[ExperimentAxisQuery] = None,
+        layer_name: Optional[str] = None,
         obs_column_names: Sequence[str] = ("soma_joinid",),
         batch_size: int = 1,
         shuffle: bool = True,
@@ -86,11 +76,7 @@ class BatchIterable(Iterable[Batch]):
         :class:`pandas.DataFrame`, respectively.
 
         Args:
-            obs_joinids:
-                ``obs`` soma_joinids to process, from the provided ``Experiment``
-            var_joinids:
-                ``var`` soma_joinids to process, from the provided ``Experiment``
-            X_name:
+            layer_name:
                 The name of the X layer to read.
             obs_column_names:
                 The names of the ``obs`` columns to return. At least one column name must be specified.
@@ -145,24 +131,24 @@ class BatchIterable(Iterable[Batch]):
 
         super().__init__()
 
-        # Anything set in the instance needs to be pickle-able for multi-process DataLoaders
-        self.experiment_locator = (
-            MeasurementLocator.create(exp_loc.experiment, exp_loc.measurement_name)
-            if isinstance(exp_loc, ExperimentAxisQuery)
-            else exp_loc
-        )
-        self.layer_name = X_name
-        # self.measurement_name = query.measurement_name
-        # self.obs_query = query._matrix_axis_query.obs
-        # self.var_query = query._matrix_axis_query.var
+        if partition_ids:
+            if query:
+                raise ValueError("Provide only one of {exp_loc,query}")
+            self.partition_ids = partition_ids
+        else:
+            if not query:
+                raise ValueError("Provide one of {exp_loc,query}")
+            self.partition_ids = PartitionIDs.create(
+                query=query,
+                layer_name=layer_name,
+            )
+
         self.obs_column_names = list(obs_column_names)
         self.batch_size = batch_size
         self.io_batch_size = io_batch_size
         self.shuffle = shuffle
         self.return_sparse_X = return_sparse_X
         self.use_eager_fetch = use_eager_fetch
-        self._obs_joinids: NDArrayJoinId | None = None
-        self._var_joinids: NDArrayJoinId | None = None
         self.seed = (
             seed if seed is not None else np.random.default_rng().integers(0, 2**32 - 1)
         )
@@ -179,6 +165,22 @@ class BatchIterable(Iterable[Batch]):
 
         if not self.obs_column_names:
             raise ValueError("Must specify at least one value in `obs_column_names`")
+
+    @property
+    def measurement_name(self) -> str:
+        return self.partition_ids.measurement_name
+
+    @property
+    def layer_name(self) -> Optional[str]:
+        return self.partition_ids.layer_name
+
+    @property
+    def obs_joinids(self) -> NDArrayJoinId:
+        return self.partition_ids.obs_joinids
+
+    @property
+    def var_joinids(self) -> NDArrayJoinId:
+        return self.partition_ids.var_joinids
 
     def _create_obs_joinids_partition(self) -> Iterator[NDArrayJoinId]:
         """Create iterator over obs id chunks with split size of (roughly) io_batch_size.
@@ -199,8 +201,7 @@ class BatchIterable(Iterable[Batch]):
 
         Private method.
         """
-        assert self._obs_joinids is not None
-        obs_joinids: NDArrayJoinId = self._obs_joinids
+        obs_joinids = self.obs_joinids
 
         # 1. Get the split for the model replica/GPU
         world_size, rank = get_distributed_world_rank()
@@ -250,14 +251,6 @@ class BatchIterable(Iterable[Batch]):
 
         return iter(obs_partition_joinids)
 
-    # @property
-    # def experiment(self) -> Experiment:
-    #     return self.experiment_locator.
-
-    @property
-    def measurement_name(self) -> str:
-        return self.experiment_locator.measurement_name
-
     def __iter__(self) -> Iterator[Batch]:
         """Create iterator over query.
 
@@ -286,7 +279,7 @@ class BatchIterable(Iterable[Batch]):
                 "ExperimentAxisQueryIterable requires an explicit `seed` when shuffle is used in a multi-process configuration."
             )
 
-        with self.experiment_locator.open_experiment() as exp:
+        with self.partition_ids.open_experiment() as exp:
             X = exp.ms[self.measurement_name].X[self.layer_name]
             if not isinstance(X, SparseNDArray):
                 raise NotImplementedError(
@@ -334,19 +327,17 @@ class BatchIterable(Iterable[Batch]):
         Lifecycle:
             experimental
         """
-        assert self._obs_joinids is not None
-        assert self._var_joinids is not None
         world_size, rank = get_distributed_world_rank()
         n_workers, worker_id = get_worker_world_rank()
         # Every "distributed" process must receive the same number of "obs" rows; the last ≤world_size may be dropped
         # (see _create_obs_joinids_partition).
-        obs_per_proc = len(self._obs_joinids) // world_size
+        obs_per_proc = len(self.obs_joinids) // world_size
         obs_per_worker, obs_rem = divmod(obs_per_proc, n_workers)
         # obs rows assigned to this worker process
         n_worker_obs = obs_per_worker + bool(worker_id < obs_rem)
         n_batches, rem = divmod(n_worker_obs, self.batch_size)
         # (num batches this worker will produce, num features)
-        return n_batches + bool(rem), len(self._var_joinids)
+        return n_batches + bool(rem), len(self.var_joinids)
 
     def set_epoch(self, epoch: int) -> None:
         """
@@ -378,8 +369,6 @@ class BatchIterable(Iterable[Batch]):
 
         Private method.
         """
-        assert self._var_joinids is not None
-
         # Create RNG - does not need to be identical across processes, but use the seed anyway
         # for reproducibility.
         shuffle_rng = np.random.default_rng(self.seed + self.epoch)
@@ -389,7 +378,7 @@ class BatchIterable(Iterable[Batch]):
             if "soma_joinid" in self.obs_column_names
             else ["soma_joinid", *self.obs_column_names]
         )
-        var_indexer = IntIndexer(self._var_joinids, context=X.context)
+        var_indexer = IntIndexer(self.var_joinids, context=X.context)
 
         for obs_coords in obs_joinid_iter:
             st_time = time.perf_counter()
@@ -405,9 +394,8 @@ class BatchIterable(Iterable[Batch]):
             # create the X read iterator first, as the eager iterator will begin
             # the read-ahead immediately. Then proceed to fetch obs DataFrame.
             # This matters most on latent backing stores, e.g., S3.
-            #
             X_tbl_iter: Iterator[pa.Table] = X.read(
-                coords=(obs_coords, self._var_joinids)
+                coords=(obs_coords, self.var_joinids)
             ).tables()
 
             def make_io_buffer(
@@ -427,7 +415,7 @@ class BatchIterable(Iterable[Batch]):
                 return m
 
             _io_buf_iter = (
-                make_io_buffer(X_tbl, obs_coords, self._var_joinids, obs_indexer)
+                make_io_buffer(X_tbl, obs_coords, self.var_joinids, obs_indexer)
                 for X_tbl in X_tbl_iter
             )
             if self.use_eager_fetch:
@@ -466,9 +454,6 @@ class BatchIterable(Iterable[Batch]):
 
         Private method.
         """
-        assert self._obs_joinids is not None
-        assert self._var_joinids is not None
-
         io_batch_iter = self._io_batch_iter(obs, X, obs_joinid_iter)
         if self.use_eager_fetch:
             io_batch_iter = _EagerIterator(io_batch_iter, pool=X.context.threadpool)
@@ -477,7 +462,7 @@ class BatchIterable(Iterable[Batch]):
         result: Tuple[NDArrayNumber, pd.DataFrame] | None = None
         for X_io_batch, obs_io_batch in io_batch_iter:
             assert X_io_batch.shape[0] == obs_io_batch.shape[0]
-            assert X_io_batch.shape[1] == len(self._var_joinids)
+            assert X_io_batch.shape[1] == len(self.var_joinids)
             iob_idx = 0  # current offset into io batch
             iob_len = X_io_batch.shape[0]
 

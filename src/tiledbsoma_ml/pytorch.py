@@ -52,12 +52,12 @@ _T_co = TypeVar("_T_co", covariant=True)
 NDArrayNumber = npt.NDArray[np.number[Any]]
 NDArrayJoinId = npt.NDArray[np.int64]
 _CSRIdxArray = npt.NDArray[np.unsignedinteger[Any]]
-XDatum = Union[NDArrayNumber, sparse.csr_matrix]
-XObsDatum = Tuple[XDatum, pd.DataFrame]
-"""Return type of ``ExperimentAxisQueryIterableDataset`` and ``ExperimentAxisQueryIterDataPipe``,
-which pairs a slice of ``X`` rows with a corresponding slice of ``obs``. In the default case,
-the datum is a tuple of :class:`numpy.ndarray` and :class:`pandas.DataFrame` (for ``X`` and ``obs``
-respectively). If the object is created with ``return_sparse_X`` as True, the ``X`` slice is
+XBatch = Union[NDArrayNumber, sparse.csr_matrix]
+Batch = Tuple[XBatch, pd.DataFrame]
+""""Batch" type yielded by ``ExperimentAxisQueryIterableDataset`` and ``ExperimentAxisQueryIterDataPipe``;
+pairs a slice of ``X`` rows with a corresponding slice of ``obs``. In the default case.
+a Batch is a tuple of :class:`numpy.ndarray` and :class:`pandas.DataFrame` (for ``X`` and ``obs``,
+respectively). If the iterator is created with ``return_sparse_X`` as True, the ``X`` slice is
 returned as a :class:`scipy.sparse.csr_matrix`. If the ``batch_size`` is 1, the :class:`numpy.ndarray`
 will be returned with rank 1; in all other cases, objects are returned with rank 2."""
 
@@ -91,7 +91,7 @@ class _ExperimentLocator:
         )
 
 
-class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
+class ExperimentAxisQueryIterable(Iterable[Batch]):
     """An :class:`Iterable` which reads ``X`` and ``obs`` data from a :class:`tiledbsoma.Experiment`, as
     selected by a user-specified :class:`tiledbsoma.ExperimentAxisQuery`. Each step of the iterator
     produces a batch containing equal-sized ``X`` and ``obs`` data, in the form of a :class:`numpy.ndarray` and
@@ -318,7 +318,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
 
         self._initialized = True
 
-    def __iter__(self) -> Iterator[XObsDatum]:
+    def __iter__(self) -> Iterator[Batch]:
         """Create iterator over query.
 
         Returns:
@@ -422,7 +422,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         """
         self.epoch = epoch
 
-    def __getitem__(self, index: int) -> XObsDatum:
+    def __getitem__(self, index: int) -> Batch:
         raise NotImplementedError(
             "`ExperimentAxisQueryIterable` can only be iterated - does not support mapping"
         )
@@ -523,7 +523,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         obs: soma.DataFrame,
         X: soma.SparseNDArray,
         obs_joinid_iter: Iterator[NDArrayJoinId],
-    ) -> Iterator[XObsDatum]:
+    ) -> Iterator[Batch]:
         """Break IO batches into shuffled mini-batch-sized chunks.
 
         Private method.
@@ -598,7 +598,7 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
 
 class ExperimentAxisQueryIterDataPipe(
     torchdata.datapipes.iter.IterDataPipe[  # type:ignore[misc]
-        torch.utils.data.dataset.Dataset[XObsDatum]
+        torch.utils.data.dataset.Dataset[Batch]
     ],
 ):
     """A :class:`torchdata.datapipes.iter.IterDataPipe` implementation that loads from a :class:`tiledbsoma.SOMAExperiment`.
@@ -646,7 +646,7 @@ class ExperimentAxisQueryIterDataPipe(
             shuffle_chunk_size=shuffle_chunk_size,
         )
 
-    def __iter__(self) -> Iterator[XObsDatum]:
+    def __iter__(self) -> Iterator[Batch]:
         """
         See :class:`tiledbsoma_ml.ExperimentAxisQueryIterableDataset` for more information on using this class.
 
@@ -699,7 +699,7 @@ class ExperimentAxisQueryIterDataPipe(
 
 
 class ExperimentAxisQueryIterableDataset(
-    torch.utils.data.IterableDataset[XObsDatum]  # type:ignore[misc]
+    torch.utils.data.IterableDataset[Batch]  # type:ignore[misc]
 ):
     """A :class:`torch.utils.data.IterableDataset` implementation that loads from a :class:`tiledbsoma.SOMAExperiment`.
 
@@ -843,7 +843,7 @@ class ExperimentAxisQueryIterableDataset(
             shuffle_chunk_size=shuffle_chunk_size,
         )
 
-    def __iter__(self) -> Iterator[XObsDatum]:
+    def __iter__(self) -> Iterator[Batch]:
         """Create ``Iterator`` yielding "mini-batch" tuples of :class:`numpy.ndarray` (or :class:`scipy.csr_matrix`) and
         :class:`pandas.DataFrame`.
 

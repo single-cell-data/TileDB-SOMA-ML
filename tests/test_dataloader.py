@@ -25,7 +25,7 @@ from tiledbsoma_ml.dataloader import experiment_dataloader
 def test_multiprocessing__returns_full_result(
     PipeClass: IterableWrapperType,
     soma_experiment: Experiment,
-) -> None:
+):
     """Tests that ``ExperimentAxisQueryIterDataPipe`` / ``ExperimentAxisQueryIterableDataset``
     provide all data, as collected from multiple processes that are managed by a PyTorch DataLoader
     with multiple workers configured."""
@@ -56,7 +56,7 @@ def test_experiment_dataloader__non_batched(
     PipeClass: IterableWrapperType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
-) -> None:
+):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         dp = PipeClass(
             query,
@@ -84,7 +84,7 @@ def test_experiment_dataloader__batched(
     PipeClass: IterableWrapperType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
-) -> None:
+):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         dp = PipeClass(
             query,
@@ -113,7 +113,7 @@ def test_experiment_dataloader__batched_length(
     PipeClass: IterableWrapperType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
-) -> None:
+):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         dp = PipeClass(
             query,
@@ -136,7 +136,7 @@ def test_experiment_dataloader__collate_fn(
     PipeClass: IterableWrapperType,
     soma_experiment: Experiment,
     batch_size: int,
-) -> None:
+):
     def collate_fn(
         batch_size: int, data: Tuple[npt.NDArray[np.number[Any]], pd.DataFrame]
     ) -> Tuple[npt.NDArray[np.number[Any]], pd.DataFrame]:
@@ -168,7 +168,7 @@ def test_experiment_dataloader__collate_fn(
 )
 def test__pytorch_splitting(
     soma_experiment: Experiment,
-) -> None:
+):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         dp = ExperimentAxisQueryIterDataPipe(
             query,
@@ -185,7 +185,7 @@ def test__pytorch_splitting(
         assert len(all_rows) == 7
 
 
-def test_experiment_dataloader__unsupported_params__fails() -> None:
+def test_experiment_dataloader__unsupported_params__fails():
     with patch(
         "tiledbsoma_ml.datapipe.ExperimentAxisQueryIterDataPipe"
     ) as dummy_exp_data_pipe:

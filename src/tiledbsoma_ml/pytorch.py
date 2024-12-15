@@ -13,14 +13,11 @@ import math
 import os
 import sys
 import time
-from contextlib import contextmanager
 from itertools import islice
 from math import ceil
 from typing import (
     Any,
     ContextManager,
-    Dict,
-    Generator,
     Iterable,
     Iterator,
     List,
@@ -31,7 +28,6 @@ from typing import (
     Union,
 )
 
-import attrs
 import numba
 import numpy as np
 import numpy.typing as npt
@@ -43,6 +39,8 @@ import torch
 import torchdata
 from somacore.query._eager_iter import EagerIterator as _EagerIterator
 from typing_extensions import Self
+
+from tiledbsoma_ml._experiment_locator import ExperimentLocator
 
 logger = logging.getLogger("tiledbsoma_ml.pytorch")
 
@@ -60,35 +58,6 @@ a Batch is a tuple of :class:`numpy.ndarray` and :class:`pandas.DataFrame` (for 
 respectively). If the iterator is created with ``return_sparse_X`` as True, the ``X`` slice is
 returned as a :class:`scipy.sparse.csr_matrix`. If the ``batch_size`` is 1, the :class:`numpy.ndarray`
 will be returned with rank 1; in all other cases, objects are returned with rank 2."""
-
-
-@attrs.define(frozen=True, kw_only=True)
-class _ExperimentLocator:
-    """State required to open the Experiment.
-
-    Serializable across multiple processes.
-
-    Private implementation class.
-    """
-
-    uri: str
-    tiledb_timestamp_ms: int
-    tiledb_config: Dict[str, Union[str, float]]
-
-    @classmethod
-    def create(cls, experiment: soma.Experiment) -> "_ExperimentLocator":
-        return _ExperimentLocator(
-            uri=experiment.uri,
-            tiledb_timestamp_ms=experiment.tiledb_timestamp_ms,
-            tiledb_config=experiment.context.tiledb_config,
-        )
-
-    @contextmanager
-    def open_experiment(self) -> Generator[soma.Experiment, None, None]:
-        context = soma.SOMATileDBContext(tiledb_config=self.tiledb_config)
-        yield soma.Experiment.open(
-            self.uri, tiledb_timestamp=self.tiledb_timestamp_ms, context=context
-        )
 
 
 class ExperimentAxisQueryIterable(Iterable[Batch]):
@@ -184,7 +153,7 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
         super().__init__()
 
         # Anything set in the instance needs to be pickle-able for multi-process DataLoaders
-        self.experiment_locator = _ExperimentLocator.create(query.experiment)
+        self.experiment_locator = ExperimentLocator.create(query.experiment)
         self.layer_name = X_name
         self.measurement_name = query.measurement_name
         self.obs_query = query._matrix_axis_query.obs

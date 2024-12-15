@@ -6,161 +6,33 @@
 from __future__ import annotations
 
 from functools import partial
-from pathlib import Path
-from typing import Any, Callable, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Tuple
 from unittest.mock import patch
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import pyarrow as pa
 import pytest
 import tiledbsoma as soma
 from pandas._testing import assert_frame_equal
 from scipy import sparse
-from scipy.sparse import coo_matrix, spmatrix
-from tiledbsoma import Experiment, _factory
-from tiledbsoma._collection import CollectionBase
+from tiledbsoma import Experiment
 from torch.utils.data._utils.worker import WorkerInfo
 
+from tests._utils import (
+    IterableWrappers,
+    IterableWrapperType,
+    PipeClasses,
+    PipeClassType,
+    assert_array_equal,
+    pytorch_seq_x_value_gen,
+    pytorch_x_value_gen,
+)
 from tiledbsoma_ml.pytorch import (
     ExperimentAxisQueryIterable,
-    ExperimentAxisQueryIterableDataset,
     ExperimentAxisQueryIterDataPipe,
     experiment_dataloader,
 )
-
-assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
-
-# These control which classes are tested (for most, but not all tests).
-# Centralized to allow easy add/delete of specific test parameters.
-IterableWrapperType = Union[
-    Type[ExperimentAxisQueryIterDataPipe],
-    Type[ExperimentAxisQueryIterableDataset],
-]
-IterableWrappers = (
-    ExperimentAxisQueryIterDataPipe,
-    ExperimentAxisQueryIterableDataset,
-)
-PipeClassType = Union[
-    Type[ExperimentAxisQueryIterable],
-    IterableWrapperType,
-]
-PipeClasses = (
-    ExperimentAxisQueryIterable,
-    *IterableWrappers,
-)
-XValueGen = Callable[[range, range], spmatrix]
-
-
-def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
-    occupied_shape = (
-        obs_range.stop - obs_range.start,
-        var_range.stop - var_range.start,
-    )
-    checkerboard_of_ones = coo_matrix(np.indices(occupied_shape).sum(axis=0) % 2)
-    checkerboard_of_ones.row += obs_range.start
-    checkerboard_of_ones.col += var_range.start
-    return checkerboard_of_ones
-
-
-def pytorch_seq_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
-    """A sparse matrix where the values of each col are the obs_range values. Useful for checking the
-    X values are being returned in the correct order."""
-    data = np.vstack([list(obs_range)] * len(var_range)).flatten()
-    rows = np.vstack([list(obs_range)] * len(var_range)).flatten()
-    cols = np.column_stack([list(var_range)] * len(obs_range)).flatten()
-    return coo_matrix((data, (rows, cols)))
-
-
-@pytest.fixture
-def X_layer_names() -> list[str]:
-    return ["raw"]
-
-
-@pytest.fixture
-def obsp_layer_names() -> Optional[list[str]]:
-    return None
-
-
-@pytest.fixture
-def varp_layer_names() -> Optional[list[str]]:
-    return None
-
-
-def add_dataframe(coll: CollectionBase, key: str, value_range: range) -> None:
-    df = coll.add_new_dataframe(
-        key,
-        schema=pa.schema(
-            [
-                ("soma_joinid", pa.int64()),
-                ("label", pa.large_string()),
-                ("label2", pa.large_string()),
-            ]
-        ),
-        index_column_names=["soma_joinid"],
-    )
-    df.write(
-        pa.Table.from_pydict(
-            {
-                "soma_joinid": list(value_range),
-                "label": [str(i) for i in value_range],
-                "label2": ["c" for i in value_range],
-            }
-        )
-    )
-
-
-def add_sparse_array(
-    coll: CollectionBase,
-    key: str,
-    obs_range: range,
-    var_range: range,
-    value_gen: XValueGen,
-) -> None:
-    a = coll.add_new_sparse_ndarray(
-        key, type=pa.float32(), shape=(obs_range.stop, var_range.stop)
-    )
-    tensor = pa.SparseCOOTensor.from_scipy(value_gen(obs_range, var_range))
-    a.write(tensor)
-
-
-@pytest.fixture(scope="function")
-def soma_experiment(
-    tmp_path: Path,
-    obs_range: Union[int, range],
-    var_range: Union[int, range],
-    X_value_gen: XValueGen,
-    obsp_layer_names: Sequence[str],
-    varp_layer_names: Sequence[str],
-) -> soma.Experiment:
-    with soma.Experiment.create((tmp_path / "exp").as_posix()) as exp:
-        if isinstance(obs_range, int):
-            obs_range = range(obs_range)
-        if isinstance(var_range, int):
-            var_range = range(var_range)
-
-        add_dataframe(exp, "obs", obs_range)
-        ms = exp.add_new_collection("ms")
-        rna = ms.add_new_collection("RNA", soma.Measurement)
-        add_dataframe(rna, "var", var_range)
-        rna_x = rna.add_new_collection("X", soma.Collection)
-        add_sparse_array(rna_x, "raw", obs_range, var_range, X_value_gen)
-
-        if obsp_layer_names:
-            obsp = rna.add_new_collection("obsp")
-            for obsp_layer_name in obsp_layer_names:
-                add_sparse_array(
-                    obsp, obsp_layer_name, obs_range, var_range, X_value_gen
-                )
-
-        if varp_layer_names:
-            varp = rna.add_new_collection("varp")
-            for varp_layer_name in varp_layer_names:
-                add_sparse_array(
-                    varp, varp_layer_name, obs_range, var_range, X_value_gen
-                )
-    return _factory.open((tmp_path / "exp").as_posix())
 
 
 @pytest.mark.parametrize(

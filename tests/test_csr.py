@@ -17,7 +17,7 @@ from scipy import sparse
     [(100, 10), (10, 100), (1, 1), (1, 100), (100, 1), (0, 0), (10, 0), (0, 10)],
 )
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.int32])
-def test_construct_from_ijd(shape: Tuple[int, int], dtype: npt.DTypeLike) -> None:
+def test_construct_from_ijd(shape: Tuple[int, int], dtype: npt.DTypeLike):
     from tiledbsoma_ml._csr import CSR_IO_Buffer
 
     sp_coo = sparse.random(shape[0], shape[1], dtype=dtype, format="coo", density=0.05)
@@ -58,7 +58,7 @@ def test_construct_from_ijd(shape: Tuple[int, int], dtype: npt.DTypeLike) -> Non
     [(100, 10), (10, 100), (1, 1), (1, 100), (100, 1), (0, 0), (10, 0), (0, 10)],
 )
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.int32])
-def test_construct_from_pjd(shape: Tuple[int, int], dtype: npt.DTypeLike) -> None:
+def test_construct_from_pjd(shape: Tuple[int, int], dtype: npt.DTypeLike):
     from tiledbsoma_ml._csr import CSR_IO_Buffer
 
     sp_csr = sparse.random(shape[0], shape[1], dtype=dtype, format="csr", density=0.05)
@@ -96,7 +96,7 @@ def test_construct_from_pjd(shape: Tuple[int, int], dtype: npt.DTypeLike) -> Non
 )
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.int32])
 @pytest.mark.parametrize("n_splits", [2, 3, 4])
-def test_merge(shape: Tuple[int, int], dtype: npt.DTypeLike, n_splits: int) -> None:
+def test_merge(shape: Tuple[int, int], dtype: npt.DTypeLike, n_splits: int):
     from tiledbsoma_ml._csr import CSR_IO_Buffer
 
     sp_coo = sparse.random(shape[0], shape[1], dtype=dtype, format="coo", density=0.5)
@@ -125,7 +125,7 @@ def test_merge(shape: Tuple[int, int], dtype: npt.DTypeLike, n_splits: int) -> N
     "shape",
     [(100, 10), (10, 100), (1, 1), (1, 100), (100, 1), (0, 0), (10, 0), (0, 10)],
 )
-def test_sort_indices(shape: Tuple[int, int]) -> None:
+def test_sort_indices(shape: Tuple[int, int]):
     from tiledbsoma_ml._csr import CSR_IO_Buffer
 
     sp_coo = sparse.random(

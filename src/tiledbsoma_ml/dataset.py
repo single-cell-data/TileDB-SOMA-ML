@@ -5,70 +5,39 @@
 
 from __future__ import annotations
 
-from typing import Iterator, Sequence, Tuple
+import logging
+from math import ceil
+from os.path import splitext
+from typing import (
+    Iterator,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
+import numpy as np
 from somacore import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
-from tiledbsoma_ml.batch_iterable import Batch, BatchIterable
+from tiledbsoma_ml._distributed import (
+    get_distributed_world_rank,
+    get_worker_world_rank,
+)
+from tiledbsoma_ml.common import Batch, NDArrayJoinId
+from tiledbsoma_ml.gpu_batches import GPUBatches
+from tiledbsoma_ml.io_batches import IOBatches
+from tiledbsoma_ml.obs_ids import ObsIDs
+
+logger = logging.getLogger(f"tiledbsoma_ml.{splitext(__file__)[0]}")
 
 
-class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore[misc]
-    """A :class:`torch.utils.data.IterableDataset` implementation that loads from a :class:`tiledbsoma.SOMAExperiment`.
+class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
+    """An :class:`IterableDataset` which reads ``X`` and ``obs`` data from a :class:`tiledbsoma.Experiment`, as
+    selected by a user-specified :class:`tiledbsoma.ExperimentAxisQuery`. Each step of the iterator
+    produces a batch containing equal-sized ``X`` and ``obs`` data, in the form of a :class:`numpy.ndarray` and
+    :class:`pandas.DataFrame`, respectively.
 
-    This class works seamlessly with :class:`torch.utils.data.DataLoader` to load ``obs`` and ``X`` data as
-    specified by a SOMA :class:`tiledbsoma.ExperimentAxisQuery`, providing an iterator over batches of
-    ``obs`` and ``X`` data. Each iteration will yield a tuple containing an :class:`numpy.ndarray`
-    and a :class:`pandas.DataFrame`.
-
-    For example:
-
-    >>> import torch
-    >>> import tiledbsoma
-    >>> import tiledbsoma_ml
-    >>> with tiledbsoma.Experiment.open("my_experiment_path") as exp:
-    ...     with exp.axis_query(measurement_name="RNA", obs_query=tiledbsoma.AxisQuery(value_filter="tissue_type=='lung'")) as query:
-    ...         ds = tiledbsoma_ml.ExperimentAxisQueryIterableDataset(query)
-    ...         dataloader = torch.utils.data.DataLoader(ds)
-    >>> data = next(iter(dataloader))
-    >>> data
-    (array([0., 0., 0., ..., 0., 0., 0.], dtype=float32),
-    soma_joinid
-    0     57905025)
-    >>> data[0]
-    array([0., 0., 0., ..., 0., 0., 0.], dtype=float32)
-    >>> data[1]
-    soma_joinid
-    0     57905025
-
-    The ``batch_size`` parameter controls the number of rows of ``obs`` and ``X`` data that are returned in each
-    iteration. If the ``batch_size`` is 1, then each result will have rank 1, else it will have rank 2. A ``batch_size``
-    of 1 is compatible with :class:`torch.utils.data.DataLoader`-implemented batching, but it will usually be more
-    performant to create mini-batches using this class, and set the ``DataLoader`` batch size to `None`.
-
-    The ``obs_column_names`` parameter determines the data columns that are returned in the ``obs`` DataFrame (the
-    default is a single column, containing the ``soma_joinid`` for the ``obs`` dimension).
-
-    The ``io_batch_size`` parameter determines the number of rows read, from which mini-batches are yielded. A
-    larger value will increase total memory usage and may reduce average read time per row.
-
-    Shuffling support is enabled with the ``shuffle`` parameter, and will normally be more performant than using
-    :class:`DataLoader` shuffling. The shuffling algorithm works as follows:
-
-      1. Rows selected by the query are subdivided into groups of size ``shuffle_chunk_size``, aka a "shuffle chunk".
-      2. A random selection of shuffle chunks is drawn and read as a single I/O buffer (of size ``io_buffer_size``).
-      3. The entire I/O buffer is shuffled.
-
-    Put another way, we read randomly selected groups of observations from across all query results, concatenate
-    those into an I/O buffer, and shuffle the buffer before returning mini-batches. The randomness of the shuffle
-    is therefore determined by the ``io_buffer_size`` (number of rows read), and the ``shuffle_chunk_size``
-    (number of rows in each draw). Decreasing ``shuffle_chunk_size`` will increase shuffling randomness, and decrease I/O
-    performance.
-
-    This class will detect when run in a multiprocessing mode, including multi-worker :class:`torch.utils.data.DataLoader`
-    and multi-process training such as :class:`torch.nn.parallel.DistributedDataParallel`, and will automatically partition
-    data appropriately. In the case of distributed training, sample partitions across all processes must be equal. Any
-    data tail will be dropped.
+    See :class:`ExperimentAxisQueryIterableDataset` for more details on usage.
 
     Lifecycle:
         experimental
@@ -76,14 +45,16 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
 
     def __init__(
         self,
-        query: ExperimentAxisQuery,
-        X_name: str = "raw",
+        query: Optional[ExperimentAxisQuery] = None,
+        obs_ids: Optional[ObsIDs] = None,
+        layer_name: Optional[str] = None,
         obs_column_names: Sequence[str] = ("soma_joinid",),
         batch_size: int = 1,
-        shuffle: bool = True,
-        seed: int | None = None,
         io_batch_size: int = 2**16,
+        shuffle: bool = True,
         shuffle_chunk_size: int = 64,
+        seed: int | None = None,
+        sample: float | None = None,
         return_sparse_X: bool = False,
         use_eager_fetch: bool = True,
     ):
@@ -91,49 +62,46 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
         Construct a new ``ExperimentAxisQueryIterable``, suitable for use with :class:`torch.utils.data.DataLoader`.
 
         The resulting iterator will produce a tuple containing associated slices of ``X`` and ``obs`` data, as
-        a NumPy ``ndarray`` (or optionally, :class:`scipy.sparse.csr_matrix`) and a Pandas ``DataFrame`` respectively.
+        a NumPy :class:`numpy.ndarray` (or optionally, :class:`scipy.sparse.csr_matrix`) and a Pandas
+        :class:`pandas.DataFrame`, respectively.
 
         Args:
-            query:
-                A :class:`tiledbsoma.ExperimentAxisQuery`, defining the data which will be iterated over.
-            X_name:
-                The name of the ``X`` layer to read.
+            layer_name:
+                The name of the X layer to read.
             obs_column_names:
                 The names of the ``obs`` columns to return. At least one column name must be specified.
                 Default is ``('soma_joinid',)``.
             batch_size:
                 The number of rows of ``X`` and ``obs`` data to return in each iteration. Defaults to ``1``. A value of
                 ``1`` will result in :class:`torch.Tensor` of rank 1 being returned (a single row); larger values will
-                result in :class:`torch.Tensor`\ s of rank 2 (multiple rows).
-
-                Note that a ``batch_size`` of 1 allows this ``IterableDataset`` to be used with :class:`torch.utils.data.DataLoader`
-                batching, but you will achieve higher performance by performing batching in this class, and setting the ``DataLoader``
-                batch_size parameter to ``None``.
+                result in :class:`torch.Tensor`s of rank 2 (multiple rows). Note that a ``batch_size`` of 1 allows
+                this ``IterableDataset`` to be used with :class:`torch.utils.data.DataLoader` batching, but higher
+                performance can be achieved by performing batching in this class, and setting the ``DataLoader``'s
+                ``batch_size`` parameter to ``None``.
             shuffle:
                 Whether to shuffle the ``obs`` and ``X`` data being returned. Defaults to ``True``.
             io_batch_size:
-                The number of ``obs``/``X`` rows to retrieve when reading data from SOMA. This impacts two aspects of
-                this class's behavior: 1) The maximum memory utilization, with larger values providing
-                better read performance, but also requiring more memory; 2) The number of rows read prior to shuffling
-                (see ``shuffle`` parameter for details). The default value of 131,072 provides high performance, but
-                may need to be reduced in memory limited hosts (or where a large number of :class:`DataLoader` workers
-                are employed).
+                The number of ``obs``/``X`` rows to retrieve when reading data from SOMA. This impacts:
+                1. Maximum memory utilization, larger values provide better read performance, but require more memory.
+                2. The number of rows read prior to shuffling (see the ``shuffle`` parameter for details).
+                The default value of 65,536 provides high performance but may need to be reduced in memory-limited hosts
+                or when using a large number of :class:`DataLoader` workers.
             shuffle_chunk_size:
-                The number of contiguous rows sampled, prior to concatenation and shuffling.
+                The number of contiguous rows sampled prior to concatenation and shuffling.
                 Larger numbers correspond to less randomness, but greater read performance.
                 If ``shuffle == False``, this parameter is ignored.
             return_sparse_X:
-                If ``True``, will return the ``X`` data as a :class:`scipy.sparse.csr_matrix`. If ``False`` (the default), will
-                return ``X`` data as a :class:`numpy.ndarray`.
+                If ``True``, will return the ``X`` data as a :class:`scipy.sparse.csr_matrix`. If ``False`` (the
+                default), will return ``X`` data as a :class:`numpy.ndarray`.
             seed:
-                The random seed used for shuffling. Defaults to ``None`` (no seed). This argument *must* be specified when using
-                :class:`torch.nn.parallel.DistributedDataParallel` to ensure data partitions are disjoint across worker
-                processes.
+                The random seed used for shuffling. Defaults to ``None`` (no seed). This argument *MUST* be specified
+                when using :class:`torch.nn.parallel.DistributedDataParallel` to ensure data partitions are disjoint
+                across worker processes.
             use_eager_fetch:
-                Fetch the next SOMA chunk of ``obs`` and ``X`` data immediately after a previously fetched SOMA chunk is made
-                available for processing via the iterator. This allows network (or filesystem) requests to be made in
-                parallel with client-side processing of the SOMA data, potentially improving overall performance at the
-                cost of doubling memory utilization. Defaults to ``True``.
+                Fetch the next SOMA chunk of ``obs`` and ``X`` data immediately after a previously fetched SOMA chunk is
+                made available for processing via the iterator. This allows network (or filesystem) requests to be made
+                in parallel with client-side processing of the SOMA data, potentially improving overall performance at
+                the cost of doubling memory utilization. Defaults to ``True``.
 
         Raises:
             ``ValueError`` on various unsupported or malformed parameter values.
@@ -141,24 +109,95 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
         Lifecycle:
             experimental
 
+        .. warning::
+            When using this class in any distributed mode, calling the :meth:`set_epoch` method at
+            the beginning of each epoch **before** creating the :class:`DataLoader` iterator
+            is necessary to make shuffling work properly across multiple epochs. Otherwise,
+            the same ordering will always be used.
+
+            In addition, when using shuffling in a distributed configuration (e.g., ``DDP``), you
+            must provide a seed, ensuring that the same shuffle is used across all replicas.
         """
+
         super().__init__()
-        self._exp_iter = BatchIterable(
-            query=query,
-            X_name=X_name,
-            obs_column_names=obs_column_names,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            seed=seed,
-            io_batch_size=io_batch_size,
-            return_sparse_X=return_sparse_X,
-            use_eager_fetch=use_eager_fetch,
-            shuffle_chunk_size=shuffle_chunk_size,
+
+        if obs_ids:
+            if query:
+                raise ValueError("Provide only one of {exp_loc,query}")
+            self.original_obs_ids = obs_ids
+        else:
+            if not query:
+                raise ValueError("Provide one of {exp_loc,query}")
+            self.original_obs_ids = ObsIDs.create(
+                query=query,
+                layer_name=layer_name,
+            )
+
+        self.obs_column_names = list(obs_column_names)
+        self.batch_size = batch_size
+        self.io_batch_size = io_batch_size
+        self.shuffle = shuffle
+        self.return_sparse_X = return_sparse_X
+        self.use_eager_fetch = use_eager_fetch
+        self.seed = (
+            seed if seed is not None else np.random.default_rng().integers(0, 2**32 - 1)
         )
+        self.sample = sample
+        self.sample_inverted = False
+        self.sampled_obs_ids: ObsIDs | None = None
+        if sample is not None:
+            acc, _ = self.original_obs_ids.sample(abs(sample), seed=seed)
+            self.sampled_obs_ids = acc
+
+        self.shuffle_chunk_size = shuffle_chunk_size
+        self.epoch = 0
+
+        if shuffle:
+            # Verify `io_batch_size` is a multiple of `shuffle_chunk_size`
+            self.io_batch_size = (
+                ceil(io_batch_size / shuffle_chunk_size) * shuffle_chunk_size
+            )
+            if io_batch_size != self.io_batch_size:
+                raise ValueError(
+                    f"{io_batch_size=} is not a multiple of {shuffle_chunk_size=}"
+                )
+
+        if not self.obs_column_names:
+            raise ValueError("Must specify at least one value in `obs_column_names`")
+
+    def invert(self) -> None:
+        sample = self.sample
+        if not sample:
+            raise RuntimeError(
+                "Can only invert sampled ExperimentAxisQueryIterableDatasets"
+            )
+
+        self.sample_inverted = not self.sample_inverted
+        acc, rej = self.original_obs_ids.sample(abs(sample), seed=self.seed)
+        self.sampled_obs_ids = rej if self.sample_inverted else acc
+
+    @property
+    def obs_ids(self) -> ObsIDs:
+        return self.sampled_obs_ids or self.original_obs_ids
+
+    @property
+    def measurement_name(self) -> str:
+        return self.obs_ids.measurement_name
+
+    @property
+    def layer_name(self) -> Optional[str]:
+        return self.obs_ids.layer_name
+
+    @property
+    def obs_joinids(self) -> NDArrayJoinId:
+        return self.obs_ids.obs_joinids
+
+    @property
+    def var_joinids(self) -> NDArrayJoinId:
+        return self.obs_ids.var_joinids
 
     def __iter__(self) -> Iterator[Batch]:
-        """Create ``Iterator`` yielding "mini-batch" tuples of :class:`numpy.ndarray` (or :class:`scipy.csr_matrix`) and
-        :class:`pandas.DataFrame`.
+        """Create iterator over query.
 
         Returns:
             ``iterator``
@@ -166,26 +205,66 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
         Lifecycle:
             experimental
         """
-        batch_size = self._exp_iter.batch_size
-        for X, obs in self._exp_iter:
-            if batch_size == 1:
-                X = X[0]  # This is a no-op for `csr_matrix`s
-            yield X, obs
+        obs_ids = self.obs_ids.partition()
+        io_batch_size = self.io_batch_size
+        shuffle = self.shuffle
+        shuffle_chunk_size = self.shuffle_chunk_size
+        batch_size = self.batch_size
+        use_eager_fetch = self.use_eager_fetch
+        seed = self.seed
+        if shuffle:
+            chunks = obs_ids.shuffle_chunks(
+                shuffle_chunk_size=shuffle_chunk_size,
+                seed=seed,
+            )
+        else:
+            chunks = [tuple(obs_ids.obs_joinids)]
+
+        with obs_ids.open() as (X, obs):
+            io_batches = IOBatches(
+                chunks=chunks,
+                io_batch_size=io_batch_size,
+                obs=obs,
+                var_joinids=obs_ids.var_joinids,
+                X=X,
+                obs_column_names=self.obs_column_names,
+                seed=seed,
+                shuffle=shuffle,
+                use_eager_fetch=use_eager_fetch,
+            )
+
+            gpu_batches = GPUBatches(
+                io_batches=io_batches,
+                batch_size=batch_size,
+                use_eager_fetch=use_eager_fetch,
+                return_sparse_X=self.return_sparse_X,
+            )
+
+            for X_batch, obs_batch in gpu_batches:
+                if batch_size == 1:
+                    # This is a no-op for `csr_matrix`s
+                    yield X_batch[0], obs_batch
+                else:
+                    yield X_batch, obs_batch
+
+        self.epoch += 1
 
     def __len__(self) -> int:
-        """Return number of batches this iterable will produce.
+        """Return the number of batches this iterable will produce. If run in the context of :class:`torch.distributed`
+        or as a multi-process loader (i.e., :class:`torch.utils.data.DataLoader` instantiated with num_workers > 0), the
+        batch count will reflect the size of the data partition assigned to the active process.
 
         See important caveats in the PyTorch
         [:class:`torch.utils.data.DataLoader`](https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader)
         documentation regarding ``len(dataloader)``, which also apply to this class.
 
         Returns:
-            ``int`` (number of batches).
+            ``int`` (Number of batches).
 
         Lifecycle:
             experimental
         """
-        return len(self._exp_iter)
+        return self.shape[0]
 
     @property
     def shape(self) -> Tuple[int, int]:
@@ -200,7 +279,17 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
         Lifecycle:
             experimental
         """
-        return self._exp_iter.shape
+        world_size, rank = get_distributed_world_rank()
+        n_workers, worker_id = get_worker_world_rank()
+        # Every "distributed" process must receive the same number of "obs" rows; the last ≤world_size may be dropped
+        # (see _create_obs_joinids_partition).
+        obs_per_proc = len(self.obs_joinids) // world_size
+        obs_per_worker, obs_rem = divmod(obs_per_proc, n_workers)
+        # obs rows assigned to this worker process
+        n_worker_obs = obs_per_worker + bool(worker_id < obs_rem)
+        n_batches, rem = divmod(n_worker_obs, self.batch_size)
+        # (num batches this worker will produce, num features)
+        return n_batches + bool(rem), len(self.var_joinids)
 
     def set_epoch(self, epoch: int) -> None:
         """
@@ -211,12 +300,10 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
         will result in the same data ordering.
 
         This call must be made before the per-epoch iterator is created.
-
-        Lifecycle:
-            experimental
         """
-        self._exp_iter.set_epoch(epoch)
+        self.epoch = epoch
 
-    @property
-    def epoch(self) -> int:
-        return self._exp_iter.epoch
+    def __getitem__(self, index: int) -> Batch:
+        raise NotImplementedError(
+            "`ExperimentAxisQueryIterable` can only be iterated - does not support mapping"
+        )

@@ -2,42 +2,33 @@
 # Copyright (c) 2021-2024 TileDB, Inc.
 #
 # Licensed under the MIT License.
+from __future__ import annotations
 
+from contextlib import contextmanager, nullcontext
 from functools import partial
-from typing import Callable, Type, Union
+from typing import Callable, List, Tuple
+from unittest.mock import patch
 
 import numpy as np
 import pyarrow as pa
 from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma._collection import CollectionBase
-
-from tiledbsoma_ml import (
-    ExperimentAxisQueryIterableDataset,
-    ExperimentAxisQueryIterDataPipe,
-)
-from tiledbsoma_ml.batch_iterable import BatchIterable
+from torch.utils.data._utils.worker import WorkerInfo
 
 assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
 
-# These control which classes are tested (for most, but not all tests).
-# Centralized to allow easy add/delete of specific test parameters.
-IterableWrapperType = Union[
-    Type[ExperimentAxisQueryIterDataPipe],
-    Type[ExperimentAxisQueryIterableDataset],
-]
-IterableWrappers = (
-    ExperimentAxisQueryIterDataPipe,
-    ExperimentAxisQueryIterableDataset,
-)
-PipeClassType = Union[
-    Type[BatchIterable],
-    IterableWrapperType,
-]
-PipeClasses = (
-    BatchIterable,
-    *IterableWrappers,
-)
+
+def assert_array_almost_equal(
+    actual: np.ndarray, expected: List[List[float]] | List[float]
+):
+    np.testing.assert_array_almost_equal(actual, np.array(expected, dtype=np.float32))
+
+
 XValueGen = Callable[[range, range], spmatrix]
+
+
+def coords_to_float(r: int, c: int) -> float:
+    return float(f"{r}.{str(c)[::-1]}")
 
 
 def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
@@ -45,7 +36,15 @@ def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
         obs_range.stop - obs_range.start,
         var_range.stop - var_range.start,
     )
-    checkerboard_of_ones = coo_matrix(np.indices(occupied_shape).sum(axis=0) % 2)
+    floats = np.array(
+        [
+            [coords_to_float(r, c) for c in range(var_range.start, var_range.stop)]
+            for r in range(obs_range.start, obs_range.stop)
+        ]
+    )
+    checkerboard_of_ones = coo_matrix(
+        (np.indices(occupied_shape).sum(axis=0) % 2) * floats
+    )
     checkerboard_of_ones.row += obs_range.start
     checkerboard_of_ones.col += var_range.start
     return checkerboard_of_ones
@@ -96,3 +95,37 @@ def add_sparse_array(
     )
     tensor = pa.SparseCOOTensor.from_scipy(value_gen(obs_range, var_range))
     a.write(tensor)
+
+
+@contextmanager
+def mock_dist_is_initialized():
+    with patch("torch.distributed.is_initialized") as mock_dist_is_initialized:
+        mock_dist_is_initialized.return_value = True
+        yield
+
+
+@contextmanager
+def patch_worker_info(worker_id: int, num_workers: int, seed: int):
+    with patch("torch.utils.data.get_worker_info") as mock_get_worker_info:
+        mock_get_worker_info.return_value = WorkerInfo(
+            id=worker_id, num_workers=num_workers, seed=seed
+        )
+        yield
+
+
+@contextmanager
+def mock_distributed(
+    rank: int = 0,
+    world_size: int = 1,
+    worker: Tuple[int, int, int] | None = None,
+):
+    worker_ctx = patch_worker_info(*worker) if worker else nullcontext()
+    with (
+        mock_dist_is_initialized(),
+        patch("torch.distributed.get_rank") as mock_dist_get_rank,
+        patch("torch.distributed.get_world_size") as mock_dist_get_world_size,
+        worker_ctx,
+    ):
+        mock_dist_get_rank.return_value = rank
+        mock_dist_get_world_size.return_value = world_size
+        yield

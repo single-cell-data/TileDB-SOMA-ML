@@ -15,7 +15,7 @@ from tiledbsoma_ml import (
     ExperimentAxisQueryIterableDataset,
     ExperimentAxisQueryIterDataPipe,
 )
-from tiledbsoma_ml.pytorch import ExperimentAxisQueryIterable
+from tiledbsoma_ml.batch_iterable import BatchIterable
 
 assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
 
@@ -30,11 +30,11 @@ IterableWrappers = (
     ExperimentAxisQueryIterableDataset,
 )
 PipeClassType = Union[
-    Type[ExperimentAxisQueryIterable],
+    Type[BatchIterable],
     IterableWrapperType,
 ]
 PipeClasses = (
-    ExperimentAxisQueryIterable,
+    BatchIterable,
     *IterableWrappers,
 )
 XValueGen = Callable[[range, range], spmatrix]

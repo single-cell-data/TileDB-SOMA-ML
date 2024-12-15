@@ -25,8 +25,9 @@ import numpy.typing as npt
 import pandas as pd
 import pyarrow as pa
 import scipy.sparse as sparse
-import tiledbsoma as soma
 import torch
+from somacore import ExperimentAxisQuery
+from tiledbsoma import DataFrame, Experiment, IntIndexer, SparseNDArray
 
 from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._distributed import (
@@ -56,7 +57,7 @@ returned as a :class:`scipy.sparse.csr_matrix`. If the ``batch_size`` is 1, the 
 will be returned with rank 1; in all other cases, objects are returned with rank 2."""
 
 
-class ExperimentAxisQueryIterable(Iterable[Batch]):
+class BatchIterable(Iterable[Batch]):
     """An :class:`Iterable` which reads ``X`` and ``obs`` data from a :class:`tiledbsoma.Experiment`, as
     selected by a user-specified :class:`tiledbsoma.ExperimentAxisQuery`. Each step of the iterator
     produces a batch containing equal-sized ``X`` and ``obs`` data, in the form of a :class:`numpy.ndarray` and
@@ -72,7 +73,7 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
 
     def __init__(
         self,
-        query: soma.ExperimentAxisQuery,
+        query: ExperimentAxisQuery,
         X_name: str,
         obs_column_names: Sequence[str] = ("soma_joinid",),
         batch_size: int = 1,
@@ -249,7 +250,7 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
 
         return iter(obs_partition_joinids)
 
-    def _init_once(self, exp: soma.Experiment | None = None) -> None:
+    def _init_once(self, exp: Experiment | None = None) -> None:
         """One-time per worker initialization.
 
         All operations should be idempotent in order to support pipe reset().
@@ -265,7 +266,7 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
 
         if exp is None:
             # If no user-provided Experiment, open/close it ourselves
-            exp_cm: ContextManager[soma.Experiment] = (
+            exp_cm: ContextManager[Experiment] = (
                 self.experiment_locator.open_experiment()
             )
         else:
@@ -314,7 +315,7 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
         with self.experiment_locator.open_experiment() as exp:
             self._init_once(exp)
             X = exp.ms[self.measurement_name].X[self.layer_name]
-            if not isinstance(X, soma.SparseNDArray):
+            if not isinstance(X, SparseNDArray):
                 raise NotImplementedError(
                     "ExperimentAxisQueryIterable only supports X layers which are of type SparseNDArray"
                 )
@@ -394,8 +395,8 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
 
     def _io_batch_iter(
         self,
-        obs: soma.DataFrame,
-        X: soma.SparseNDArray,
+        obs: DataFrame,
+        X: SparseNDArray,
         obs_joinid_iter: Iterator[NDArrayJoinId],
     ) -> Iterator[Tuple[CSR_IO_Buffer, pd.DataFrame]]:
         """Iterate over IO batches, i.e., SOMA query reads, producing tuples of ``(X: csr_array, obs: DataFrame)``.
@@ -416,14 +417,14 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
             if "soma_joinid" in self.obs_column_names
             else ["soma_joinid", *self.obs_column_names]
         )
-        var_indexer = soma.IntIndexer(self._var_joinids, context=X.context)
+        var_indexer = IntIndexer(self._var_joinids, context=X.context)
 
         for obs_coords in obs_joinid_iter:
             st_time = time.perf_counter()
             obs_shuffled_coords = (
                 obs_coords if not self.shuffle else shuffle_rng.permuted(obs_coords)
             )
-            obs_indexer = soma.IntIndexer(obs_shuffled_coords, context=X.context)
+            obs_indexer = IntIndexer(obs_shuffled_coords, context=X.context)
             logger.debug(
                 f"Retrieving next SOMA IO batch of length {len(obs_coords)}..."
             )
@@ -441,7 +442,7 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
                 X_tbl: pa.Table,
                 obs_coords: NDArrayJoinId,
                 var_coords: NDArrayJoinId,
-                obs_indexer: soma.IntIndexer,
+                obs_indexer: IntIndexer,
             ) -> CSR_IO_Buffer:
                 """This function provides a GC after we throw off (large) garbage."""
                 m = CSR_IO_Buffer.from_ijd(
@@ -485,8 +486,8 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
 
     def _mini_batch_iter(
         self,
-        obs: soma.DataFrame,
-        X: soma.SparseNDArray,
+        obs: DataFrame,
+        X: SparseNDArray,
         obs_joinid_iter: Iterator[NDArrayJoinId],
     ) -> Iterator[Batch]:
         """Break IO batches into shuffled mini-batch-sized chunks.

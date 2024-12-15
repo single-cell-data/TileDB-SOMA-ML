@@ -187,7 +187,7 @@ def test__pytorch_splitting(
 
 def test_experiment_dataloader__unsupported_params__fails() -> None:
     with patch(
-        "tiledbsoma_ml.pytorch.ExperimentAxisQueryIterDataPipe"
+        "tiledbsoma_ml.datapipe.ExperimentAxisQueryIterDataPipe"
     ) as dummy_exp_data_pipe:
         with pytest.raises(ValueError):
             experiment_dataloader(dummy_exp_data_pipe, shuffle=True)

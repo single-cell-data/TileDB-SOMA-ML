@@ -10,10 +10,8 @@ from typing import Any, TypeVar
 from torch.utils.data import DataLoader
 
 from tiledbsoma_ml._distributed import init_multiprocessing
-from tiledbsoma_ml.pytorch import (
-    ExperimentAxisQueryIterableDataset,
-    ExperimentAxisQueryIterDataPipe,
-)
+from tiledbsoma_ml.datapipe import ExperimentAxisQueryIterDataPipe
+from tiledbsoma_ml.dataset import ExperimentAxisQueryIterableDataset
 
 _T = TypeVar("_T")
 

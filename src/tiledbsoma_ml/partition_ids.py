@@ -17,10 +17,15 @@ from typing import (
     cast,
 )
 
-import attrs
 import numpy as np
+from attrs import define, evolve
 from somacore import ExperimentAxisQuery
-from tiledbsoma import Experiment, Measurement, SOMATileDBContext
+from tiledbsoma import (
+    DataFrame,
+    Experiment,
+    SOMATileDBContext,
+    SparseNDArray,
+)
 from torch.utils.data import Dataset
 
 from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
@@ -30,7 +35,7 @@ from tiledbsoma_ml.common import NDArrayJoinId
 logger = logging.getLogger(f"tiledbsoma_ml.{splitext(__file__)[0]}")
 
 
-@attrs.define(frozen=True)
+@define(frozen=True)
 class ShuffledChunks(Iterable[Tuple[int, ...]]):
     chunks: List[Tuple[int, ...]]
 
@@ -38,7 +43,7 @@ class ShuffledChunks(Iterable[Tuple[int, ...]]):
         return iter(self.chunks)
 
 
-@attrs.define(frozen=True)
+@define(frozen=True)
 class Partition:
     rank: int
     world_size: int
@@ -46,7 +51,7 @@ class Partition:
     n_workers: int
 
 
-@attrs.define(frozen=True, kw_only=True)
+@define(frozen=True, kw_only=True)
 class PartitionIDs(Dataset[np.int64]):  # type: ignore[misc]
     """State required to open the Experiment.
 
@@ -113,14 +118,29 @@ class PartitionIDs(Dataset[np.int64]):  # type: ignore[misc]
             worker_splits[worker_id] : worker_splits[worker_id + 1]
         ].copy()
 
-        return PartitionIDs(
-            uri=self.uri,
-            measurement_name=self.measurement_name,
-            layer_name=self.layer_name,
-            obs_joinids=worker_joinids,
-            var_joinids=self.var_joinids,
-            tiledb_timestamp_ms=self.tiledb_timestamp_ms,
-            tiledb_config=self.tiledb_config,
+        logger.debug(
+            f"Partitioned IDs: {rank=}, {world_size=}, {worker_id=}, {n_workers=}"
+        )
+
+        return evolve(self, obs_joinids=worker_joinids)
+
+    def sample(
+        self,
+        frac: float,
+        seed: Optional[int] = None,
+    ) -> Tuple["PartitionIDs", "PartitionIDs"]:
+        obs_joinids = self.obs_joinids
+        n_obs = len(obs_joinids)
+        n_acc = round(n_obs * frac)
+        if seed is not None:
+            np.random.seed(seed)
+        acc_idxs = np.random.choice(n_obs, n_acc, replace=False)
+        rej_idxs = np.setdiff1d(np.arange(n_obs), acc_idxs)
+        acc_joinids = obs_joinids[acc_idxs]
+        rej_joinids = obs_joinids[rej_idxs]
+        return (
+            evolve(self, obs_joinids=acc_joinids),
+            evolve(self, obs_joinids=rej_joinids),
         )
 
     def shuffle_chunks(
@@ -136,13 +156,9 @@ class PartitionIDs(Dataset[np.int64]):  # type: ignore[misc]
         return ShuffledChunks(shuffle_chunks)
 
     @contextmanager
-    def open_experiment(self) -> Generator[Experiment, None, None]:
+    def open(self) -> Generator[Tuple[SparseNDArray, DataFrame], None, None]:
         context = SOMATileDBContext(tiledb_config=self.tiledb_config)
-        yield Experiment.open(
+        with Experiment.open(
             self.uri, tiledb_timestamp=self.tiledb_timestamp_ms, context=context
-        )
-
-    @contextmanager
-    def open_measurement(self) -> Generator[Measurement, None, None]:
-        with self.open_experiment() as exp:
-            yield exp.ms[self.measurement_name]
+        ) as exp:
+            yield exp.ms[self.measurement_name].X[self.layer_name], exp.obs

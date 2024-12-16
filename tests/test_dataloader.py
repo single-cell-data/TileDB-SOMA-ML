@@ -13,24 +13,20 @@ import pandas as pd
 import pytest
 from tiledbsoma import Experiment
 
-from tests._utils import IterableWrappers, IterableWrapperType, pytorch_x_value_gen
-from tiledbsoma_ml import ExperimentAxisQueryIterDataPipe
+from tests._utils import pytorch_x_value_gen
+from tiledbsoma_ml import ExperimentAxisQueryIterableDataset
 from tiledbsoma_ml.dataloader import experiment_dataloader
 
 
 @pytest.mark.parametrize(
     "obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)]
 )
-@pytest.mark.parametrize("PipeClass", IterableWrappers)
-def test_multiprocessing__returns_full_result(
-    PipeClass: IterableWrapperType,
-    soma_experiment: Experiment,
-):
+def test_multiprocessing__returns_full_result(soma_experiment: Experiment):
     """Tests that ``ExperimentAxisQueryIterDataPipe`` / ``ExperimentAxisQueryIterableDataset``
     provide all data, as collected from multiple processes that are managed by a PyTorch DataLoader
     with multiple workers configured."""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = PipeClass(
+        dp = ExperimentAxisQueryIterableDataset(
             query,
             layer_name="raw",
             obs_column_names=["soma_joinid", "label"],
@@ -51,14 +47,12 @@ def test_multiprocessing__returns_full_result(
     "obs_range,var_range,X_value_gen,use_eager_fetch",
     [(3, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
-@pytest.mark.parametrize("PipeClass", IterableWrappers)
 def test_experiment_dataloader__non_batched(
-    PipeClass: IterableWrapperType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = PipeClass(
+        dp = ExperimentAxisQueryIterableDataset(
             query,
             layer_name="raw",
             obs_column_names=["label"],
@@ -79,14 +73,12 @@ def test_experiment_dataloader__non_batched(
     "obs_range,var_range,X_value_gen,use_eager_fetch",
     [(6, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
 )
-@pytest.mark.parametrize("PipeClass", IterableWrappers)
 def test_experiment_dataloader__batched(
-    PipeClass: IterableWrapperType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = PipeClass(
+        dp = ExperimentAxisQueryIterableDataset(
             query,
             layer_name="raw",
             batch_size=3,
@@ -108,14 +100,12 @@ def test_experiment_dataloader__batched(
         for use_eager_fetch in (True, False)
     ],
 )
-@pytest.mark.parametrize("PipeClass", IterableWrappers)
 def test_experiment_dataloader__batched_length(
-    PipeClass: IterableWrapperType,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = PipeClass(
+        dp = ExperimentAxisQueryIterableDataset(
             query,
             layer_name="raw",
             obs_column_names=["label"],
@@ -131,9 +121,7 @@ def test_experiment_dataloader__batched_length(
     "obs_range,var_range,X_value_gen,batch_size",
     [(10, 3, pytorch_x_value_gen, batch_size) for batch_size in (1, 3, 10)],
 )
-@pytest.mark.parametrize("PipeClass", IterableWrappers)
 def test_experiment_dataloader__collate_fn(
-    PipeClass: IterableWrapperType,
     soma_experiment: Experiment,
     batch_size: int,
 ):
@@ -152,7 +140,7 @@ def test_experiment_dataloader__collate_fn(
         return data
 
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = PipeClass(
+        dp = ExperimentAxisQueryIterableDataset(
             query,
             layer_name="raw",
             obs_column_names=["label"],
@@ -166,34 +154,38 @@ def test_experiment_dataloader__collate_fn(
 @pytest.mark.parametrize(
     "obs_range,var_range,X_value_gen", [(10, 1, pytorch_x_value_gen)]
 )
-def test__pytorch_splitting(
-    soma_experiment: Experiment,
-):
+def test__pytorch_splitting(soma_experiment: Experiment, obs_range: int):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = ExperimentAxisQueryIterDataPipe(
+        ds = ExperimentAxisQueryIterableDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
+            sample=0.7,
+            seed=1234,
         )
-        # function not available for IterableDataset, yet....
-        dp_train, dp_test = dp.random_split(
-            weights={"train": 0.7, "test": 0.3}, seed=1234
-        )
-        dl = experiment_dataloader(dp_train)
+        train_dl = experiment_dataloader(ds)
+        train_batches = list(iter(train_dl))
+        train_labels = [int(obs.loc[0, "label"]) for _, obs in train_batches]
+        assert train_labels == [0, 4, 7, 8, 2, 1, 9]
 
-        all_rows = list(iter(dl))
-        assert len(all_rows) == 7
+        ds.invert()
+        test_dl = experiment_dataloader(ds)
+        test_batches = list(iter(test_dl))
+        test_labels = [int(obs.loc[0, "label"]) for _, obs in test_batches]
+        assert test_labels == [3, 5, 6]
+
+        assert set(train_labels + test_labels) == set(range(obs_range))
 
 
 def test_experiment_dataloader__unsupported_params__fails():
     with patch(
-        "tiledbsoma_ml.datapipe.ExperimentAxisQueryIterDataPipe"
-    ) as dummy_exp_data_pipe:
+        "tiledbsoma_ml.dataset.ExperimentAxisQueryIterableDataset"
+    ) as dummy_exp_dataset:
         with pytest.raises(ValueError):
-            experiment_dataloader(dummy_exp_data_pipe, shuffle=True)
+            experiment_dataloader(dummy_exp_dataset, shuffle=True)
         with pytest.raises(ValueError):
-            experiment_dataloader(dummy_exp_data_pipe, batch_size=3)
+            experiment_dataloader(dummy_exp_dataset, batch_size=3)
         with pytest.raises(ValueError):
-            experiment_dataloader(dummy_exp_data_pipe, batch_sampler=[])
+            experiment_dataloader(dummy_exp_dataset, batch_sampler=[])
         with pytest.raises(ValueError):
-            experiment_dataloader(dummy_exp_data_pipe, sampler=[])
+            experiment_dataloader(dummy_exp_dataset, sampler=[])

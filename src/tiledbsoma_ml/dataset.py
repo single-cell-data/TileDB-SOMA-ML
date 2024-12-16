@@ -10,8 +10,10 @@ from typing import Iterator, Sequence, Tuple
 from somacore import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
+from tiledbsoma_ml import batch_iterable
 from tiledbsoma_ml.batch_iterable import BatchIterable
 from tiledbsoma_ml.common import Batch
+from tiledbsoma_ml.partition_ids import PartitionIDs
 
 
 class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore[misc]
@@ -87,6 +89,7 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
         shuffle_chunk_size: int = 64,
         return_sparse_X: bool = False,
         use_eager_fetch: bool = True,
+        sample: float | None = None,
     ):
         """
         Construct a new ``ExperimentAxisQueryIterable``, suitable for use with :class:`torch.utils.data.DataLoader`.
@@ -144,9 +147,19 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
 
         """
         super().__init__()
-        self._exp_iter = BatchIterable(
+        self.partition_ids = PartitionIDs.create(
             query=query,
             layer_name=layer_name,
+        )
+        self.sample = sample
+        self.seed = seed
+        self.sample_inverted = False
+        self.sampled_partition_ids: PartitionIDs | None = None
+        if sample is not None:
+            acc, _ = self.partition_ids.sample(abs(sample), seed=seed)
+            self.sampled_partition_ids = acc
+
+        self._iter_kwargs: batch_iterable.Kwargs = dict(
             obs_column_names=obs_column_names,
             batch_size=batch_size,
             shuffle=shuffle,
@@ -155,6 +168,25 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
             return_sparse_X=return_sparse_X,
             use_eager_fetch=use_eager_fetch,
             shuffle_chunk_size=shuffle_chunk_size,
+        )
+        self._exp_iter = BatchIterable(
+            partition_ids=self.sampled_partition_ids or self.partition_ids,
+            **self._iter_kwargs,
+        )
+
+    def invert(self) -> None:
+        sample = self.sample
+        if not sample:
+            raise RuntimeError(
+                "Can only invert sampled ExperimentAxisQueryIterableDatasets"
+            )
+
+        self.sample_inverted = not self.sample_inverted
+        acc, rej = self.partition_ids.sample(abs(sample), seed=self.seed)
+        self.sampled_partition_ids = rej if self.sample_inverted else acc
+        self._exp_iter = BatchIterable(
+            partition_ids=self.sampled_partition_ids,
+            **self._iter_kwargs,
         )
 
     def __iter__(self) -> Iterator[Batch]:

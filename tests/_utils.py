@@ -13,29 +13,20 @@ from tiledbsoma._collection import CollectionBase
 
 from tiledbsoma_ml import (
     ExperimentAxisQueryIterableDataset,
-    ExperimentAxisQueryIterDataPipe,
 )
-from tiledbsoma_ml.pytorch import BatchIterable
+from tiledbsoma_ml.batch_iterable import BatchIterable
 
 assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
 
 # These control which classes are tested (for most, but not all tests).
 # Centralized to allow easy add/delete of specific test parameters.
-IterableWrapperType = Union[
-    Type[ExperimentAxisQueryIterDataPipe],
-    Type[ExperimentAxisQueryIterableDataset],
-]
-IterableWrappers = (
-    ExperimentAxisQueryIterDataPipe,
-    ExperimentAxisQueryIterableDataset,
-)
 PipeClassType = Union[
     Type[BatchIterable],
-    IterableWrapperType,
+    Type[ExperimentAxisQueryIterableDataset],
 ]
 PipeClasses = (
     BatchIterable,
-    *IterableWrappers,
+    ExperimentAxisQueryIterableDataset,
 )
 XValueGen = Callable[[range, range], spmatrix]
 

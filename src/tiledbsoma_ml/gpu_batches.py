@@ -26,13 +26,10 @@ class GPUBatches(Iterable[Batch]):
     use_eager_fetch: bool = True
     return_sparse_X: bool = False
 
-    def __iter__(self) -> Iterator[Batch]:
+    def _iter(self) -> Iterator[Batch]:
         batch_size = self.batch_size
         result: Tuple[NDArrayNumber, pd.DataFrame] | None = None
-        io_batch_iter = iter(self.io_batches)
-        if self.use_eager_fetch:
-            io_batch_iter = EagerIterator(io_batch_iter)
-        for X_io_batch, obs_io_batch in io_batch_iter:
+        for X_io_batch, obs_io_batch in self.io_batches:
             assert X_io_batch.shape[0] == obs_io_batch.shape[0]
             iob_idx = 0  # current offset into io batch
             iob_len = X_io_batch.shape[0]
@@ -85,3 +82,7 @@ class GPUBatches(Iterable[Batch]):
             # yield the remnant, if any
             if result is not None:
                 yield result
+
+    def __iter__(self) -> Iterator[Batch]:
+        it = self._iter()
+        return EagerIterator(it) if self.use_eager_fetch else it

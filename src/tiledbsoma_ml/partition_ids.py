@@ -8,8 +8,6 @@ from os.path import splitext
 from typing import (
     Dict,
     Generator,
-    Iterable,
-    Iterator,
     List,
     Optional,
     Tuple,
@@ -35,12 +33,7 @@ from tiledbsoma_ml.common import NDArrayJoinId
 logger = logging.getLogger(f"tiledbsoma_ml.{splitext(__file__)[0]}")
 
 
-@define(frozen=True)
-class ShuffledChunks(Iterable[Tuple[int, ...]]):
-    chunks: List[Tuple[int, ...]]
-
-    def __iter__(self) -> Iterator[Tuple[int, ...]]:
-        return iter(self.chunks)
+Chunks = List[Tuple[int, ...]]
 
 
 @define(frozen=True)
@@ -147,13 +140,13 @@ class PartitionIDs(Dataset[np.int64]):  # type: ignore[misc]
         self,
         shuffle_chunk_size: int,
         seed: Optional[int] = None,
-    ) -> ShuffledChunks:
+    ) -> Chunks:
         shuffle_chunks: List[Tuple[int, ...]] = list(
             batched(self.obs_joinids, shuffle_chunk_size)
         )
         shuffle_rng = np.random.default_rng(seed)
         shuffle_rng.shuffle(shuffle_chunks)
-        return ShuffledChunks(shuffle_chunks)
+        return shuffle_chunks
 
     @contextmanager
     def open(self) -> Generator[Tuple[SparseNDArray, DataFrame], None, None]:

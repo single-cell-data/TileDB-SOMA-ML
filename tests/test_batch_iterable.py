@@ -317,11 +317,20 @@ def test_batching__partial_soma_batches_are_concatenated(
 
 @pytest.mark.parametrize(
     "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen), (7, 3, pytorch_x_value_gen)],
+    [
+        (6, 3, pytorch_x_value_gen),
+        (7, 3, pytorch_x_value_gen),
+    ],
 )
 @pytest.mark.parametrize(
     "world_size,rank",
-    [(3, 0), (3, 1), (3, 2), (2, 0), (2, 1)],
+    [
+        (3, 0),
+        (3, 1),
+        (3, 2),
+        (2, 0),
+        (2, 1),
+    ],
 )
 @pytest.mark.parametrize("PipeClass", PipeClasses)
 def test_distributed__returns_data_partition_for_rank(
@@ -353,7 +362,7 @@ def test_distributed__returns_data_partition_for_rank(
             )
             batches = list(iter(dp))
             soma_joinids = np.concatenate(
-                [batch[1]["soma_joinid"].to_numpy() for batch in batches]
+                [obs["soma_joinid"].to_numpy() for X, obs in batches]
             )
 
             expected_joinids = np.array_split(np.arange(obs_range), world_size)[rank][

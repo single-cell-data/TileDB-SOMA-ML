@@ -19,7 +19,6 @@ from typing import (
 
 import numpy as np
 from somacore import ExperimentAxisQuery
-from somacore.query._eager_iter import EagerIterator
 
 from tiledbsoma_ml._distributed import (
     get_distributed_world_rank,
@@ -156,22 +155,15 @@ class BatchIterable(Iterable[Batch]):
         self.seed = (
             seed if seed is not None else np.random.default_rng().integers(0, 2**32 - 1)
         )
-        self._user_specified_seed = seed is not None
         self.shuffle_chunk_size = shuffle_chunk_size
-        self._initialized = False
         self.epoch = 0
+        self.partition_ids = partition_ids
 
-        if self.shuffle:
+        if shuffle:
             # Round `io_batch_size` up to a multiple of `shuffle_chunk_size`, to simplify code.
             self.io_batch_size = (
                 ceil(io_batch_size / shuffle_chunk_size) * shuffle_chunk_size
             )
-
-        self.partition_ids = partition_ids.partition()
-        self.shuffle_chunks = partition_ids.shuffle_chunks(
-            shuffle_chunk_size=self.shuffle_chunk_size,
-            seed=self.seed,
-        )
 
         if not self.obs_column_names:
             raise ValueError("Must specify at least one value in `obs_column_names`")
@@ -201,31 +193,40 @@ class BatchIterable(Iterable[Batch]):
         Lifecycle:
             experimental
         """
-        partition_ids = self.partition_ids
+        partition_ids = self.partition_ids.partition()
+        io_batch_size = self.io_batch_size
+        shuffle_chunk_size = self.shuffle_chunk_size
+        shuffle = self.shuffle
+        use_eager_fetch = self.use_eager_fetch
+        seed = self.seed
+        if shuffle:
+            chunks = partition_ids.shuffle_chunks(
+                shuffle_chunk_size=shuffle_chunk_size,
+                seed=seed,
+            )
+        else:
+            chunks = [tuple(partition_ids.obs_joinids)]
+
         with partition_ids.open() as (X, obs):
             io_batches = IOBatches(
-                shuffled_chunks=self.shuffle_chunks,
-                io_batch_size=self.io_batch_size,
+                chunks=chunks,
+                io_batch_size=io_batch_size,
                 obs=obs,
                 var_joinids=partition_ids.var_joinids,
                 X=X,
                 obs_column_names=self.obs_column_names,
-                seed=self.seed,
-                shuffle=self.shuffle,
-                use_eager_fetch=self.use_eager_fetch,
+                seed=seed,
+                shuffle=shuffle,
+                use_eager_fetch=use_eager_fetch,
             )
 
             gpu_batches = GPUBatches(
                 io_batches=io_batches,
                 batch_size=self.batch_size,
-                use_eager_fetch=self.use_eager_fetch,
+                use_eager_fetch=use_eager_fetch,
                 return_sparse_X=self.return_sparse_X,
             )
-            gpu_batch_iter = iter(gpu_batches)
-            if self.use_eager_fetch:
-                gpu_batch_iter = EagerIterator(gpu_batch_iter)
-
-            yield from gpu_batch_iter
+            yield from gpu_batches
 
         self.epoch += 1
 

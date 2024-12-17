@@ -9,16 +9,15 @@ import logging
 from math import ceil
 from os.path import splitext
 from typing import (
-    Iterable,
     Iterator,
     Optional,
     Sequence,
     Tuple,
-    TypedDict,
 )
 
 import numpy as np
 from somacore import ExperimentAxisQuery
+from torch.utils.data import IterableDataset
 
 from tiledbsoma_ml._distributed import (
     get_distributed_world_rank,
@@ -27,26 +26,13 @@ from tiledbsoma_ml._distributed import (
 from tiledbsoma_ml.common import Batch, NDArrayJoinId
 from tiledbsoma_ml.gpu_batches import GPUBatches
 from tiledbsoma_ml.io_batches import IOBatches
-from tiledbsoma_ml.partition_ids import PartitionIDs
+from tiledbsoma_ml.obs_ids import ObsIDs
 
 logger = logging.getLogger(f"tiledbsoma_ml.{splitext(__file__)[0]}")
 
 
-class Kwargs(TypedDict):
-    """Alias for most kwargs accepted by the BatchIterable constructor."""
-
-    obs_column_names: Sequence[str]
-    batch_size: int
-    shuffle: bool
-    seed: int | None
-    io_batch_size: int
-    return_sparse_X: bool
-    use_eager_fetch: bool
-    shuffle_chunk_size: int
-
-
-class BatchIterable(Iterable[Batch]):
-    """An :class:`Iterable` which reads ``X`` and ``obs`` data from a :class:`tiledbsoma.Experiment`, as
+class ExperimentBatchDataset(IterableDataset[Batch]):  # type: ignore[misc]
+    """An :class:`IterableDataset` which reads ``X`` and ``obs`` data from a :class:`tiledbsoma.Experiment`, as
     selected by a user-specified :class:`tiledbsoma.ExperimentAxisQuery`. Each step of the iterator
     produces a batch containing equal-sized ``X`` and ``obs`` data, in the form of a :class:`numpy.ndarray` and
     :class:`pandas.DataFrame`, respectively.
@@ -60,7 +46,7 @@ class BatchIterable(Iterable[Batch]):
     def __init__(
         self,
         query: Optional[ExperimentAxisQuery] = None,
-        partition_ids: Optional[PartitionIDs] = None,
+        obs_ids: Optional[ObsIDs] = None,
         layer_name: Optional[str] = None,
         obs_column_names: Sequence[str] = ("soma_joinid",),
         batch_size: int = 1,
@@ -69,6 +55,7 @@ class BatchIterable(Iterable[Batch]):
         shuffle_chunk_size: int = 64,
         return_sparse_X: bool = False,
         seed: int | None = None,
+        sample: float | None = None,
         use_eager_fetch: bool = True,
     ):
         """
@@ -134,14 +121,14 @@ class BatchIterable(Iterable[Batch]):
 
         super().__init__()
 
-        if partition_ids:
+        if obs_ids:
             if query:
                 raise ValueError("Provide only one of {exp_loc,query}")
-            self.partition_ids = partition_ids
+            self.original_obs_ids = obs_ids
         else:
             if not query:
                 raise ValueError("Provide one of {exp_loc,query}")
-            self.partition_ids = partition_ids = PartitionIDs.create(
+            self.original_obs_ids = ObsIDs.create(
                 query=query,
                 layer_name=layer_name,
             )
@@ -155,9 +142,15 @@ class BatchIterable(Iterable[Batch]):
         self.seed = (
             seed if seed is not None else np.random.default_rng().integers(0, 2**32 - 1)
         )
+        self.sample = sample
+        self.sample_inverted = False
+        self.sampled_obs_ids: ObsIDs | None = None
+        if sample is not None:
+            acc, _ = self.original_obs_ids.sample(abs(sample), seed=seed)
+            self.sampled_obs_ids = acc
+
         self.shuffle_chunk_size = shuffle_chunk_size
         self.epoch = 0
-        self.partition_ids = partition_ids
 
         if shuffle:
             # Round `io_batch_size` up to a multiple of `shuffle_chunk_size`, to simplify code.
@@ -168,21 +161,36 @@ class BatchIterable(Iterable[Batch]):
         if not self.obs_column_names:
             raise ValueError("Must specify at least one value in `obs_column_names`")
 
+    def invert(self) -> None:
+        sample = self.sample
+        if not sample:
+            raise RuntimeError(
+                "Can only invert sampled ExperimentAxisQueryIterableDatasets"
+            )
+
+        self.sample_inverted = not self.sample_inverted
+        acc, rej = self.original_obs_ids.sample(abs(sample), seed=self.seed)
+        self.sampled_obs_ids = rej if self.sample_inverted else acc
+
+    @property
+    def obs_ids(self) -> ObsIDs:
+        return self.sampled_obs_ids or self.original_obs_ids
+
     @property
     def measurement_name(self) -> str:
-        return self.partition_ids.measurement_name
+        return self.obs_ids.measurement_name
 
     @property
     def layer_name(self) -> Optional[str]:
-        return self.partition_ids.layer_name
+        return self.obs_ids.layer_name
 
     @property
     def obs_joinids(self) -> NDArrayJoinId:
-        return self.partition_ids.obs_joinids
+        return self.obs_ids.obs_joinids
 
     @property
     def var_joinids(self) -> NDArrayJoinId:
-        return self.partition_ids.var_joinids
+        return self.obs_ids.var_joinids
 
     def __iter__(self) -> Iterator[Batch]:
         """Create iterator over query.
@@ -193,26 +201,27 @@ class BatchIterable(Iterable[Batch]):
         Lifecycle:
             experimental
         """
-        partition_ids = self.partition_ids.partition()
+        obs_ids = self.obs_ids.partition()
         io_batch_size = self.io_batch_size
-        shuffle_chunk_size = self.shuffle_chunk_size
         shuffle = self.shuffle
+        shuffle_chunk_size = self.shuffle_chunk_size
+        batch_size = self.batch_size
         use_eager_fetch = self.use_eager_fetch
         seed = self.seed
         if shuffle:
-            chunks = partition_ids.shuffle_chunks(
+            chunks = obs_ids.shuffle_chunks(
                 shuffle_chunk_size=shuffle_chunk_size,
                 seed=seed,
             )
         else:
-            chunks = [tuple(partition_ids.obs_joinids)]
+            chunks = [tuple(obs_ids.obs_joinids)]
 
-        with partition_ids.open() as (X, obs):
+        with obs_ids.open() as (X, obs):
             io_batches = IOBatches(
                 chunks=chunks,
                 io_batch_size=io_batch_size,
                 obs=obs,
-                var_joinids=partition_ids.var_joinids,
+                var_joinids=obs_ids.var_joinids,
                 X=X,
                 obs_column_names=self.obs_column_names,
                 seed=seed,
@@ -222,11 +231,17 @@ class BatchIterable(Iterable[Batch]):
 
             gpu_batches = GPUBatches(
                 io_batches=io_batches,
-                batch_size=self.batch_size,
+                batch_size=batch_size,
                 use_eager_fetch=use_eager_fetch,
                 return_sparse_X=self.return_sparse_X,
             )
-            yield from gpu_batches
+
+            for X_batch, obs_batch in gpu_batches:
+                if batch_size == 1:
+                    # This is a no-op for `csr_matrix`s
+                    yield X_batch[0], obs_batch
+                else:
+                    yield X_batch, obs_batch
 
         self.epoch += 1
 

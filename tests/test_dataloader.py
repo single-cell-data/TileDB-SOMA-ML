@@ -14,7 +14,7 @@ import pytest
 from tiledbsoma import Experiment
 
 from tests._utils import pytorch_x_value_gen
-from tiledbsoma_ml import ExperimentAxisQueryIterableDataset
+from tiledbsoma_ml.batch_dataset import ExperimentBatchDataset
 from tiledbsoma_ml.dataloader import experiment_dataloader
 
 
@@ -26,14 +26,14 @@ def test_multiprocessing__returns_full_result(soma_experiment: Experiment):
     provide all data, as collected from multiple processes that are managed by a PyTorch DataLoader
     with multiple workers configured."""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentBatchDataset(
             query,
             layer_name="raw",
             obs_column_names=["soma_joinid", "label"],
             io_batch_size=3,  # two chunks, one per worker
         )
         # Wrap with a DataLoader, which sets up the multiprocessing
-        dl = experiment_dataloader(dp, num_workers=2)
+        dl = experiment_dataloader(ds, num_workers=2)
 
         batches = list(iter(dl))
 
@@ -52,14 +52,14 @@ def test_experiment_dataloader__non_batched(
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentBatchDataset(
             query,
             layer_name="raw",
             obs_column_names=["label"],
             shuffle=False,
             use_eager_fetch=use_eager_fetch,
         )
-        dl = experiment_dataloader(dp)
+        dl = experiment_dataloader(ds)
         batches = list(iter(dl))
         assert all(X.shape == (3,) for X, _ in batches)
         assert all(obs.shape == (1, 1) for _, obs in batches)
@@ -78,14 +78,14 @@ def test_experiment_dataloader__batched(
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentBatchDataset(
             query,
             layer_name="raw",
             batch_size=3,
             shuffle=False,
             use_eager_fetch=use_eager_fetch,
         )
-        dl = experiment_dataloader(dp)
+        dl = experiment_dataloader(ds)
         data = [row for row in dl]
 
         batch = data[0]
@@ -105,7 +105,7 @@ def test_experiment_dataloader__batched_length(
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentBatchDataset(
             query,
             layer_name="raw",
             obs_column_names=["label"],
@@ -113,7 +113,7 @@ def test_experiment_dataloader__batched_length(
             shuffle=False,
             use_eager_fetch=use_eager_fetch,
         )
-        dl = experiment_dataloader(dp)
+        dl = experiment_dataloader(ds)
         assert len(dl) == len(list(dl))
 
 
@@ -140,14 +140,14 @@ def test_experiment_dataloader__collate_fn(
         return data
 
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentBatchDataset(
             query,
             layer_name="raw",
             obs_column_names=["label"],
             batch_size=batch_size,
             shuffle=False,
         )
-        dl = experiment_dataloader(dp, collate_fn=partial(collate_fn, batch_size))
+        dl = experiment_dataloader(ds, collate_fn=partial(collate_fn, batch_size))
         assert len(list(dl)) > 0
 
 
@@ -156,7 +156,7 @@ def test_experiment_dataloader__collate_fn(
 )
 def test__pytorch_splitting(soma_experiment: Experiment, obs_range: int):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentBatchDataset(
             query,
             layer_name="raw",
             obs_column_names=["label"],
@@ -179,7 +179,7 @@ def test__pytorch_splitting(soma_experiment: Experiment, obs_range: int):
 
 def test_experiment_dataloader__unsupported_params__fails():
     with patch(
-        "tiledbsoma_ml.dataset.ExperimentAxisQueryIterableDataset"
+        "tiledbsoma_ml.batch_dataset.ExperimentBatchDataset"
     ) as dummy_exp_dataset:
         with pytest.raises(ValueError):
             experiment_dataloader(dummy_exp_dataset, shuffle=True)

@@ -24,7 +24,6 @@ from tiledbsoma import (
     SOMATileDBContext,
     SparseNDArray,
 )
-from torch.utils.data import Dataset
 
 from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
 from tiledbsoma_ml._utils import batched, splits
@@ -45,7 +44,7 @@ class Partition:
 
 
 @define(frozen=True, kw_only=True)
-class PartitionIDs(Dataset[np.int64]):  # type: ignore[misc]
+class ObsIDs:
     """State required to open the Experiment.
 
     Serializable across multiple processes.
@@ -67,11 +66,11 @@ class PartitionIDs(Dataset[np.int64]):  # type: ignore[misc]
         cls,
         query: ExperimentAxisQuery,
         layer_name: Optional[str],
-    ) -> "PartitionIDs":
+    ) -> "ObsIDs":
         exp: Experiment = query.experiment
         obs_joinids = query.obs_joinids().to_numpy()
         var_joinids = query.var_joinids().to_numpy()
-        return PartitionIDs(
+        return ObsIDs(
             uri=exp.uri,
             measurement_name=query.measurement_name,
             layer_name=layer_name,
@@ -84,7 +83,7 @@ class PartitionIDs(Dataset[np.int64]):  # type: ignore[misc]
     def partition(
         self,
         partition: Optional[Partition] = None,
-    ) -> "PartitionIDs":
+    ) -> "ObsIDs":
         obs_joinids = self.obs_joinids
 
         if partition:
@@ -121,7 +120,7 @@ class PartitionIDs(Dataset[np.int64]):  # type: ignore[misc]
         self,
         frac: float,
         seed: Optional[int] = None,
-    ) -> Tuple["PartitionIDs", "PartitionIDs"]:
+    ) -> Tuple["ObsIDs", "ObsIDs"]:
         obs_joinids = self.obs_joinids
         n_obs = len(obs_joinids)
         n_acc = round(n_obs * frac)

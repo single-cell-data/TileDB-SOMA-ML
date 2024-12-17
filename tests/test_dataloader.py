@@ -39,10 +39,10 @@ def test_multiprocessing__returns_full_result(
         # Wrap with a DataLoader, which sets up the multiprocessing
         dl = experiment_dataloader(dp, num_workers=2)
 
-        full_result = list(iter(dl))
+        batches = list(iter(dl))
 
         soma_joinids = np.concatenate(
-            [t[1]["soma_joinid"].to_numpy() for t in full_result]
+            [obs["soma_joinid"].to_numpy() for _, obs in batches]
         )
         assert sorted(soma_joinids) == list(range(6))
 
@@ -66,13 +66,13 @@ def test_experiment_dataloader__non_batched(
             use_eager_fetch=use_eager_fetch,
         )
         dl = experiment_dataloader(dp)
-        data = [row for row in dl]
-        assert all(d[0].shape == (3,) for d in data)
-        assert all(d[1].shape == (1, 1) for d in data)
+        batches = list(iter(dl))
+        assert all(X.shape == (3,) for X, _ in batches)
+        assert all(obs.shape == (1, 1) for _, obs in batches)
 
-        row = data[0]
-        assert row[0].tolist() == [0, 1, 0]
-        assert row[1]["label"].tolist() == ["0"]
+        X, obs = batches[0]
+        assert X.tolist() == [0, 1, 0]
+        assert obs["label"].tolist() == ["0"]
 
 
 @pytest.mark.parametrize(

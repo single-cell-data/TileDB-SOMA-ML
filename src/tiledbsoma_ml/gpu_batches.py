@@ -11,6 +11,7 @@ import attrs
 import numpy as np
 import pandas as pd
 from scipy import sparse
+from somacore.query._eager_iter import EagerIterator
 
 from tiledbsoma_ml.common import Batch, NDArrayNumber
 from tiledbsoma_ml.io_batches import IOBatches
@@ -22,12 +23,16 @@ logger = logging.getLogger(f"tiledbsoma_ml.{splitext(__file__)[0]}")
 class GPUBatches(Iterable[Batch]):
     io_batches: IOBatches
     batch_size: int
+    use_eager_fetch: bool = True
     return_sparse_X: bool = False
 
     def __iter__(self) -> Iterator[Batch]:
         batch_size = self.batch_size
         result: Tuple[NDArrayNumber, pd.DataFrame] | None = None
-        for X_io_batch, obs_io_batch in self.io_batches:
+        io_batch_iter = iter(self.io_batches)
+        if self.use_eager_fetch:
+            io_batch_iter = EagerIterator(io_batch_iter)
+        for X_io_batch, obs_io_batch in io_batch_iter:
             assert X_io_batch.shape[0] == obs_io_batch.shape[0]
             iob_idx = 0  # current offset into io batch
             iob_len = X_io_batch.shape[0]

@@ -214,9 +214,11 @@ class BatchIterable(Iterable[Batch]):
                 shuffle=self.shuffle,
                 use_eager_fetch=self.use_eager_fetch,
             )
+
             gpu_batches = GPUBatches(
                 io_batches=io_batches,
                 batch_size=self.batch_size,
+                use_eager_fetch=self.use_eager_fetch,
                 return_sparse_X=self.return_sparse_X,
             )
             gpu_batch_iter = iter(gpu_batches)

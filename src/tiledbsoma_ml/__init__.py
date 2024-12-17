@@ -5,11 +5,9 @@
 
 """An API to support machine learning applications built on SOMA."""
 
-from .pytorch import (
-    ExperimentAxisQueryIterableDataset,
-    ExperimentAxisQueryIterDataPipe,
-    experiment_dataloader,
-)
+from .dataloader import experiment_dataloader
+from .datapipe import ExperimentAxisQueryIterDataPipe
+from .dataset import ExperimentAxisQueryIterableDataset
 
 __version__ = "0.1.0-dev"
 

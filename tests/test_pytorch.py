@@ -438,13 +438,13 @@ def test__shuffle(PipeClass: PipeClassType, soma_experiment: Experiment):
             shuffle=True,
         )
 
-        all_rows = list(iter(dp))
+        batches = list(iter(dp))
         if PipeClass is ExperimentAxisQueryIterable:
-            assert all(np.squeeze(r[0], axis=0).shape == (1,) for r in all_rows)
+            assert all(np.squeeze(X, axis=0).shape == (1,) for X, _ in batches)
         else:
-            assert all(r[0].shape == (1,) for r in all_rows)
-        soma_joinids = [row[1]["soma_joinid"].iloc[0] for row in all_rows]
-        X_values = [row[0][0].item() for row in all_rows]
+            assert all(X.shape == (1,) for X, _ in batches)
+        soma_joinids = [obs["soma_joinid"].iloc[0] for _, obs in batches]
+        X_values = [X[0].item() for X, _ in batches]
 
         # same elements
         assert set(soma_joinids) == set(range(16))

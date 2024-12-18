@@ -2,6 +2,9 @@
 # Copyright (c) 2021-2024 TileDB, Inc.
 #
 # Licensed under the MIT License.
+
+from __future__ import annotations
+
 from contextlib import contextmanager, nullcontext
 from functools import partial
 from typing import Callable, List, Tuple

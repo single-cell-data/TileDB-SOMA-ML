@@ -6,9 +6,10 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from dataclasses import astuple, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, replace
+from functools import partial
 from sys import stdout
-from typing import List, Tuple
+from typing import Iterable, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -41,98 +42,71 @@ class Case:
     obs_query: AxisQuery | None = None
     gpu: Tuple[int, int] | None = None
     worker: Tuple[int, int] | None = None
+    return_sparse_X: bool = False
+    use_eager_fetch: bool = True
     # Print observed batches' row idxs and exit; useful for generating "expected" batch values
     debug: bool = False
 
 
-def cases(*cases: Tuple[Case, ...]):
+def cases(
+    cases: Iterable[Case] | Case,
+    sweep_sparse: bool = False,
+    sweep_eager: bool = False,
+):
+    if isinstance(cases, Case):
+        cases = [cases]
+    if sweep_sparse:
+        cases = [
+            case
+            for case0 in cases
+            for case in [
+                case0,
+                replace(case0, return_sparse_X=not case0.return_sparse_X),
+            ]
+        ]
+    if sweep_eager:
+        cases = [
+            case
+            for case0 in cases
+            for case in [
+                case0,
+                replace(case0, use_eager_fetch=not case0.use_eager_fetch),
+            ]
+        ]
     return pytest.mark.parametrize(
-        ",".join(f.name for f in fields(Case)), [astuple(case) for case in cases]
+        "case,obs_range,var_range,X_value_gen",
+        [(case, case.obs_range, case.var_range, case.X_value_gen) for case in cases],
     )
 
 
-# fmt: off
-@cases(
-    *[
-        # When shuffle=False, IO batch sizes make no difference to emitted batches
-        Case(obs_range=10, batch_size=3, io_batch_size=io_batch_size, expected=[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]])
-        for io_batch_size in [ 2, 6, 10 ]
-    ],
-    *[
-        Case(obs_range=10, batch_size=3, io_batch_size=2, shuffle_chunk_size=2, seed=seed, expected=expected)
-        for seed, expected in [
-            # `shuffle_chunk_size=2` means consecutive integers come in pairs (even across batch divisions)
-            (111, [[2, 3, 1], [0, 9, 8], [5, 4, 6], [7]]),
-            (222, [[0, 1, 7], [6, 3, 2], [8, 9, 4], [5]]),
-        ]
-    ],
-    *[
-        Case(obs_range=30, batch_size=4, io_batch_size=6, shuffle_chunk_size=3, seed=seed, expected=expected)
-        for seed, expected in [
-            # Batches are size 4, but every 6 consecutive idxs are an "IO batch" consisting of two "shuffled chunks" of size 3:
-            (111, [[26,  4,  3, 25], [ 5, 24,  1,  2], [ 0, 29, 27, 28], [17, 22, 15, 21], [23, 16, 14, 18], [20, 12, 13, 19], [ 8,  6,  9, 11], [ 7, 10]]),
-            (222, [[25, 26, 27, 24], [28, 29, 17, 15], [21, 23, 22, 16], [ 0, 14,  1,  2], [12, 13, 10,  5], [11,  3,  9,  4], [ 7, 19,  6, 18], [20,  8]])
-        ]
-    ],
-    *[
-        Case(obs_range=10, batch_size=1, io_batch_size=4, shuffle_chunk_size=2, seed=seed, expected=expected)
-        for seed, expected in [
-            (111, [[ 3], [ 2], [ 0], [ 1], [ 5], [ 4], [ 9], [ 8], [ 7], [ 6]]),
-            (444, [[ 7], [ 6], [ 8], [ 9], [ 1], [ 5], [ 4], [ 0], [ 3], [ 2]])
-        ]
-    ],
-    # Exactly one batch
-    *[
-        Case(obs_range=3, batch_size=3, io_batch_size=3, **kwargs)
-        for kwargs in [
-            dict(expected=[[0, 1, 2]]),
-            dict(shuffle_chunk_size=3, seed=111, expected=[[1, 0, 2]]),
-        ]
-    ],
-    # Empty query
-    Case(obs_range=6, batch_size=3, io_batch_size=3, obs_query=AxisQuery(coords=([],)), expected=[]),
-    *[
-        Case(
-            # 120 rows, split among 3 GPUs with 2 DataLoader workers each ⇒ 20 indices assigned to each worker.
-            # Each worker's shuffled indices are the same, but offset by a multiple of 20.
-            obs_range=n_obs, batch_size=4, io_batch_size=10, shuffle_chunk_size=5, seed=333, gpu=(rank, world_size), worker=(worker_id, n_workers),
-            expected=[
-                [
-                    # Each GPU is offset by multiples of 40 (`rank * n_obs // world_size`).
-                    # Each worker is then offset by an additional 0 or 20 (within its GPU's range of 40)
-                    idx + (rank * n_obs // world_size) + (worker_id * n_obs // world_size // n_workers)
-                    for idx in batch
-                ]
-                # This pattern of indices is processed by each worker, beginning from that worker's base index (a multiple of 20)
-                # 10-element IO batches (comprised of 2 5-element shuffle-chunks) are visible across the batches
-                for batch in [[ 5,  8, 12, 11], [14,  9,  7,  6], [13, 10,  2, 18], [ 3, 16,  4, 17], [ 1, 19, 15,  0]]
-            ],
-        )
-        for n_obs in [120]
-        for world_size in [3] for rank in range(world_size)
-        for n_workers in [2] for worker_id in range(n_workers)
-    ],
-)
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("return_sparse_X", [True, False])
-# fmt: on
-def test_batching(
+sweep_cases = partial(cases, sweep_sparse=True, sweep_eager=True)
+
+
+def check(soma_experiment: Experiment, case: Case):
+    """Wrapper around ``check_case`` that "spreads" the ``Case``'s fields"""
+    check_case(soma_experiment, **asdict(case))
+
+
+def check_case(
     soma_experiment: Experiment,
     obs_range: int,
     var_range: int,
-    batch_size: int,
     io_batch_size: int,
     shuffle_chunk_size: int | None,
+    batch_size: int,
     seed: int | None,
     X_value_gen: XValueGen,
-    use_eager_fetch: bool,
-    return_sparse_X: bool,
     obs_query: AxisQuery | None,
     expected: List[List[int]],
     gpu: Tuple[int, int] | None,
     worker: Tuple[int, int] | None,
     debug: bool,
+    use_eager_fetch: bool,
+    return_sparse_X: bool,
 ):
+    """Given fields from a ``Case``, and an ``Experiment``, create an ``ExperimentBatchDataset``
+    and verify that its emitted batches match ``Case.expected``.
+    """
     if gpu or worker:
         distributed_ctx = mock_distributed(*(gpu or (0, 1)), (*worker, seed))
     else:
@@ -192,6 +166,94 @@ def test_batching(
             assert_frame_equal(a_obs, e_obs)
 
 
+# fmt: off
+@sweep_cases(
+    # When shuffle=False, IO batch sizes make no difference to emitted batches
+    Case(obs_range=10, io_batch_size=io_batch_size, batch_size=3, expected=[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]])
+    for io_batch_size in [ 2, 6, 10 ]
+)
+def test_unshuffled(soma_experiment, case):
+    check(soma_experiment, case)
+
+
+@sweep_cases(
+    Case(obs_range=10, io_batch_size=2, shuffle_chunk_size=2, batch_size=3, seed=seed, expected=expected)
+    for seed, expected in [
+        # `shuffle_chunk_size=2` means consecutive integers come in pairs (even across batch divisions)
+        (111, [[2, 3, 1], [0, 9, 8], [5, 4, 6], [7]]),
+        (222, [[0, 1, 7], [6, 3, 2], [8, 9, 4], [5]]),
+    ]
+)
+def test_10_2_2_3(soma_experiment, case):
+    check(soma_experiment, case)
+
+
+@cases(
+    Case(obs_range=30, io_batch_size=6, shuffle_chunk_size=3, batch_size=4, seed=seed, expected=expected)
+    for seed, expected in [
+        # Batches are size 4, but every 6 consecutive idxs are an "IO batch" consisting of two "shuffled chunks" of size 3:
+        (111, [[26,  4,  3, 25], [ 5, 24,  1,  2], [ 0, 29, 27, 28], [17, 22, 15, 21], [23, 16, 14, 18], [20, 12, 13, 19], [ 8,  6,  9, 11], [ 7, 10]]),
+        (222, [[25, 26, 27, 24], [28, 29, 17, 15], [21, 23, 22, 16], [ 0, 14,  1,  2], [12, 13, 10,  5], [11,  3,  9,  4], [ 7, 19,  6, 18], [20,  8]]),
+    ]
+)
+def test_30_6_3_4(soma_experiment, case):
+    check(soma_experiment, case)
+
+
+@cases(
+    Case(obs_range=10, io_batch_size=4, shuffle_chunk_size=2, batch_size=1, seed=seed, expected=expected)
+    for seed, expected in [
+        (111, [[ 3], [ 2], [ 0], [ 1], [ 5], [ 4], [ 9], [ 8], [ 7], [ 6]]),
+        (444, [[ 7], [ 6], [ 8], [ 9], [ 1], [ 5], [ 4], [ 0], [ 3], [ 2]]),
+    ]
+)
+def test_10_4_2_1(soma_experiment, case):
+    check(soma_experiment, case)
+
+
+@cases(
+    Case(obs_range=3, io_batch_size=3, batch_size=3, **kwargs)
+    for kwargs in [
+        dict(expected=[[0, 1, 2]]),
+        dict(shuffle_chunk_size=3, seed=111, expected=[[1, 0, 2]]),
+    ]
+)
+def test_exactly_one_batch(soma_experiment, case):
+    check(soma_experiment, case)
+
+
+@cases(
+    Case(obs_range=6, io_batch_size=3, batch_size=3, obs_query=AxisQuery(coords=([],)), expected=[])
+)
+def test_empty_query(soma_experiment, case):
+    check(soma_experiment, case)
+
+
+@cases(
+    Case(
+        # 120 rows, split among 3 GPUs with 2 DataLoader workers each ⇒ 20 indices assigned to each worker.
+        # Each worker's shuffled indices are the same, but offset by a multiple of 20.
+        obs_range=n_obs, batch_size=4, io_batch_size=10, shuffle_chunk_size=5, seed=333, gpu=(rank, world_size), worker=(worker_id, n_workers),
+        expected=[
+            [
+                # Each GPU is offset by multiples of 40 (`rank * n_obs // world_size`).
+                # Each worker is then offset by an additional 0 or 20 (within its GPU's range of 40)
+                idx + (rank * n_obs // world_size) + (worker_id * n_obs // world_size // n_workers)
+                for idx in batch
+            ]
+            # This pattern of indices is processed by each worker, beginning from that worker's base index (a multiple of 20)
+            # 10-element IO batches (comprised of 2 5-element shuffle-chunks) are visible across the batches
+            for batch in [[ 5,  8, 12, 11], [14,  9,  7,  6], [13, 10,  2, 18], [ 3, 16,  4, 17], [ 1, 19, 15,  0]]
+        ],
+    )
+    for n_obs in [120]
+    for world_size in [3] for rank in range(world_size)
+    for n_workers in [2] for worker_id in range(n_workers)
+)
+def test_distributed_120_10_5_4(soma_experiment, case):
+    check(soma_experiment, case)
+
+
 @pytest.mark.parametrize(
     "obs_range,var_range,X_value_gen",
     [(range(100_000_000, 100_000_003), 3, pytorch_x_value_gen)],
@@ -214,52 +276,6 @@ def test_soma_joinids(
 
         soma_joinids = np.concatenate([obs["soma_joinid"].to_numpy() for _, obs in ds])
         assert_array_equal(soma_joinids, np.arange(100_000_000, 100_000_003))
-
-
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [
-        (6, 3, pytorch_x_value_gen),
-        (7, 3, pytorch_x_value_gen),
-    ],
-)
-@pytest.mark.parametrize(
-    "world_size,rank",
-    [
-        (3, 0),
-        (3, 1),
-        (3, 2),
-        (2, 0),
-        (2, 1),
-    ],
-)
-def test_distributed__returns_data_partition_for_rank(
-    soma_experiment: Experiment,
-    obs_range: int,
-    world_size: int,
-    rank: int,
-):
-    """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode,
-    using mocks to avoid having to do real PyTorch distributed setup."""
-
-    with mock_distributed(rank, world_size):
-        with soma_experiment.axis_query(measurement_name="RNA") as query:
-            ds = ExperimentBatchDataset(
-                query,
-                layer_name="raw",
-                obs_column_names=["soma_joinid"],
-                io_batch_size=2,
-                shuffle=False,
-            )
-            batches = list(iter(ds))
-            soma_joinids = np.concatenate(
-                [obs["soma_joinid"].to_numpy() for X, obs in batches]
-            )
-
-            expected_joinids = np.array_split(np.arange(obs_range), world_size)[rank][
-                0 : obs_range // world_size
-            ].tolist()
-            assert sorted(soma_joinids) == expected_joinids
 
 
 # fmt: off

@@ -17,7 +17,7 @@ assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
 
 
 def assert_array_almost_equal(actual: np.ndarray, expected: List[List[float]]):
-    np.testing.assert_array_almost_equal(actual, np.array(expected))
+    np.testing.assert_array_almost_equal(actual, np.array(expected, dtype=np.float32))
 
 
 XValueGen = Callable[[range, range], spmatrix]
@@ -110,8 +110,8 @@ def patch_worker_info(worker_id: int, num_workers: int, seed: int):
 
 @contextmanager
 def mock_distributed(
-    rank: int,
-    world_size: int,
+    rank: int = 0,
+    world_size: int = 1,
     worker: Tuple[int, int, int] | None = None,
 ):
     worker_ctx = patch_worker_info(*worker) if worker else nullcontext()

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import astuple, dataclass, field, fields
 from sys import stdout
 from typing import List, Tuple
@@ -38,6 +39,8 @@ class Case:
     seed: int | None = None
     X_value_gen: XValueGen = field(default=pytorch_x_value_gen)
     obs_query: AxisQuery | None = None
+    gpu: Tuple[int, int] | None = None
+    worker: Tuple[int, int] | None = None
     # Print observed batches' row idxs and exit; useful for generating "expected" batch values
     debug: bool = False
 
@@ -87,7 +90,28 @@ def cases(*cases: Tuple[Case, ...]):
         ]
     ],
     # Empty query
-    Case(obs_range=6, batch_size=3, io_batch_size=3, obs_query=AxisQuery(coords=([],)), expected=[])
+    Case(obs_range=6, batch_size=3, io_batch_size=3, obs_query=AxisQuery(coords=([],)), expected=[]),
+    *[
+        Case(
+            # 120 rows, split among 3 GPUs with 2 DataLoader workers each ⇒ 20 indices assigned to each worker.
+            # Each worker's shuffled indices are the same, but offset by a multiple of 20.
+            obs_range=n_obs, batch_size=4, io_batch_size=10, shuffle_chunk_size=5, seed=333, gpu=(rank, world_size), worker=(worker_id, n_workers),
+            expected=[
+                [
+                    # Each GPU is offset by multiples of 40 (`rank * n_obs // world_size`).
+                    # Each worker is then offset by an additional 0 or 20 (within its GPU's range of 40)
+                    idx + (rank * n_obs // world_size) + (worker_id * n_obs // world_size // n_workers)
+                    for idx in batch
+                ]
+                # This pattern of indices is processed by each worker, beginning from that worker's base index (a multiple of 20)
+                # 10-element IO batches (comprised of 2 5-element shuffle-chunks) are visible across the batches
+                for batch in [[ 5,  8, 12, 11], [14,  9,  7,  6], [13, 10,  2, 18], [ 3, 16,  4, 17], [ 1, 19, 15,  0]]
+            ],
+        )
+        for n_obs in [120]
+        for world_size in [3] for rank in range(world_size)
+        for n_workers in [2] for worker_id in range(n_workers)
+    ],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
@@ -105,12 +129,20 @@ def test_batching(
     return_sparse_X: bool,
     obs_query: AxisQuery | None,
     expected: List[List[int]],
+    gpu: Tuple[int, int] | None,
+    worker: Tuple[int, int] | None,
     debug: bool,
 ):
-    shuffle = shuffle_chunk_size is not None
-    with soma_experiment.axis_query(
-        measurement_name="RNA", obs_query=obs_query
-    ) as query:
+    if gpu or worker:
+        distributed_ctx = mock_distributed(*(gpu or (0, 1)), (*worker, seed))
+    else:
+        distributed_ctx = nullcontext()
+    with (
+        distributed_ctx,
+        soma_experiment.axis_query(
+            measurement_name="RNA", obs_query=obs_query
+        ) as query,
+    ):
         ds = ExperimentBatchDataset(
             query,
             layer_name="raw",
@@ -118,12 +150,11 @@ def test_batching(
             batch_size=batch_size,
             io_batch_size=io_batch_size,
             shuffle_chunk_size=shuffle_chunk_size,
-            shuffle=shuffle,
+            shuffle=shuffle_chunk_size is not None,
             seed=seed,
             use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
         )
-        assert ds.shape == (len(expected), var_range)
 
         batches = list(iter(ds))
         if debug:
@@ -137,6 +168,7 @@ def test_batching(
             out("],\n")
             return
 
+        assert ds.shape == (len(expected), var_range)
         obs = soma_experiment.obs.read().concat().to_pandas()
         X = X_value_gen(range(obs_range), range(var_range)).toarray()
         expected_batches = [

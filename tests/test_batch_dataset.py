@@ -8,7 +8,6 @@ from __future__ import annotations
 from dataclasses import astuple, dataclass, field, fields
 from sys import stdout
 from typing import List, Tuple
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -17,12 +16,12 @@ from pandas._testing import assert_frame_equal
 from scipy import sparse
 from somacore import AxisQuery
 from tiledbsoma import Experiment
-from torch.utils.data._utils.worker import WorkerInfo
 
 from tests._utils import (
     XValueGen,
     assert_array_almost_equal,
     assert_array_equal,
+    mock_distributed,
     pytorch_x_value_gen,
 )
 from tiledbsoma_ml.batch_dataset import ExperimentBatchDataset
@@ -211,15 +210,7 @@ def test_distributed__returns_data_partition_for_rank(
     """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode,
     using mocks to avoid having to do real PyTorch distributed setup."""
 
-    with (
-        patch("torch.distributed.is_initialized") as mock_dist_is_initialized,
-        patch("torch.distributed.get_rank") as mock_dist_get_rank,
-        patch("torch.distributed.get_world_size") as mock_dist_get_world_size,
-    ):
-        mock_dist_is_initialized.return_value = True
-        mock_dist_get_rank.return_value = rank
-        mock_dist_get_world_size.return_value = world_size
-
+    with mock_distributed(rank, world_size):
         with soma_experiment.axis_query(measurement_name="RNA") as query:
             ds = ExperimentBatchDataset(
                 query,
@@ -273,33 +264,23 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
                 range(proc_splits[worker_id], proc_splits[worker_id + 1])
             )
             with (
-                patch("torch.utils.data.get_worker_info") as mock_get_worker_info,
-                patch("torch.distributed.is_initialized") as mock_dist_is_initialized,
-                patch("torch.distributed.get_rank") as mock_dist_get_rank,
-                patch("torch.distributed.get_world_size") as mock_dist_get_world_size,
+                mock_distributed(rank, world_size, (worker_id, num_workers, 1234)),
+                soma_experiment.axis_query(measurement_name="RNA") as query,
             ):
-                mock_get_worker_info.return_value = WorkerInfo(
-                    id=worker_id, num_workers=num_workers, seed=1234
+                ds = ExperimentBatchDataset(
+                    query,
+                    layer_name="raw",
+                    obs_column_names=["soma_joinid"],
+                    io_batch_size=2,
+                    shuffle=False,
                 )
-                mock_dist_is_initialized.return_value = True
-                mock_dist_get_rank.return_value = rank
-                mock_dist_get_world_size.return_value = world_size
 
-                with soma_experiment.axis_query(measurement_name="RNA") as query:
-                    ds = ExperimentBatchDataset(
-                        query,
-                        layer_name="raw",
-                        obs_column_names=["soma_joinid"],
-                        io_batch_size=2,
-                        shuffle=False,
-                    )
+                batches = list(iter(ds))
+                soma_joinids = np.concatenate(
+                    [batch[1]["soma_joinid"].to_numpy() for batch in batches]
+                ).tolist()
 
-                    batches = list(iter(ds))
-                    soma_joinids = np.concatenate(
-                        [batch[1]["soma_joinid"].to_numpy() for batch in batches]
-                    ).tolist()
-
-                    assert soma_joinids == expected_joinids
+                assert soma_joinids == expected_joinids
 
 
 @pytest.mark.parametrize(

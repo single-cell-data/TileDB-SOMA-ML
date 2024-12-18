@@ -4,7 +4,7 @@
 # Licensed under the MIT License.
 
 from functools import partial
-from typing import Callable
+from typing import Callable, List
 
 import numpy as np
 import pyarrow as pa
@@ -13,7 +13,16 @@ from tiledbsoma._collection import CollectionBase
 
 assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
 
+
+def assert_array_almost_equal(actual: np.ndarray, expected: List[List[float]]):
+    np.testing.assert_array_almost_equal(actual, np.array(expected))
+
+
 XValueGen = Callable[[range, range], spmatrix]
+
+
+def coords_to_float(r: int, c: int) -> float:
+    return float(f"{r}.{str(c)[::-1]}")
 
 
 def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
@@ -21,7 +30,15 @@ def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
         obs_range.stop - obs_range.start,
         var_range.stop - var_range.start,
     )
-    checkerboard_of_ones = coo_matrix(np.indices(occupied_shape).sum(axis=0) % 2)
+    floats = np.array(
+        [
+            [coords_to_float(r, c) for c in range(var_range.start, var_range.stop)]
+            for r in range(obs_range.start, obs_range.stop)
+        ]
+    )
+    checkerboard_of_ones = coo_matrix(
+        (np.indices(occupied_shape).sum(axis=0) % 2) * floats
+    )
     checkerboard_of_ones.row += obs_range.start
     checkerboard_of_ones.col += var_range.start
     return checkerboard_of_ones

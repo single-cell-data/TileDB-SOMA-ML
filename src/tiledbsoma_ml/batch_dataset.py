@@ -157,6 +157,8 @@ class ExperimentBatchDataset(IterableDataset[Batch]):  # type: ignore[misc]
             self.io_batch_size = (
                 ceil(io_batch_size / shuffle_chunk_size) * shuffle_chunk_size
             )
+            if io_batch_size != self.io_batch_size:
+                logger.warning(f"Rounding {io_batch_size=} up to {self.io_batch_size} (to be a multiple of {shuffle_chunk_size=}")
 
         if not self.obs_column_names:
             raise ValueError("Must specify at least one value in `obs_column_names`")

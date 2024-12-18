@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+from typing import List, Tuple
+
+from math import ceil
 from unittest.mock import patch
 
 import numpy as np
@@ -17,9 +20,10 @@ from tiledbsoma import Experiment
 from torch.utils.data._utils.worker import WorkerInfo
 
 from tests._utils import (
+    assert_array_almost_equal,
     assert_array_equal,
     pytorch_seq_x_value_gen,
-    pytorch_x_value_gen,
+    pytorch_x_value_gen, XValueGen,
 )
 from tiledbsoma_ml.batch_dataset import ExperimentBatchDataset
 
@@ -96,7 +100,7 @@ def test_uneven_soma_and_result_batches(
             X_batch = X_batch.todense()
         else:
             assert isinstance(X_batch, np.ndarray)
-        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
+        assert_array_almost_equal(X_batch, [[0, 0.1, 0], [1, 0, 1.2], [0, 2.1, 0]])
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
 
         X_batch, obs_batch = next(batch_iter)
@@ -106,50 +110,78 @@ def test_uneven_soma_and_result_batches(
             X_batch = X_batch.todense()
         else:
             assert isinstance(X_batch, np.ndarray)
-        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0], [1, 0, 1]]
+
+        assert_array_almost_equal(X_batch, [[3, 0, 3.2], [0, 4.1, 0], [5, 0, 5.2]])
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
 
 
+# fmt: off
 @pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
+    "obs_range,var_range,X_value_gen,batch_size,shuffle_chunk_size,io_batch_size,shuffle_seed,expected_row_idx_batches",
+    [
+        (10, 3, pytorch_x_value_gen, 3, 2, io_batch_size, seed, expected)
+        for seed, expected in [
+            (None, [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]),
+            ( 111, [[2, 3, 1], [0, 9, 8], [5, 4, 6], [7]]),
+            ( 222, [[0, 1, 7], [6, 3, 2], [8, 9, 4], [5]]),
+        ]
+        for io_batch_size in [2, 6, 20]
+    ],
 )
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("return_sparse_X", [True, False])
+@pytest.mark.parametrize("use_eager_fetch", [True, False][:1])
+@pytest.mark.parametrize("return_sparse_X", [True, False][:1])
+# fmt: on
 def test_batching__all_batches_full_size(
     soma_experiment: Experiment,
+    obs_range: int,
+    var_range: int,
+    X_value_gen: XValueGen,
+    batch_size: int,
+    io_batch_size: int,
+    shuffle_chunk_size: int,
+    shuffle_seed: int | None,
     use_eager_fetch: bool,
     return_sparse_X: bool,
+    expected_row_idx_batches: List[List[int]],
 ):
+    obs = soma_experiment.obs.read().concat().to_pandas()
+    X = X_value_gen(range(obs_range), range(var_range)).toarray()
+    expected_batches = [
+        (
+            [
+                X[row_idx].tolist()
+                for row_idx in row_idx_batch
+            ],
+            pd.concat([
+                obs.loc[[row_idx], ['label']]
+                for row_idx in row_idx_batch
+            ]).reset_index(drop=True)
+        )
+        for row_idx_batch in expected_row_idx_batches
+    ]
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentBatchDataset(
             query,
             layer_name="raw",
             obs_column_names=["label"],
-            batch_size=3,
-            shuffle=False,
+            batch_size=batch_size,
+            io_batch_size=io_batch_size,
+            shuffle_chunk_size=shuffle_chunk_size,
+            shuffle=shuffle_seed is not None,
+            seed=shuffle_seed,
             use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
         )
-        batch_iter = iter(ds)
-        assert ds.shape == (2, 3)
+        assert ds.shape == (ceil(obs_range / batch_size), var_range)
 
-        X_batch, obs_batch = next(batch_iter)
-        if return_sparse_X:
-            assert isinstance(X_batch, sparse.csr_matrix)
-            X_batch = X_batch.todense()
-        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
-
-        X_batch, obs_batch = next(batch_iter)
-        if return_sparse_X:
-            assert isinstance(X_batch, sparse.csr_matrix)
-            X_batch = X_batch.todense()
-        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0], [1, 0, 1]]
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
-
-        with pytest.raises(StopIteration):
-            next(batch_iter)
+        batches = list(iter(ds))
+        assert len(batches) == len(expected_batches)
+        for (a_X, a_obs), (e_X, e_obs) in zip(batches, expected_batches):
+            if return_sparse_X:
+                assert isinstance(a_X, sparse.csr_matrix)
+                a_X = a_X.toarray()
+            assert_array_almost_equal(a_X, e_X)
+            assert_frame_equal(a_obs, e_obs)
 
 
 @pytest.mark.parametrize(

@@ -50,12 +50,12 @@ class ExperimentBatchDataset(IterableDataset[Batch]):  # type: ignore[misc]
         layer_name: Optional[str] = None,
         obs_column_names: Sequence[str] = ("soma_joinid",),
         batch_size: int = 1,
-        shuffle: bool = True,
         io_batch_size: int = 2**16,
+        shuffle: bool = True,
         shuffle_chunk_size: int = 64,
-        return_sparse_X: bool = False,
         seed: int | None = None,
         sample: float | None = None,
+        return_sparse_X: bool = False,
         use_eager_fetch: bool = True,
     ):
         """
@@ -158,7 +158,9 @@ class ExperimentBatchDataset(IterableDataset[Batch]):  # type: ignore[misc]
                 ceil(io_batch_size / shuffle_chunk_size) * shuffle_chunk_size
             )
             if io_batch_size != self.io_batch_size:
-                logger.warning(f"Rounding {io_batch_size=} up to {self.io_batch_size} (to be a multiple of {shuffle_chunk_size=}")
+                raise ValueError(
+                    f"{io_batch_size=} is not a multiple of {shuffle_chunk_size=}"
+                )
 
         if not self.obs_column_names:
             raise ValueError("Must specify at least one value in `obs_column_names`")

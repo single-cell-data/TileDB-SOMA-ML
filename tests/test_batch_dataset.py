@@ -5,161 +5,113 @@
 
 from __future__ import annotations
 
+from dataclasses import astuple, dataclass, field, fields
+from sys import stdout
 from typing import List, Tuple
-
-from math import ceil
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
-import tiledbsoma as soma
 from pandas._testing import assert_frame_equal
 from scipy import sparse
+from somacore import AxisQuery
 from tiledbsoma import Experiment
 from torch.utils.data._utils.worker import WorkerInfo
 
 from tests._utils import (
+    XValueGen,
     assert_array_almost_equal,
     assert_array_equal,
-    pytorch_seq_x_value_gen,
-    pytorch_x_value_gen, XValueGen,
+    pytorch_x_value_gen,
 )
 from tiledbsoma_ml.batch_dataset import ExperimentBatchDataset
 
 
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("return_sparse_X", [True, False])
-def test_non_batched(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-    return_sparse_X: bool,
-):
-    """Check batches of size 1 (the default)"""
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentBatchDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            shuffle=False,
-            use_eager_fetch=use_eager_fetch,
-            return_sparse_X=return_sparse_X,
-        )
-        assert ds.shape == (6, 3)
-        batch_iter = iter(ds)
-        for idx, (X_batch, obs_batch) in enumerate(batch_iter):
-            expected_X = [0, 1, 0] if idx % 2 == 0 else [1, 0, 1]
-            if return_sparse_X:
-                assert isinstance(X_batch, sparse.csr_matrix)
-                # Sparse slices are always 2D
-                assert X_batch.shape == (1, 3)
-                assert X_batch.todense().tolist() == [expected_X]
-            else:
-                assert isinstance(X_batch, np.ndarray)
-                # Single-row batches are "squeezed"
-                assert X_batch.shape == (3,)
-                assert X_batch.tolist() == expected_X
-
-            assert_frame_equal(obs_batch, pd.DataFrame({"label": [str(idx)]}))
+@dataclass
+class Case:
+    obs_range: int
+    batch_size: int
+    io_batch_size: int
+    expected: List[List[int]]
+    var_range: int = 3
+    shuffle_chunk_size: int | None = None
+    seed: int | None = None
+    X_value_gen: XValueGen = field(default=pytorch_x_value_gen)
+    obs_query: AxisQuery | None = None
+    # Print observed batches' row idxs and exit; useful for generating "expected" batch values
+    debug: bool = False
 
 
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("return_sparse_X", [True, False])
-def test_uneven_soma_and_result_batches(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-    return_sparse_X: bool,
-):
-    """Check that batches are correctly created when they require fetching multiple chunks."""
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentBatchDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            shuffle=False,
-            batch_size=3,
-            io_batch_size=2,
-            use_eager_fetch=use_eager_fetch,
-            return_sparse_X=return_sparse_X,
-        )
-        assert ds.shape == (2, 3)
-        batch_iter = iter(ds)
-
-        X_batch, obs_batch = next(batch_iter)
-        assert X_batch.shape == (3, 3)
-        if return_sparse_X:
-            assert isinstance(X_batch, sparse.csr_matrix)
-            X_batch = X_batch.todense()
-        else:
-            assert isinstance(X_batch, np.ndarray)
-        assert_array_almost_equal(X_batch, [[0, 0.1, 0], [1, 0, 1.2], [0, 2.1, 0]])
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
-
-        X_batch, obs_batch = next(batch_iter)
-        assert X_batch.shape == (3, 3)
-        if return_sparse_X:
-            assert isinstance(X_batch, sparse.csr_matrix)
-            X_batch = X_batch.todense()
-        else:
-            assert isinstance(X_batch, np.ndarray)
-
-        assert_array_almost_equal(X_batch, [[3, 0, 3.2], [0, 4.1, 0], [5, 0, 5.2]])
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
+def cases(*cases: Tuple[Case, ...]):
+    return pytest.mark.parametrize(
+        ",".join(f.name for f in fields(Case)), [astuple(case) for case in cases]
+    )
 
 
 # fmt: off
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen,batch_size,shuffle_chunk_size,io_batch_size,shuffle_seed,expected_row_idx_batches",
-    [
-        (10, 3, pytorch_x_value_gen, 3, 2, io_batch_size, seed, expected)
-        for seed, expected in [
-            (None, [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]),
-            ( 111, [[2, 3, 1], [0, 9, 8], [5, 4, 6], [7]]),
-            ( 222, [[0, 1, 7], [6, 3, 2], [8, 9, 4], [5]]),
-        ]
-        for io_batch_size in [2, 6, 20]
+@cases(
+    *[
+        # When shuffle=False, IO batch sizes make no difference to emitted batches
+        Case(obs_range=10, batch_size=3, io_batch_size=io_batch_size, expected=[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]])
+        for io_batch_size in [ 2, 6, 10 ]
     ],
+    *[
+        Case(obs_range=10, batch_size=3, io_batch_size=2, shuffle_chunk_size=2, seed=seed, expected=expected)
+        for seed, expected in [
+            # `shuffle_chunk_size=2` means consecutive integers come in pairs (even across batch divisions)
+            (111, [[2, 3, 1], [0, 9, 8], [5, 4, 6], [7]]),
+            (222, [[0, 1, 7], [6, 3, 2], [8, 9, 4], [5]]),
+        ]
+    ],
+    *[
+        Case(obs_range=30, batch_size=4, io_batch_size=6, shuffle_chunk_size=3, seed=seed, expected=expected)
+        for seed, expected in [
+            # Batches are size 4, but every 6 consecutive idxs are an "IO batch" consisting of two "shuffled chunks" of size 3:
+            (111, [[26,  4,  3, 25], [ 5, 24,  1,  2], [ 0, 29, 27, 28], [17, 22, 15, 21], [23, 16, 14, 18], [20, 12, 13, 19], [ 8,  6,  9, 11], [ 7, 10]]),
+            (222, [[25, 26, 27, 24], [28, 29, 17, 15], [21, 23, 22, 16], [ 0, 14,  1,  2], [12, 13, 10,  5], [11,  3,  9,  4], [ 7, 19,  6, 18], [20,  8]])
+        ]
+    ],
+    *[
+        Case(obs_range=10, batch_size=1, io_batch_size=4, shuffle_chunk_size=2, seed=seed, expected=expected)
+        for seed, expected in [
+            (111, [[ 3], [ 2], [ 0], [ 1], [ 5], [ 4], [ 9], [ 8], [ 7], [ 6]]),
+            (444, [[ 7], [ 6], [ 8], [ 9], [ 1], [ 5], [ 4], [ 0], [ 3], [ 2]])
+        ]
+    ],
+    # Exactly one batch
+    *[
+        Case(obs_range=3, batch_size=3, io_batch_size=3, **kwargs)
+        for kwargs in [
+            dict(expected=[[0, 1, 2]]),
+            dict(shuffle_chunk_size=3, seed=111, expected=[[1, 0, 2]]),
+        ]
+    ],
+    # Empty query
+    Case(obs_range=6, batch_size=3, io_batch_size=3, obs_query=AxisQuery(coords=([],)), expected=[])
 )
-@pytest.mark.parametrize("use_eager_fetch", [True, False][:1])
-@pytest.mark.parametrize("return_sparse_X", [True, False][:1])
+@pytest.mark.parametrize("use_eager_fetch", [True, False])
+@pytest.mark.parametrize("return_sparse_X", [True, False])
 # fmt: on
-def test_batching__all_batches_full_size(
+def test_batching(
     soma_experiment: Experiment,
     obs_range: int,
     var_range: int,
-    X_value_gen: XValueGen,
     batch_size: int,
     io_batch_size: int,
-    shuffle_chunk_size: int,
-    shuffle_seed: int | None,
+    shuffle_chunk_size: int | None,
+    seed: int | None,
+    X_value_gen: XValueGen,
     use_eager_fetch: bool,
     return_sparse_X: bool,
-    expected_row_idx_batches: List[List[int]],
+    obs_query: AxisQuery | None,
+    expected: List[List[int]],
+    debug: bool,
 ):
-    obs = soma_experiment.obs.read().concat().to_pandas()
-    X = X_value_gen(range(obs_range), range(var_range)).toarray()
-    expected_batches = [
-        (
-            [
-                X[row_idx].tolist()
-                for row_idx in row_idx_batch
-            ],
-            pd.concat([
-                obs.loc[[row_idx], ['label']]
-                for row_idx in row_idx_batch
-            ]).reset_index(drop=True)
-        )
-        for row_idx_batch in expected_row_idx_batches
-    ]
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
+    shuffle = shuffle_chunk_size is not None
+    with soma_experiment.axis_query(
+        measurement_name="RNA", obs_query=obs_query
+    ) as query:
         ds = ExperimentBatchDataset(
             query,
             layer_name="raw",
@@ -167,19 +119,44 @@ def test_batching__all_batches_full_size(
             batch_size=batch_size,
             io_batch_size=io_batch_size,
             shuffle_chunk_size=shuffle_chunk_size,
-            shuffle=shuffle_seed is not None,
-            seed=shuffle_seed,
+            shuffle=shuffle,
+            seed=seed,
             use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
         )
-        assert ds.shape == (ceil(obs_range / batch_size), var_range)
+        assert ds.shape == (len(expected), var_range)
 
         batches = list(iter(ds))
+        if debug:
+            # Print observed batch indices and exit; useful for generating "expected" values for test cases
+            out = stdout.write
+            out("\n[")
+            for idx, (_, obs) in enumerate(batches):
+                if idx > 0:
+                    out(", ")
+                out(f"[{', '.join([ f'{label:>2}' for label in obs.label ])}]")
+            out("],\n")
+            return
+
+        obs = soma_experiment.obs.read().concat().to_pandas()
+        X = X_value_gen(range(obs_range), range(var_range)).toarray()
+        expected_batches = [
+            (
+                [X[row_idx].tolist() for row_idx in row_idx_batch],
+                pd.concat(
+                    [obs.loc[[row_idx], ["label"]] for row_idx in row_idx_batch]
+                ).reset_index(drop=True),
+            )
+            for row_idx_batch in expected
+        ]
         assert len(batches) == len(expected_batches)
         for (a_X, a_obs), (e_X, e_obs) in zip(batches, expected_batches):
             if return_sparse_X:
                 assert isinstance(a_X, sparse.csr_matrix)
                 a_X = a_X.toarray()
+            if batch_size == 1 and not return_sparse_X:
+                assert len(e_X) == 1
+                e_X = e_X[0]
             assert_array_almost_equal(a_X, e_X)
             assert_frame_equal(a_obs, e_obs)
 
@@ -204,124 +181,8 @@ def test_soma_joinids(
         )
         assert ds.shape == (1, 3)
 
-        soma_joinids = np.concatenate(
-            [batch[1]["soma_joinid"].to_numpy() for batch in ds]
-        )
+        soma_joinids = np.concatenate([obs["soma_joinid"].to_numpy() for _, obs in ds])
         assert_array_equal(soma_joinids, np.arange(100_000_000, 100_000_003))
-
-
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(5, 3, pytorch_x_value_gen)],
-)
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("return_sparse_X", [True, False])
-def test_batching__partial_final_batch_size(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-    return_sparse_X: bool,
-):
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentBatchDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            shuffle=False,
-            use_eager_fetch=use_eager_fetch,
-            return_sparse_X=return_sparse_X,
-        )
-        assert ds.shape == (2, 3)
-        batch_iter = iter(ds)
-
-        next(batch_iter)
-        X_batch, obs_batch = next(batch_iter)
-        if return_sparse_X:
-            assert isinstance(X_batch, sparse.csr_matrix)
-            X_batch = X_batch.todense()
-        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0]]
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4"]}))
-
-        with pytest.raises(StopIteration):
-            next(batch_iter)
-
-
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(3, 3, pytorch_x_value_gen)],
-)
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-def test_batching__exactly_one_batch(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-):
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentBatchDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            shuffle=False,
-            use_eager_fetch=use_eager_fetch,
-        )
-        assert ds.shape == (1, 3)
-        batch_iter = iter(ds)
-        X_batch, obs_batch = next(batch_iter)
-        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
-
-        with pytest.raises(StopIteration):
-            next(batch_iter)
-
-
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-def test_batching__empty_query_result(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-):
-    with soma_experiment.axis_query(
-        measurement_name="RNA", obs_query=soma.AxisQuery(coords=([],))
-    ) as query:
-        ds = ExperimentBatchDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            use_eager_fetch=use_eager_fetch,
-        )
-        assert ds.shape == (0, 3)
-        batch_iter = iter(ds)
-
-        with pytest.raises(StopIteration):
-            next(batch_iter)
-
-
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(10, 1, pytorch_x_value_gen)],
-)
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
-def test_batching__partial_soma_batches_are_concatenated(
-    soma_experiment: Experiment, use_eager_fetch: bool
-):
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentBatchDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            # set SOMA batch read size such that PyTorch batches will span the tail and head of two SOMA batches
-            io_batch_size=4,
-            use_eager_fetch=use_eager_fetch,
-        )
-
-        batches = list(ds)
-
-        assert [len(batch[0]) for batch in batches] == [3, 3, 3, 1]
 
 
 @pytest.mark.parametrize(
@@ -439,31 +300,6 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
                     ).tolist()
 
                     assert soma_joinids == expected_joinids
-
-
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen", [(16, 1, pytorch_seq_x_value_gen)]
-)
-def test__shuffle(soma_experiment: Experiment):
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentBatchDataset(
-            query,
-            layer_name="raw",
-            shuffle=True,
-        )
-
-        all_rows = list(iter(ds))
-        assert all(r[0].shape == (1,) for r in all_rows)
-        soma_joinids = [row[1]["soma_joinid"].iloc[0] for row in all_rows]
-        X_values = [row[0][0].item() for row in all_rows]
-
-        # same elements
-        assert set(soma_joinids) == set(range(16))
-        # not ordered! (...with a `1/16!` probability of being ordered)
-        assert soma_joinids != list(range(16))
-        # randomizes X in same order as obs
-        # note: X values were explicitly set to match obs_joinids to allow for this simple assertion
-        assert X_values == soma_joinids
 
 
 @pytest.mark.parametrize(

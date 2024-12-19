@@ -27,7 +27,6 @@ import pyarrow as pa
 import scipy.sparse as sparse
 import tiledbsoma as soma
 import torch
-from somacore.query._eager_iter import EagerIterator as _EagerIterator
 
 from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._distributed import (
@@ -36,6 +35,13 @@ from tiledbsoma_ml._distributed import (
 )
 from tiledbsoma_ml._experiment_locator import ExperimentLocator
 from tiledbsoma_ml._utils import NDArrayNumber, batched, splits
+
+try:
+    # somacore<1.0.24 / tiledbsoma<1.15
+    from somacore.query._eager_iter import EagerIterator as _EagerIterator
+except ImportError:
+    # somacore>=1.0.24 / tiledbsoma>=1.15
+    from tiledbsoma._eager_iter import EagerIterator as _EagerIterator
 
 logger = logging.getLogger("tiledbsoma_ml.pytorch")
 

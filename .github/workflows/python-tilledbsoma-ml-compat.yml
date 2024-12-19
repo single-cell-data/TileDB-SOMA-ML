@@ -31,6 +31,7 @@ jobs:
           - "tiledbsoma~=1.12.0"
           - "tiledbsoma~=1.13.0"
           - "tiledbsoma~=1.14.0"
+          - "tiledbsoma~=1.15.0rc4"
 
     runs-on: ${{ matrix.os }}
 

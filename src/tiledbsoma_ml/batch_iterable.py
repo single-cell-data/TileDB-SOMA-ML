@@ -35,14 +35,7 @@ from tiledbsoma_ml._distributed import (
     get_worker_world_rank,
 )
 from tiledbsoma_ml._experiment_locator import ExperimentLocator
-from tiledbsoma_ml._utils import NDArrayNumber, batched, splits
-
-try:
-    # somacore<1.0.24 / tiledbsoma<1.15
-    from somacore.query._eager_iter import EagerIterator as _EagerIterator
-except ImportError:
-    # somacore>=1.0.24 / tiledbsoma>=1.15
-    from tiledbsoma._eager_iter import EagerIterator as _EagerIterator
+from tiledbsoma_ml._utils import EagerIterator, NDArrayNumber, batched, splits
 
 logger = logging.getLogger("tiledbsoma_ml.pytorch")
 
@@ -323,7 +316,7 @@ class BatchIterable(Iterable[Batch]):
             obs_joinid_iter = self._create_obs_joinids_partition()
             _mini_batch_iter = self._mini_batch_iter(exp.obs, X, obs_joinid_iter)
             if self.use_eager_fetch:
-                _mini_batch_iter = _EagerIterator(
+                _mini_batch_iter = EagerIterator(
                     _mini_batch_iter, pool=exp.context.threadpool
                 )
 
@@ -459,7 +452,7 @@ class BatchIterable(Iterable[Batch]):
                 for X_tbl in X_tbl_iter
             )
             if self.use_eager_fetch:
-                _io_buf_iter = _EagerIterator(_io_buf_iter, pool=X.context.threadpool)
+                _io_buf_iter = EagerIterator(_io_buf_iter, pool=X.context.threadpool)
 
             # Now that X read is potentially in progress (in eager mode), go fetch obs data
             # fmt: off
@@ -499,7 +492,7 @@ class BatchIterable(Iterable[Batch]):
 
         io_batch_iter = self._io_batch_iter(obs, X, obs_joinid_iter)
         if self.use_eager_fetch:
-            io_batch_iter = _EagerIterator(io_batch_iter, pool=X.context.threadpool)
+            io_batch_iter = EagerIterator(io_batch_iter, pool=X.context.threadpool)
 
         mini_batch_size = self.batch_size
         result: Tuple[NDArrayNumber, pd.DataFrame] | None = None

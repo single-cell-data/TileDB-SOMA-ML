@@ -11,6 +11,16 @@ from typing import Any, Iterable, Iterator, Tuple, TypeVar
 import numpy as np
 import numpy.typing as npt
 
+try:
+    # somacore<1.0.24 / tiledbsoma<1.15
+    from somacore.query._eager_iter import EagerIterator as _EagerIterator
+except ImportError:
+    # somacore>=1.0.24 / tiledbsoma>=1.15
+    from tiledbsoma._eager_iter import EagerIterator as _EagerIterator
+
+# Abstract over the import `try` above, re-export for use in this module:
+EagerIterator = _EagerIterator
+
 _T_co = TypeVar("_T_co", covariant=True)
 NDArrayNumber = npt.NDArray[np.number[Any]]
 

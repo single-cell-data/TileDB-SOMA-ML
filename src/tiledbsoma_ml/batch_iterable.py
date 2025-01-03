@@ -42,12 +42,12 @@ logger = logging.getLogger("tiledbsoma_ml.pytorch")
 NDArrayJoinId = npt.NDArray[np.int64]
 XBatch = Union[NDArrayNumber, sparse.csr_matrix]
 Batch = Tuple[XBatch, pd.DataFrame]
-""""Batch" type yielded by ``ExperimentAxisQueryIterableDataset`` and ``ExperimentAxisQueryIterDataPipe``;
-pairs a slice of ``X`` rows with a corresponding slice of ``obs``. In the default case.
-a Batch is a tuple of :class:`numpy.ndarray` and :class:`pandas.DataFrame` (for ``X`` and ``obs``,
-respectively). If the iterator is created with ``return_sparse_X`` as True, the ``X`` slice is
-returned as a :class:`scipy.sparse.csr_matrix`. If the ``batch_size`` is 1, the :class:`numpy.ndarray`
-will be returned with rank 1; in all other cases, objects are returned with rank 2."""
+""""Batch" type yielded by ``ExperimentAxisQueryIterableDataset``; pairs a slice of ``X`` rows with
+a corresponding slice of ``obs``. In the default case. A Batch is a tuple of :class:`numpy.ndarray` 
+and :class:`pandas.DataFrame` (for ``X`` and ``obs``, respectively). If the iterator is created 
+with ``return_sparse_X`` as True, the ``X`` slice is returned as a :class:`scipy.sparse.csr_matrix`. 
+If the ``batch_size`` is 1, the :class:`numpy.ndarray` will be returned with rank 1; in all other
+cases, objects are returned with rank 2."""
 
 
 class BatchIterable(Iterable[Batch]):
@@ -56,9 +56,8 @@ class BatchIterable(Iterable[Batch]):
     produces a batch containing equal-sized ``X`` and ``obs`` data, in the form of a :class:`numpy.ndarray` and
     :class:`pandas.DataFrame`, respectively.
 
-    Private base class for subclasses of :class:`torch.utils.data.IterableDataset` and
-    :class:`torchdata.datapipes.iter.IterDataPipe`. Refer to :class:`ExperimentAxisQueryIterableDataset`
-    and :class:`ExperimentAxisQueryIterDataPipe` for more details on usage.
+    Private base class for subclasses of :class:`torch.utils.data.IterableDataset`. Refer to
+    :class:`ExperimentAxisQueryIterableDataset` for more details on usage.
 
     Lifecycle:
         experimental

@@ -41,7 +41,7 @@ logger = logging.getLogger("tiledbsoma_ml.pytorch")
 NDArrayJoinId = npt.NDArray[np.int64]
 XBatch = Union[NDArrayNumber, sparse.csr_matrix]
 Batch = Tuple[XBatch, pd.DataFrame]
-""""Batch" type yielded by ``ExperimentAxisQueryIterableDataset``; pairs a slice of ``X`` rows with
+""""Batch" type yielded by ``ExperimentDataset``; pairs a slice of ``X`` rows with
 a corresponding slice of ``obs``. In the default case. A Batch is a tuple of :class:`numpy.ndarray`
 and :class:`pandas.DataFrame` (for ``X`` and ``obs``, respectively). If the iterator is created
 with ``return_sparse_X`` as True, the ``X`` slice is returned as a :class:`scipy.sparse.csr_matrix`.
@@ -56,7 +56,7 @@ class BatchIterable(Iterable[Batch]):
     :class:`pandas.DataFrame`, respectively.
 
     Private base class for subclasses of :class:`torch.utils.data.IterableDataset`. Refer to
-    :class:`ExperimentAxisQueryIterableDataset` for more details on usage.
+    :class:`ExperimentDataset` for more details on usage.
 
     Lifecycle:
         experimental
@@ -76,7 +76,7 @@ class BatchIterable(Iterable[Batch]):
         use_eager_fetch: bool = True,
     ):
         """
-        Construct a new ``ExperimentAxisQueryIterable``, suitable for use with :class:`torch.utils.data.DataLoader`.
+        Construct a new ``Experiment``, suitable for use with :class:`torch.utils.data.DataLoader`.
 
         The resulting iterator will produce a tuple containing associated slices of ``X`` and ``obs`` data, as
         a NumPy :class:`numpy.ndarray` (or optionally, :class:`scipy.sparse.csr_matrix`) and a Pandas
@@ -251,9 +251,7 @@ class BatchIterable(Iterable[Batch]):
         if self._initialized:
             return
 
-        logger.debug(
-            f"Initializing ExperimentAxisQueryIterable (shuffle={self.shuffle})"
-        )
+        logger.debug(f"Initializing Experiment (shuffle={self.shuffle})")
 
         if exp is None:
             # If no user-provided Experiment, open/close it ourselves
@@ -300,7 +298,7 @@ class BatchIterable(Iterable[Batch]):
         )
         if world_size > 1 and self.shuffle and self._user_specified_seed is None:
             raise ValueError(
-                "ExperimentAxisQueryIterable requires an explicit `seed` when shuffle is used in a multi-process configuration."
+                "Experiment requires an explicit `seed` when shuffle is used in a multi-process configuration."
             )
 
         with self.experiment_locator.open_experiment() as exp:
@@ -308,7 +306,7 @@ class BatchIterable(Iterable[Batch]):
             X = exp.ms[self.measurement_name].X[self.layer_name]
             if not isinstance(X, soma.SparseNDArray):
                 raise NotImplementedError(
-                    "ExperimentAxisQueryIterable only supports X layers which are of type SparseNDArray"
+                    "Experiment only supports X layers which are of type SparseNDArray"
                 )
 
             obs_joinid_iter = self._create_obs_joinids_partition()
@@ -341,7 +339,7 @@ class BatchIterable(Iterable[Batch]):
 
     @property
     def shape(self) -> Tuple[int, int]:
-        """Return the number of batches and features that will be yielded from this :class:`tiledbsoma_ml.ExperimentAxisQueryIterable`.
+        """Return the number of batches and features that will be yielded from this :class:`tiledbsoma_ml.Experiment`.
 
         If used in multiprocessing mode (i.e. :class:`torch.utils.data.DataLoader` instantiated with num_workers > 0),
         the number of batches will reflect the size of the data partition assigned to the active process.
@@ -381,7 +379,7 @@ class BatchIterable(Iterable[Batch]):
 
     def __getitem__(self, index: int) -> Batch:
         raise NotImplementedError(
-            "`ExperimentAxisQueryIterable` can only be iterated - does not support mapping"
+            "`Experiment` can only be iterated - does not support mapping"
         )
 
     def _io_batch_iter(

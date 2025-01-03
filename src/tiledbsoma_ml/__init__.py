@@ -8,7 +8,7 @@
 from importlib.metadata import PackageNotFoundError, version
 
 from .dataloader import experiment_dataloader
-from .dataset import ExperimentAxisQueryIterableDataset
+from .dataset import ExperimentDataset
 
 try:
     __version__ = version("tiledbsoma-ml")
@@ -18,6 +18,6 @@ except PackageNotFoundError:
 
 
 __all__ = [
-    "ExperimentAxisQueryIterableDataset",
+    "ExperimentDataset",
     "experiment_dataloader",
 ]

@@ -18,18 +18,19 @@ from torch.utils.data._utils.worker import WorkerInfo
 
 from tests._utils import (
     assert_array_equal,
+    parametrize,
     pytorch_seq_x_value_gen,
     pytorch_x_value_gen,
 )
 from tiledbsoma_ml import ExperimentDataset
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen",
     [(6, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("return_sparse_X", [True, False])
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
+@parametrize("return_sparse_X", [True, False])
+@parametrize("use_eager_fetch", [True, False])
 def test_non_batched(
     soma_experiment: Experiment,
     return_sparse_X: bool,
@@ -63,12 +64,12 @@ def test_non_batched(
             assert_frame_equal(obs_batch, pd.DataFrame({"label": [str(idx)]}))
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen",
     [(6, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("return_sparse_X", [True, False])
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
+@parametrize("return_sparse_X", [True, False])
+@parametrize("use_eager_fetch", [True, False])
 def test_uneven_soma_and_result_batches(
     soma_experiment: Experiment,
     return_sparse_X: bool,
@@ -110,12 +111,12 @@ def test_uneven_soma_and_result_batches(
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen",
     [(6, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("return_sparse_X", [True, False])
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
+@parametrize("return_sparse_X", [True, False])
+@parametrize("use_eager_fetch", [True, False])
 def test_batching__all_batches_full_size(
     soma_experiment: Experiment,
     return_sparse_X: bool,
@@ -152,11 +153,11 @@ def test_batching__all_batches_full_size(
             next(batch_iter)
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen",
     [(range(100_000_000, 100_000_003), 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
+@parametrize("use_eager_fetch", [True, False])
 def test_soma_joinids(
     soma_experiment: Experiment,
     use_eager_fetch: bool,
@@ -178,12 +179,12 @@ def test_soma_joinids(
         assert_array_equal(soma_joinids, np.arange(100_000_000, 100_000_003))
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen",
     [(5, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("return_sparse_X", [True, False])
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
+@parametrize("return_sparse_X", [True, False])
+@parametrize("use_eager_fetch", [True, False])
 def test_batching__partial_final_batch_size(
     soma_experiment: Experiment,
     return_sparse_X: bool,
@@ -214,11 +215,11 @@ def test_batching__partial_final_batch_size(
             next(batch_iter)
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen",
     [(3, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
+@parametrize("use_eager_fetch", [True, False])
 def test_batching__exactly_one_batch(
     soma_experiment: Experiment,
     use_eager_fetch: bool,
@@ -242,11 +243,11 @@ def test_batching__exactly_one_batch(
             next(batch_iter)
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen",
     [(6, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
+@parametrize("use_eager_fetch", [True, False])
 def test_batching__empty_query_result(
     soma_experiment: Experiment,
     use_eager_fetch: bool,
@@ -268,11 +269,11 @@ def test_batching__empty_query_result(
             next(batch_iter)
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen",
     [(10, 1, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("use_eager_fetch", (True, False))
+@parametrize("use_eager_fetch", [True, False])
 def test_batching__partial_soma_batches_are_concatenated(
     soma_experiment: Experiment, use_eager_fetch: bool
 ):
@@ -291,11 +292,11 @@ def test_batching__partial_soma_batches_are_concatenated(
         assert [len(batch[0]) for batch in batches] == [3, 3, 3, 1]
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen",
     [(6, 3, pytorch_x_value_gen), (7, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize(
+@parametrize(
     "world_size,rank",
     [(3, 0), (3, 1), (3, 2), (2, 0), (2, 1)],
 )
@@ -337,7 +338,7 @@ def test_distributed__returns_data_partition_for_rank(
 
 
 # fmt: off
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen,world_size,num_workers,splits",
     [
         (12, 3, pytorch_x_value_gen, 3, 2, [[0, 2, 4], [4,  6,  8], [ 8, 10, 12]]),
@@ -400,9 +401,7 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
                     assert soma_joinids == expected_joinids
 
 
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen", [(16, 1, pytorch_seq_x_value_gen)]
-)
+@parametrize("obs_range,var_range,X_value_gen", [(16, 1, pytorch_seq_x_value_gen)])
 def test__shuffle(soma_experiment: Experiment):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
@@ -425,9 +424,7 @@ def test__shuffle(soma_experiment: Experiment):
         assert X_values == soma_joinids
 
 
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)]
-)
+@parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
 def test_experiment_axis_query_iterable_error_checks(
     soma_experiment: Experiment,
 ):

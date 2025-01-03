@@ -8,15 +8,16 @@ from typing import Tuple
 
 import numpy as np
 import numpy.typing as npt
-import pytest
 from scipy import sparse
 
+from tests._utils import parametrize
 
-@pytest.mark.parametrize(  # keep these small as we materialize as a dense ndarray
+
+@parametrize(  # keep these small as we materialize as a dense ndarray
     "shape",
     [(100, 10), (10, 100), (1, 1), (1, 100), (100, 1), (0, 0), (10, 0), (0, 10)],
 )
-@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.int32])
+@parametrize("dtype", [np.float32, np.float64, np.int32])
 def test_construct_from_ijd(shape: Tuple[int, int], dtype: npt.DTypeLike):
     from tiledbsoma_ml._csr import CSR_IO_Buffer
 
@@ -53,11 +54,11 @@ def test_construct_from_ijd(shape: Tuple[int, int], dtype: npt.DTypeLike):
     assert (_ncsr.slice_toscipy(slice(None)) != sp_csr[:]).nnz == 0
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "shape",
     [(100, 10), (10, 100), (1, 1), (1, 100), (100, 1), (0, 0), (10, 0), (0, 10)],
 )
-@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.int32])
+@parametrize("dtype", [np.float32, np.float64, np.int32])
 def test_construct_from_pjd(shape: Tuple[int, int], dtype: npt.DTypeLike):
     from tiledbsoma_ml._csr import CSR_IO_Buffer
 
@@ -90,12 +91,12 @@ def test_construct_from_pjd(shape: Tuple[int, int], dtype: npt.DTypeLike):
     assert (_ncsr.slice_toscipy(slice(None)) != sp_csr[:]).nnz == 0
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "shape",
     [(100, 10), (10, 100)],
 )
-@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.int32])
-@pytest.mark.parametrize("n_splits", [2, 3, 4])
+@parametrize("dtype", [np.float32, np.float64, np.int32])
+@parametrize("n_splits", [2, 3, 4])
 def test_merge(shape: Tuple[int, int], dtype: npt.DTypeLike, n_splits: int):
     from tiledbsoma_ml._csr import CSR_IO_Buffer
 
@@ -121,7 +122,7 @@ def test_merge(shape: Tuple[int, int], dtype: npt.DTypeLike, n_splits: int):
     ).nnz == 0
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "shape",
     [(100, 10), (10, 100), (1, 1), (1, 100), (100, 1), (0, 0), (10, 0), (0, 10)],
 )

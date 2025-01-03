@@ -14,7 +14,7 @@ import pytest
 from tiledbsoma import Experiment
 
 from tests._utils import pytorch_x_value_gen
-from tiledbsoma_ml import ExperimentAxisQueryIterableDataset
+from tiledbsoma_ml import ExperimentDataset
 from tiledbsoma_ml.dataloader import experiment_dataloader
 
 
@@ -22,11 +22,10 @@ from tiledbsoma_ml.dataloader import experiment_dataloader
     "obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)]
 )
 def test_multiprocessing__returns_full_result(soma_experiment: Experiment):
-    """Tests that ``ExperimentAxisQueryIterableDataset`` provides all data, as collected from
-    multiple processes that are managed by a PyTorch DataLoader with multiple workers configured.
-    """
+    """Tests that ``ExperimentDataset`` provides all data, as collected from multiple processes
+    that are managed by a PyTorch DataLoader with multiple workers configured."""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["soma_joinid", "label"],
@@ -52,7 +51,7 @@ def test_experiment_dataloader__non_batched(
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["label"],
@@ -78,7 +77,7 @@ def test_experiment_dataloader__batched(
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             batch_size=3,
@@ -105,7 +104,7 @@ def test_experiment_dataloader__batched_length(
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["label"],
@@ -140,7 +139,7 @@ def test_experiment_dataloader__collate_fn(
         return data
 
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentAxisQueryIterableDataset(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["label"],
@@ -152,9 +151,7 @@ def test_experiment_dataloader__collate_fn(
 
 
 def test_experiment_dataloader__unsupported_params__fails():
-    with patch(
-        "tiledbsoma_ml.dataset.ExperimentAxisQueryIterableDataset"
-    ) as dummy_exp_dataset:
+    with patch("tiledbsoma_ml.dataset.ExperimentDataset") as dummy_exp_dataset:
         with pytest.raises(ValueError):
             experiment_dataloader(dummy_exp_dataset, shuffle=True)
         with pytest.raises(ValueError):

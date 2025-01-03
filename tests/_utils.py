@@ -11,7 +11,7 @@ import pyarrow as pa
 from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma._collection import CollectionBase
 
-from tiledbsoma_ml import ExperimentAxisQueryIterableDataset
+from tiledbsoma_ml import ExperimentDataset
 from tiledbsoma_ml.batch_iterable import BatchIterable
 
 assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
@@ -20,11 +20,11 @@ assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
 # Centralized to allow easy add/delete of specific test parameters.
 IterableTypes = Union[
     Type[BatchIterable],
-    Type[ExperimentAxisQueryIterableDataset],
+    Type[ExperimentDataset],
 ]
 Iterables = (
     BatchIterable,
-    ExperimentAxisQueryIterableDataset,
+    ExperimentDataset,
 )
 XValueGen = Callable[[range, range], spmatrix]
 

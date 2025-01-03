@@ -6,11 +6,11 @@
 """An API to support machine learning applications built on SOMA."""
 
 from .dataloader import experiment_dataloader
-from .dataset import ExperimentAxisQueryIterableDataset
+from .dataset import ExperimentDataset
 
 __version__ = "0.1.0-dev"
 
 __all__ = [
-    "ExperimentAxisQueryIterableDataset",
+    "ExperimentDataset",
     "experiment_dataloader",
 ]

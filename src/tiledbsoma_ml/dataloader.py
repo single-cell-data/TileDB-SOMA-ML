@@ -10,17 +10,17 @@ from typing import Any, TypeVar
 from torch.utils.data import DataLoader
 
 from tiledbsoma_ml._distributed import init_multiprocessing
-from tiledbsoma_ml.dataset import ExperimentAxisQueryIterableDataset
+from tiledbsoma_ml.dataset import ExperimentDataset
 
 _T = TypeVar("_T")
 
 
 def experiment_dataloader(
-    ds: ExperimentAxisQueryIterableDataset,
+    ds: ExperimentDataset,
     **dataloader_kwargs: Any,
 ) -> DataLoader:
     """Factory method for :class:`torch.utils.data.DataLoader`. This method can be used to safely instantiate a
-    :class:`torch.utils.data.DataLoader` that works with :class:`tiledbsoma_ml.ExperimentAxisQueryIterableDataset`.
+    :class:`torch.utils.data.DataLoader` that works with :class:`tiledbsoma_ml.ExperimentDataset`.
 
     Several :class:`torch.utils.data.DataLoader` constructor parameters are not applicable, or are non-performant,
     when using loaders from this module, including ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``.

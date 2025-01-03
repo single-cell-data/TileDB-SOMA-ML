@@ -14,7 +14,7 @@ NDArrayNumber = npt.NDArray[np.number[Any]]
 NDArrayJoinId = npt.NDArray[np.int64]
 XBatch = Union[NDArrayNumber, sparse.csr_matrix]
 Batch = Tuple[XBatch, pd.DataFrame]
-""""Batch" type yielded by ``ExperimentAxisQueryIterableDataset``; pairs a slice of ``X`` rows with
+""""Batch" type yielded by ``ExperimentDataset``; pairs a slice of ``X`` rows with
 a corresponding slice of ``obs``. In the default case, a Batch is a tuple of :class:`numpy.ndarray`
 and :class:`pandas.DataFrame` (for ``X`` and ``obs``, respectively). If the iterator is created
 with ``return_sparse_X`` as True, the ``X`` slice is returned as a

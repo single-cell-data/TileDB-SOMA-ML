@@ -20,7 +20,7 @@ def experiment_dataloader(
     **dataloader_kwargs: Any,
 ) -> DataLoader:
     """Factory method for :class:`torch.utils.data.DataLoader`. This method can be used to safely instantiate a
-    :class:`torch.utils.data.DataLoader` that works with :class:`tiledbsoma_ml.ExperimentAxisQueryIterableDataset`.
+    :class:`torch.utils.data.DataLoader` that works with :class:`tiledbsoma_ml.ExperimentDataset`.
 
     Several :class:`torch.utils.data.DataLoader` constructor parameters are not applicable, or are non-performant,
     when using loaders from this module, including ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``.

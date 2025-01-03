@@ -22,7 +22,7 @@ from tiledbsoma_ml.dataloader import experiment_dataloader
     "obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)]
 )
 def test_multiprocessing__returns_full_result(soma_experiment: Experiment):
-    """Tests that ``ExperimentAxisQueryIterDataPipe`` / ``ExperimentAxisQueryIterableDataset``
+    """Tests that ``ExperimentAxisQueryIterDataPipe`` / ``ExperimentDataset``
     provide all data, as collected from multiple processes that are managed by a PyTorch DataLoader
     with multiple workers configured."""
     with soma_experiment.axis_query(measurement_name="RNA") as query:

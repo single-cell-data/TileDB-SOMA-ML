@@ -37,7 +37,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     produces a batch containing equal-sized ``X`` and ``obs`` data, in the form of a :class:`numpy.ndarray` and
     :class:`pandas.DataFrame`, respectively.
 
-    See :class:`ExperimentAxisQueryIterableDataset` for more details on usage.
+    See :class:`ExperimentDataset` for more details on usage.
 
     Lifecycle:
         experimental
@@ -59,7 +59,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         use_eager_fetch: bool = True,
     ):
         """
-        Construct a new ``ExperimentAxisQueryIterable``, suitable for use with :class:`torch.utils.data.DataLoader`.
+        Construct a new ``Experiment``, suitable for use with :class:`torch.utils.data.DataLoader`.
 
         The resulting iterator will produce a tuple containing associated slices of ``X`` and ``obs`` data, as
         a NumPy :class:`numpy.ndarray` (or optionally, :class:`scipy.sparse.csr_matrix`) and a Pandas
@@ -168,9 +168,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     def invert(self) -> None:
         sample = self.sample
         if not sample:
-            raise RuntimeError(
-                "Can only invert sampled ExperimentAxisQueryIterableDatasets"
-            )
+            raise RuntimeError("Can only invert sampled ExperimentDatasets")
 
         self.sample_inverted = not self.sample_inverted
         acc, rej = self.original_obs_ids.sample(abs(sample), seed=self.seed)
@@ -268,7 +266,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
 
     @property
     def shape(self) -> Tuple[int, int]:
-        """Return the number of batches and features that will be yielded from this :class:`tiledbsoma_ml.ExperimentAxisQueryIterable`.
+        """Return the number of batches and features that will be yielded from this :class:`tiledbsoma_ml.Experiment`.
 
         If used in multiprocessing mode (i.e. :class:`torch.utils.data.DataLoader` instantiated with num_workers > 0),
         the number of batches will reflect the size of the data partition assigned to the active process.
@@ -305,5 +303,5 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
 
     def __getitem__(self, index: int) -> Batch:
         raise NotImplementedError(
-            "`ExperimentAxisQueryIterable` can only be iterated - does not support mapping"
+            "`Experiment` can only be iterated - does not support mapping"
         )

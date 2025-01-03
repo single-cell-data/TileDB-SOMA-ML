@@ -68,10 +68,8 @@ def test_experiment_dataloader__non_batched(
         assert obs["label"].tolist() == ["0"]
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen,use_eager_fetch",
-    [(6, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
-)
+@parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
+@parametrize("use_eager_fetch", [True, False])
 def test_experiment_dataloader__batched(
     soma_experiment: Experiment,
     use_eager_fetch: bool,

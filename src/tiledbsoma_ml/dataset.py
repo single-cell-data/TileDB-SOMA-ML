@@ -13,7 +13,7 @@ from torch.utils.data import IterableDataset
 from tiledbsoma_ml.batch_iterable import Batch, BatchIterable
 
 
-class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore[misc]
+class ExperimentDataset(IterableDataset[Batch]):  # type:ignore[misc]
     """A :class:`torch.utils.data.IterableDataset` implementation that loads from a :class:`tiledbsoma.SOMAExperiment`.
 
     This class works seamlessly with :class:`torch.utils.data.DataLoader` to load ``obs`` and ``X`` data as
@@ -28,7 +28,7 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
     >>> import tiledbsoma_ml
     >>> with tiledbsoma.Experiment.open("my_experiment_path") as exp:
     ...     with exp.axis_query(measurement_name="RNA", obs_query=tiledbsoma.AxisQuery(value_filter="tissue_type=='lung'")) as query:
-    ...         ds = tiledbsoma_ml.ExperimentAxisQueryIterableDataset(query)
+    ...         ds = tiledbsoma_ml.ExperimentDataset(query)
     ...         dataloader = torch.utils.data.DataLoader(ds)
     >>> data = next(iter(dataloader))
     >>> data
@@ -88,7 +88,7 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
         use_eager_fetch: bool = True,
     ):
         """
-        Construct a new ``ExperimentAxisQueryIterable``, suitable for use with :class:`torch.utils.data.DataLoader`.
+        Construct a new ``ExperimentDataset``, suitable for use with :class:`torch.utils.data.DataLoader`.
 
         The resulting iterator will produce a tuple containing associated slices of ``X`` and ``obs`` data, as
         a NumPy ``ndarray`` (or optionally, :class:`scipy.sparse.csr_matrix`) and a Pandas ``DataFrame`` respectively.
@@ -189,7 +189,7 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
 
     @property
     def shape(self) -> Tuple[int, int]:
-        """Return the number of batches and features that will be yielded from this :class:`tiledbsoma_ml.ExperimentAxisQueryIterable`.
+        """Return the number of batches and features that will be yielded from this :class:`tiledbsoma_ml.Experiment`.
 
         If used in multiprocessing mode (i.e. :class:`torch.utils.data.DataLoader` instantiated with num_workers > 0),
         the number of batches will reflect the size of the data partition assigned to the active process.

@@ -44,9 +44,10 @@ def test_multiprocessing__returns_full_result(soma_experiment: Experiment):
 
 
 @pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen,use_eager_fetch",
-    [(3, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
+    "obs_range,var_range,X_value_gen",
+    [(3, 3, pytorch_x_value_gen)],
 )
+@pytest.mark.parametrize("use_eager_fetch", (True, False))
 def test_experiment_dataloader__non_batched(
     soma_experiment: Experiment,
     use_eager_fetch: bool,
@@ -70,9 +71,10 @@ def test_experiment_dataloader__non_batched(
 
 
 @pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen,use_eager_fetch",
-    [(6, 3, pytorch_x_value_gen, use_eager_fetch) for use_eager_fetch in (True, False)],
+    "obs_range,var_range,X_value_gen",
+    [(6, 3, pytorch_x_value_gen)],
 )
+@pytest.mark.parametrize("use_eager_fetch", (True, False))
 def test_experiment_dataloader__batched(
     soma_experiment: Experiment,
     use_eager_fetch: bool,
@@ -94,12 +96,10 @@ def test_experiment_dataloader__batched(
 
 
 @pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen,use_eager_fetch",
-    [
-        (10, 3, pytorch_x_value_gen, use_eager_fetch)
-        for use_eager_fetch in (True, False)
-    ],
+    "obs_range,var_range,X_value_gen",
+    [(10, 3, pytorch_x_value_gen)],
 )
+@pytest.mark.parametrize("use_eager_fetch", (True, False))
 def test_experiment_dataloader__batched_length(
     soma_experiment: Experiment,
     use_eager_fetch: bool,

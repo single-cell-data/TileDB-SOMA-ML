@@ -17,13 +17,11 @@ from tiledbsoma import Experiment
 from torch.utils.data._utils.worker import WorkerInfo
 
 from tests._utils import (
-    Iterables,
-    IterableTypes,
     assert_array_equal,
     pytorch_seq_x_value_gen,
     pytorch_x_value_gen,
 )
-from tiledbsoma_ml.batch_iterable import BatchIterable
+from tiledbsoma_ml import ExperimentDataset
 
 
 @pytest.mark.parametrize(
@@ -32,16 +30,14 @@ from tiledbsoma_ml.batch_iterable import BatchIterable
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
-@pytest.mark.parametrize("IterableType", Iterables)
 def test_non_batched(
-    IterableType: IterableTypes,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
     return_sparse_X: bool,
 ):
     """Check batches of size 1 (the default)"""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        batch_iterable = IterableType(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["label"],
@@ -49,8 +45,8 @@ def test_non_batched(
             use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
         )
-        assert batch_iterable.shape == (6, 3)
-        batch_iter = iter(batch_iterable)
+        assert ds.shape == (6, 3)
+        batch_iter = iter(ds)
         for idx, (X_batch, obs_batch) in enumerate(batch_iter):
             expected_X = [0, 1, 0] if idx % 2 == 0 else [1, 0, 1]
             if return_sparse_X:
@@ -73,16 +69,14 @@ def test_non_batched(
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
-@pytest.mark.parametrize("IterableType", Iterables)
 def test_uneven_soma_and_result_batches(
-    IterableType: IterableTypes,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
     return_sparse_X: bool,
 ):
     """Check that batches are correctly created when they require fetching multiple chunks."""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        batch_iterable = IterableType(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["label"],
@@ -92,8 +86,8 @@ def test_uneven_soma_and_result_batches(
             use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
         )
-        assert batch_iterable.shape == (2, 3)
-        batch_iter = iter(batch_iterable)
+        assert ds.shape == (2, 3)
+        batch_iter = iter(ds)
 
         X_batch, obs_batch = next(batch_iter)
         assert X_batch.shape == (3, 3)
@@ -122,15 +116,13 @@ def test_uneven_soma_and_result_batches(
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
-@pytest.mark.parametrize("IterableType", Iterables)
 def test_batching__all_batches_full_size(
-    IterableType: IterableTypes,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
     return_sparse_X: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        batch_iterable = IterableType(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["label"],
@@ -139,8 +131,8 @@ def test_batching__all_batches_full_size(
             use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
         )
-        batch_iter = iter(batch_iterable)
-        assert batch_iterable.shape == (2, 3)
+        batch_iter = iter(ds)
+        assert ds.shape == (2, 3)
 
         X_batch, obs_batch = next(batch_iter)
         if return_sparse_X:
@@ -165,14 +157,12 @@ def test_batching__all_batches_full_size(
     [(range(100_000_000, 100_000_003), 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("IterableType", Iterables)
 def test_soma_joinids(
-    IterableType: IterableTypes,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        batch_iterable = IterableType(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["soma_joinid", "label"],
@@ -180,10 +170,10 @@ def test_soma_joinids(
             shuffle=False,
             use_eager_fetch=use_eager_fetch,
         )
-        assert batch_iterable.shape == (1, 3)
+        assert ds.shape == (1, 3)
 
         soma_joinids = np.concatenate(
-            [batch[1]["soma_joinid"].to_numpy() for batch in batch_iterable]
+            [batch[1]["soma_joinid"].to_numpy() for batch in ds]
         )
         assert_array_equal(soma_joinids, np.arange(100_000_000, 100_000_003))
 
@@ -194,15 +184,13 @@ def test_soma_joinids(
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
-@pytest.mark.parametrize("IterableType", Iterables)
 def test_batching__partial_final_batch_size(
-    IterableType: IterableTypes,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
     return_sparse_X: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        batch_iterable = IterableType(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["label"],
@@ -211,8 +199,8 @@ def test_batching__partial_final_batch_size(
             use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
         )
-        assert batch_iterable.shape == (2, 3)
-        batch_iter = iter(batch_iterable)
+        assert ds.shape == (2, 3)
+        batch_iter = iter(ds)
 
         next(batch_iter)
         X_batch, obs_batch = next(batch_iter)
@@ -231,14 +219,12 @@ def test_batching__partial_final_batch_size(
     [(3, 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("IterableType", Iterables)
 def test_batching__exactly_one_batch(
-    IterableType: IterableTypes,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        batch_iterable = IterableType(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["label"],
@@ -246,8 +232,8 @@ def test_batching__exactly_one_batch(
             shuffle=False,
             use_eager_fetch=use_eager_fetch,
         )
-        assert batch_iterable.shape == (1, 3)
-        batch_iter = iter(batch_iterable)
+        assert ds.shape == (1, 3)
+        batch_iter = iter(ds)
         X_batch, obs_batch = next(batch_iter)
         assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
@@ -261,24 +247,22 @@ def test_batching__exactly_one_batch(
     [(6, 3, pytorch_x_value_gen)],
 )
 @pytest.mark.parametrize("use_eager_fetch", [True, False])
-@pytest.mark.parametrize("IterableType", Iterables)
 def test_batching__empty_query_result(
-    IterableType: IterableTypes,
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(
         measurement_name="RNA", obs_query=soma.AxisQuery(coords=([],))
     ) as query:
-        batch_iterable = IterableType(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["label"],
             batch_size=3,
             use_eager_fetch=use_eager_fetch,
         )
-        assert batch_iterable.shape == (0, 3)
-        batch_iter = iter(batch_iterable)
+        assert ds.shape == (0, 3)
+        batch_iter = iter(ds)
 
         with pytest.raises(StopIteration):
             next(batch_iter)
@@ -291,12 +275,11 @@ def test_batching__empty_query_result(
         for use_eager_fetch in (True, False)
     ],
 )
-@pytest.mark.parametrize("IterableType", Iterables)
 def test_batching__partial_soma_batches_are_concatenated(
-    IterableType: IterableTypes, soma_experiment: Experiment, use_eager_fetch: bool
+    soma_experiment: Experiment, use_eager_fetch: bool
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        batch_iterable = IterableType(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             obs_column_names=["label"],
@@ -306,7 +289,7 @@ def test_batching__partial_soma_batches_are_concatenated(
             use_eager_fetch=use_eager_fetch,
         )
 
-        batches = list(batch_iterable)
+        batches = list(ds)
 
         assert [len(batch[0]) for batch in batches] == [3, 3, 3, 1]
 
@@ -319,9 +302,7 @@ def test_batching__partial_soma_batches_are_concatenated(
     "world_size,rank",
     [(3, 0), (3, 1), (3, 2), (2, 0), (2, 1)],
 )
-@pytest.mark.parametrize("IterableType", Iterables)
 def test_distributed__returns_data_partition_for_rank(
-    IterableType: IterableTypes,
     soma_experiment: Experiment,
     obs_range: int,
     world_size: int,
@@ -340,14 +321,14 @@ def test_distributed__returns_data_partition_for_rank(
         mock_dist_get_world_size.return_value = world_size
 
         with soma_experiment.axis_query(measurement_name="RNA") as query:
-            batch_iterable = IterableType(
+            ds = ExperimentDataset(
                 query,
                 X_name="raw",
                 obs_column_names=["soma_joinid"],
                 io_batch_size=2,
                 shuffle=False,
             )
-            batches = list(iter(batch_iterable))
+            batches = list(iter(ds))
             soma_joinids = np.concatenate(
                 [batch[1]["soma_joinid"].to_numpy() for batch in batches]
             )
@@ -405,7 +386,7 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
                 mock_dist_get_world_size.return_value = world_size
 
                 with soma_experiment.axis_query(measurement_name="RNA") as query:
-                    batch_iterable = BatchIterable(
+                    ds = ExperimentDataset(
                         query,
                         X_name="raw",
                         obs_column_names=["soma_joinid"],
@@ -413,7 +394,7 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
                         shuffle=False,
                     )
 
-                    batches = list(iter(batch_iterable))
+                    batches = list(iter(ds))
 
                     soma_joinids = np.concatenate(
                         [batch[1]["soma_joinid"].to_numpy() for batch in batches]
@@ -425,16 +406,15 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
 @pytest.mark.parametrize(
     "obs_range,var_range,X_value_gen", [(16, 1, pytorch_seq_x_value_gen)]
 )
-@pytest.mark.parametrize("IterableType", Iterables)
-def test__shuffle(IterableType: IterableTypes, soma_experiment: Experiment):
+def test__shuffle(soma_experiment: Experiment):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        batch_iterable = IterableType(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             shuffle=True,
         )
 
-        batches = list(iter(batch_iterable))
+        batches = list(iter(ds))
         assert all(X.shape == (1,) for X, _ in batches)
         soma_joinids = [obs["soma_joinid"].iloc[0] for _, obs in batches]
         X_values = [X[0].item() for X, _ in batches]
@@ -455,16 +435,16 @@ def test_experiment_axis_query_iterable_error_checks(
     soma_experiment: Experiment,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        batch_iterable = BatchIterable(
+        ds = ExperimentDataset(
             query,
             X_name="raw",
             shuffle=True,
         )
         with pytest.raises(NotImplementedError):
-            batch_iterable[0]
+            ds[0]
 
         with pytest.raises(ValueError):
-            BatchIterable(
+            ExperimentDataset(
                 query,
                 obs_column_names=(),
                 X_name="raw",

@@ -149,7 +149,7 @@ def smallest_uint_dtype(max_val: int) -> Type[np.unsignedinteger[Any]]:
         return np.uint64
 
 
-@numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
+@numba.njit(nogil=True, parallel=True)  # type: ignore[misc]
 def _csr_merge_inner(
     As: Tuple[Tuple[_CSRIdxArray, _CSRIdxArray, NDArrayNumber], ...],  # P,J,D
     Bp: _CSRIdxArray,
@@ -166,7 +166,7 @@ def _csr_merge_inner(
         offsets[:-1] += n_elmts
 
 
-@numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
+@numba.njit(nogil=True, parallel=True)  # type: ignore[misc]
 def _csr_to_dense_inner(
     row_idx_start: int,
     n_rows: int,
@@ -180,7 +180,7 @@ def _csr_to_dense_inner(
             out[i - row_idx_start, indices[j]] = data[j]
 
 
-@numba.njit(nogil=True, parallel=True, inline="always")  # type:ignore[misc]
+@numba.njit(nogil=True, parallel=True, inline="always")  # type: ignore[misc]
 def _count_rows(n_rows: int, Ai: NDArrayNumber, Bp: NDArrayNumber) -> NDArrayNumber:
     """Private: parallel row count."""
     nnz = len(Ai)
@@ -203,7 +203,7 @@ def _count_rows(n_rows: int, Ai: NDArrayNumber, Bp: NDArrayNumber) -> NDArrayNum
     return Bp
 
 
-@numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
+@numba.njit(nogil=True, parallel=True)  # type: ignore[misc]
 def _coo_to_csr_inner(
     n_rows: int,
     Ai: _CSRIdxArray,
@@ -260,7 +260,7 @@ def _coo_to_csr_inner(
         prev_ptr = tmp
 
 
-@numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
+@numba.njit(nogil=True, parallel=True)  # type: ignore[misc]
 def _csr_sort_indices(Bp: _CSRIdxArray, Bj: _CSRIdxArray, Bd: NDArrayNumber) -> None:
     """In-place sort of minor axis indices"""
     n_rows = len(Bp) - 1

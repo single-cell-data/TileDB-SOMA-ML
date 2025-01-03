@@ -31,7 +31,7 @@ from tiledbsoma_ml.common import Batch, NDArrayJoinId, NDArrayNumber
 logger = logging.getLogger("tiledbsoma_ml.dataset")
 
 
-class ExperimentDataset(IterableDataset[Batch]):  # type:ignore[misc]
+class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     """A :class:`torch.utils.data.IterableDataset` implementation that loads from a :class:`tiledbsoma.SOMAExperiment`.
 
     This class works seamlessly with :class:`torch.utils.data.DataLoader` to load ``obs`` and ``X`` data as

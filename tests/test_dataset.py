@@ -28,12 +28,12 @@ from tiledbsoma_ml import ExperimentDataset
     "obs_range,var_range,X_value_gen",
     [(6, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
+@pytest.mark.parametrize("use_eager_fetch", [True, False])
 def test_non_batched(
     soma_experiment: Experiment,
-    use_eager_fetch: bool,
     return_sparse_X: bool,
+    use_eager_fetch: bool,
 ):
     """Check batches of size 1 (the default)"""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
@@ -42,8 +42,8 @@ def test_non_batched(
             layer_name="raw",
             obs_column_names=["label"],
             shuffle=False,
-            use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
+            use_eager_fetch=use_eager_fetch,
         )
         assert ds.shape == (6, 3)
         batch_iter = iter(ds)
@@ -67,12 +67,12 @@ def test_non_batched(
     "obs_range,var_range,X_value_gen",
     [(6, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
+@pytest.mark.parametrize("use_eager_fetch", [True, False])
 def test_uneven_soma_and_result_batches(
     soma_experiment: Experiment,
-    use_eager_fetch: bool,
     return_sparse_X: bool,
+    use_eager_fetch: bool,
 ):
     """Check that batches are correctly created when they require fetching multiple chunks."""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
@@ -83,8 +83,8 @@ def test_uneven_soma_and_result_batches(
             shuffle=False,
             batch_size=3,
             io_batch_size=2,
-            use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
+            use_eager_fetch=use_eager_fetch,
         )
         assert ds.shape == (2, 3)
         batch_iter = iter(ds)
@@ -114,12 +114,12 @@ def test_uneven_soma_and_result_batches(
     "obs_range,var_range,X_value_gen",
     [(6, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
+@pytest.mark.parametrize("use_eager_fetch", [True, False])
 def test_batching__all_batches_full_size(
     soma_experiment: Experiment,
-    use_eager_fetch: bool,
     return_sparse_X: bool,
+    use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
@@ -128,8 +128,8 @@ def test_batching__all_batches_full_size(
             obs_column_names=["label"],
             batch_size=3,
             shuffle=False,
-            use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
+            use_eager_fetch=use_eager_fetch,
         )
         batch_iter = iter(ds)
         assert ds.shape == (2, 3)
@@ -182,12 +182,12 @@ def test_soma_joinids(
     "obs_range,var_range,X_value_gen",
     [(5, 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
 @pytest.mark.parametrize("return_sparse_X", [True, False])
+@pytest.mark.parametrize("use_eager_fetch", [True, False])
 def test_batching__partial_final_batch_size(
     soma_experiment: Experiment,
-    use_eager_fetch: bool,
     return_sparse_X: bool,
+    use_eager_fetch: bool,
 ):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
@@ -196,8 +196,8 @@ def test_batching__partial_final_batch_size(
             obs_column_names=["label"],
             batch_size=3,
             shuffle=False,
-            use_eager_fetch=use_eager_fetch,
             return_sparse_X=return_sparse_X,
+            use_eager_fetch=use_eager_fetch,
         )
         assert ds.shape == (2, 3)
         batch_iter = iter(ds)

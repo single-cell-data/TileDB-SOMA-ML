@@ -6,7 +6,7 @@
 import itertools
 import sys
 from itertools import islice
-from typing import Any, Iterable, Iterator, Tuple, TypeVar
+from typing import Iterable, Iterator, Tuple, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -22,7 +22,6 @@ except ImportError:
 EagerIterator = _EagerIterator
 
 _T_co = TypeVar("_T_co", covariant=True)
-NDArrayNumber = npt.NDArray[np.number[Any]]
 
 
 def splits(total_length: int, sections: int) -> npt.NDArray[np.intp]:

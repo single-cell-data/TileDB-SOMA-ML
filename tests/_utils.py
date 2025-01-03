@@ -4,28 +4,15 @@
 # Licensed under the MIT License.
 
 from functools import partial
-from typing import Callable, Type, Union
+from typing import Callable
 
 import numpy as np
 import pyarrow as pa
 from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma._collection import CollectionBase
 
-from tiledbsoma_ml import ExperimentDataset
-from tiledbsoma_ml.batch_iterable import BatchIterable
-
 assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
 
-# These control which classes are tested (for most, but not all tests).
-# Centralized to allow easy add/delete of specific test parameters.
-IterableTypes = Union[
-    Type[BatchIterable],
-    Type[ExperimentDataset],
-]
-Iterables = (
-    BatchIterable,
-    ExperimentDataset,
-)
 XValueGen = Callable[[range, range], spmatrix]
 
 

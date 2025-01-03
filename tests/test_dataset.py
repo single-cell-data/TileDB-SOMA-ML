@@ -284,13 +284,12 @@ def test_batching__partial_soma_batches_are_concatenated(
             layer_name="raw",
             obs_column_names=["label"],
             batch_size=3,
-            # set SOMA batch read size such that PyTorch batches will span the tail and head of two SOMA batches
+            # Set SOMA batch read size such that PyTorch batches will span the tail and head of two SOMA batches
             io_batch_size=4,
+            shuffle_chunk_size=4,
             use_eager_fetch=use_eager_fetch,
         )
-
         batches = list(ds)
-
         assert [len(batch[0]) for batch in batches] == [3, 3, 3, 1]
 
 

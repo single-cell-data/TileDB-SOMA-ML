@@ -26,7 +26,7 @@ from tests._utils import (
     mock_distributed,
     pytorch_x_value_gen,
 )
-from tiledbsoma_ml.batch_dataset import ExperimentDataset
+from tiledbsoma_ml.dataset import ExperimentDataset
 
 
 @dataclass

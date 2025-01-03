@@ -14,17 +14,16 @@ import pytest
 from tiledbsoma import Experiment
 
 from tests._utils import assert_array_almost_equal, pytorch_x_value_gen
-from tiledbsoma_ml.batch_dataset import ExperimentDataset
 from tiledbsoma_ml.dataloader import experiment_dataloader
+from tiledbsoma_ml.dataset import ExperimentDataset
 
 
 @pytest.mark.parametrize(
     "obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)]
 )
 def test_multiprocessing__returns_full_result(soma_experiment: Experiment):
-    """Tests that ``ExperimentAxisQueryIterDataPipe`` / ``ExperimentDataset``
-    provide all data, as collected from multiple processes that are managed by a PyTorch DataLoader
-    with multiple workers configured."""
+    """Tests that ``ExperimentDataset`` provides all data, as collected from multiple processes
+    that are managed by a PyTorch DataLoader with multiple workers configured."""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
             query,
@@ -178,9 +177,7 @@ def test__pytorch_splitting(soma_experiment: Experiment, obs_range: int):
 
 
 def test_experiment_dataloader__unsupported_params__fails():
-    with patch(
-        "tiledbsoma_ml.batch_dataset.ExperimentBatchDataset"
-    ) as dummy_exp_dataset:
+    with patch("tiledbsoma_ml.dataset.ExperimentDataset") as dummy_exp_dataset:
         with pytest.raises(ValueError):
             experiment_dataloader(dummy_exp_dataset, shuffle=True)
         with pytest.raises(ValueError):

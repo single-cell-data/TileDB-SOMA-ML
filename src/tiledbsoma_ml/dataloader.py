@@ -9,8 +9,8 @@ from typing import Any, TypeVar
 
 from torch.utils.data import DataLoader
 
-from tiledbsoma_ml import ExperimentDataset
 from tiledbsoma_ml._distributed import init_multiprocessing
+from tiledbsoma_ml.dataset import ExperimentDataset
 
 _T = TypeVar("_T")
 

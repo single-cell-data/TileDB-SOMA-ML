@@ -317,7 +317,12 @@ class BatchIterable(Iterable[Batch]):
                     _mini_batch_iter, pool=exp.context.threadpool
                 )
 
-            yield from _mini_batch_iter
+            if self.batch_size == 1:
+                for X, obs in _mini_batch_iter:
+                    X = X[0]  # This is a no-op for `csr_matrix`s
+                    yield X, obs
+            else:
+                yield from _mini_batch_iter
 
         self.epoch += 1
 

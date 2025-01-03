@@ -60,13 +60,9 @@ def test_non_batched(
                 assert X_batch.todense().tolist() == [expected_X]
             else:
                 assert isinstance(X_batch, np.ndarray)
-                if IterableType is BatchIterable:
-                    assert X_batch.shape == (1, 3)
-                    assert X_batch.tolist() == [expected_X]
-                else:
-                    # ExperimentAxisQueryIterableDataset "squeeze" dense single-row batches
-                    assert X_batch.shape == (3,)
-                    assert X_batch.tolist() == expected_X
+                # Dense single-row batches are "squeezed" down to 1-D
+                assert X_batch.shape == (3,)
+                assert X_batch.tolist() == expected_X
 
             assert_frame_equal(obs_batch, pd.DataFrame({"label": [str(idx)]}))
 
@@ -439,10 +435,7 @@ def test__shuffle(IterableType: IterableTypes, soma_experiment: Experiment):
         )
 
         batches = list(iter(batch_iterable))
-        if IterableType is BatchIterable:
-            assert all(np.squeeze(X, axis=0).shape == (1,) for X, _ in batches)
-        else:
-            assert all(X.shape == (1,) for X, _ in batches)
+        assert all(X.shape == (1,) for X, _ in batches)
         soma_joinids = [obs["soma_joinid"].iloc[0] for _, obs in batches]
         X_values = [X[0].item() for X, _ in batches]
 

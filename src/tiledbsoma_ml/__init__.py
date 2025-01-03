@@ -8,7 +8,6 @@
 from importlib.metadata import PackageNotFoundError, version
 
 from .dataloader import experiment_dataloader
-from .datapipe import ExperimentAxisQueryIterDataPipe
 from .dataset import ExperimentAxisQueryIterableDataset
 
 try:
@@ -19,7 +18,6 @@ except PackageNotFoundError:
 
 
 __all__ = [
-    "ExperimentAxisQueryIterDataPipe",
     "ExperimentAxisQueryIterableDataset",
     "experiment_dataloader",
 ]

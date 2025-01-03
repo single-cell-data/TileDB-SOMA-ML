@@ -11,31 +11,20 @@ import pyarrow as pa
 from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma._collection import CollectionBase
 
-from tiledbsoma_ml import (
-    ExperimentAxisQueryIterableDataset,
-    ExperimentAxisQueryIterDataPipe,
-)
+from tiledbsoma_ml import ExperimentAxisQueryIterableDataset
 from tiledbsoma_ml.batch_iterable import BatchIterable
 
 assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
 
 # These control which classes are tested (for most, but not all tests).
 # Centralized to allow easy add/delete of specific test parameters.
-IterableWrapperType = Union[
-    Type[ExperimentAxisQueryIterDataPipe],
+IterableTypes = Union[
+    Type[BatchIterable],
     Type[ExperimentAxisQueryIterableDataset],
 ]
-IterableWrappers = (
-    ExperimentAxisQueryIterDataPipe,
-    ExperimentAxisQueryIterableDataset,
-)
-PipeClassType = Union[
-    Type[BatchIterable],
-    IterableWrapperType,
-]
-PipeClasses = (
+Iterables = (
     BatchIterable,
-    *IterableWrappers,
+    ExperimentAxisQueryIterableDataset,
 )
 XValueGen = Callable[[range, range], spmatrix]
 

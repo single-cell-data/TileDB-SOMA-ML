@@ -10,19 +10,17 @@ from typing import Any, TypeVar
 from torch.utils.data import DataLoader
 
 from tiledbsoma_ml._distributed import init_multiprocessing
-from tiledbsoma_ml.datapipe import ExperimentAxisQueryIterDataPipe
 from tiledbsoma_ml.dataset import ExperimentAxisQueryIterableDataset
 
 _T = TypeVar("_T")
 
 
 def experiment_dataloader(
-    ds: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    ds: ExperimentAxisQueryIterableDataset,
     **dataloader_kwargs: Any,
 ) -> DataLoader:
     """Factory method for :class:`torch.utils.data.DataLoader`. This method can be used to safely instantiate a
-    :class:`torch.utils.data.DataLoader` that works with :class:`tiledbsoma_ml.ExperimentAxisQueryIterableDataset`
-    or :class:`tiledbsoma_ml.ExperimentAxisQueryIterDataPipe`.
+    :class:`torch.utils.data.DataLoader` that works with :class:`tiledbsoma_ml.ExperimentAxisQueryIterableDataset`.
 
     Several :class:`torch.utils.data.DataLoader` constructor parameters are not applicable, or are non-performant,
     when using loaders from this module, including ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``.
@@ -33,8 +31,7 @@ def experiment_dataloader(
 
     Args:
         ds:
-            A :class:`torch.utils.data.IterableDataset` or a :class:`torchdata.datapipes.iter.IterDataPipe`. May
-            include chained data pipes.
+            A :class:`torch.utils.data.IterableDataset`. May include chained data pipes.
         **dataloader_kwargs:
             Additional keyword arguments to pass to the :class:`torch.utils.data.DataLoader` constructor,
             except for ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``, which are not

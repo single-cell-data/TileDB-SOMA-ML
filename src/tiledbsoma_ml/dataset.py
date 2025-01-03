@@ -77,25 +77,25 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
                 this ``IterableDataset`` to be used with :class:`torch.utils.data.DataLoader` batching, but higher
                 performance can be achieved by performing batching in this class, and setting the ``DataLoader``'s
                 ``batch_size`` parameter to ``None``.
-            shuffle:
-                Whether to shuffle the ``obs`` and ``X`` data being returned. Defaults to ``True``.
             io_batch_size:
                 The number of ``obs``/``X`` rows to retrieve when reading data from SOMA. This impacts:
                 1. Maximum memory utilization, larger values provide better read performance, but require more memory.
                 2. The number of rows read prior to shuffling (see the ``shuffle`` parameter for details).
                 The default value of 65,536 provides high performance but may need to be reduced in memory-limited hosts
                 or when using a large number of :class:`DataLoader` workers.
+            shuffle:
+                Whether to shuffle the ``obs`` and ``X`` data being returned. Defaults to ``True``.
             shuffle_chunk_size:
                 The number of contiguous rows sampled prior to concatenation and shuffling.
                 Larger numbers correspond to less randomness, but greater read performance.
                 If ``shuffle == False``, this parameter is ignored.
-            return_sparse_X:
-                If ``True``, will return the ``X`` data as a :class:`scipy.sparse.csr_matrix`. If ``False`` (the
-                default), will return ``X`` data as a :class:`numpy.ndarray`.
             seed:
                 The random seed used for shuffling. Defaults to ``None`` (no seed). This argument *MUST* be specified
                 when using :class:`torch.nn.parallel.DistributedDataParallel` to ensure data partitions are disjoint
                 across worker processes.
+            return_sparse_X:
+                If ``True``, will return the ``X`` data as a :class:`scipy.sparse.csr_matrix`. If ``False`` (the
+                default), will return ``X`` data as a :class:`numpy.ndarray`.
             use_eager_fetch:
                 Fetch the next SOMA chunk of ``obs`` and ``X`` data immediately after a previously fetched SOMA chunk is
                 made available for processing via the iterator. This allows network (or filesystem) requests to be made
@@ -133,24 +133,13 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
             )
 
         self.obs_column_names = list(obs_column_names)
+        if not self.obs_column_names:
+            raise ValueError("Must specify at least one value in `obs_column_names`")
+
         self.batch_size = batch_size
         self.io_batch_size = io_batch_size
         self.shuffle = shuffle
-        self.return_sparse_X = return_sparse_X
-        self.use_eager_fetch = use_eager_fetch
-        self.seed = (
-            seed if seed is not None else np.random.default_rng().integers(0, 2**32 - 1)
-        )
-        self.sample = sample
-        self.sample_inverted = False
-        self.sampled_obs_ids: ObsIDs | None = None
-        if sample is not None:
-            acc, _ = self.original_obs_ids.sample(abs(sample), seed=seed)
-            self.sampled_obs_ids = acc
-
         self.shuffle_chunk_size = shuffle_chunk_size
-        self.epoch = 0
-
         if shuffle:
             # Verify `io_batch_size` is a multiple of `shuffle_chunk_size`
             self.io_batch_size = (
@@ -161,8 +150,19 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
                     f"{io_batch_size=} is not a multiple of {shuffle_chunk_size=}"
                 )
 
-        if not self.obs_column_names:
-            raise ValueError("Must specify at least one value in `obs_column_names`")
+        self.seed = (
+            seed if seed is not None else np.random.default_rng().integers(0, 2**32 - 1)
+        )
+        self.sample = sample
+        self.sample_inverted = False
+        self.sampled_obs_ids: ObsIDs | None = None
+        if sample is not None:
+            acc, _ = self.original_obs_ids.sample(abs(sample), seed=seed)
+            self.sampled_obs_ids = acc
+
+        self.return_sparse_X = return_sparse_X
+        self.use_eager_fetch = use_eager_fetch
+        self.epoch = 0
 
     def invert(self) -> None:
         sample = self.sample

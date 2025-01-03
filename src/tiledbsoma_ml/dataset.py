@@ -193,10 +193,14 @@ class ExperimentDataset(IterableDataset[Batch]):  # type:ignore[misc]
         self.epoch = 0
 
         if self.shuffle:
-            # round io_batch_size up to a unit of shuffle_chunk_size to simplify code.
+            # Verify `io_batch_size` is a multiple of `shuffle_chunk_size`
             self.io_batch_size = (
                 ceil(io_batch_size / shuffle_chunk_size) * shuffle_chunk_size
             )
+            if io_batch_size != self.io_batch_size:
+                raise ValueError(
+                    f"{io_batch_size=} is not a multiple of {shuffle_chunk_size=}"
+                )
 
         if not self.obs_column_names:
             raise ValueError("Must specify at least one value in `obs_column_names`")

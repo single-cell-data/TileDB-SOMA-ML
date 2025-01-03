@@ -30,6 +30,7 @@ def test_multiprocessing__returns_full_result(soma_experiment: Experiment):
             layer_name="raw",
             obs_column_names=["soma_joinid", "label"],
             io_batch_size=3,  # two chunks, one per worker
+            shuffle_chunk_size=3,
         )
         # Wrap with a DataLoader, which sets up the multiprocessing
         dl = experiment_dataloader(ds, num_workers=2)

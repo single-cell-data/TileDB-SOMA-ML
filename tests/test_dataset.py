@@ -269,12 +269,10 @@ def test_batching__empty_query_result(
 
 
 @pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen,use_eager_fetch",
-    [
-        (10, 1, pytorch_x_value_gen, use_eager_fetch)
-        for use_eager_fetch in (True, False)
-    ],
+    "obs_range,var_range,X_value_gen",
+    [(10, 1, pytorch_x_value_gen)],
 )
+@pytest.mark.parametrize("use_eager_fetch", (True, False))
 def test_batching__partial_soma_batches_are_concatenated(
     soma_experiment: Experiment, use_eager_fetch: bool
 ):

@@ -166,11 +166,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type:ignore[misc]
         Lifecycle:
             experimental
         """
-        batch_size = self._exp_iter.batch_size
-        for X, obs in self._exp_iter:
-            if batch_size == 1:
-                X = X[0]  # This is a no-op for `csr_matrix`s
-            yield X, obs
+        yield from self._exp_iter
 
     def __len__(self) -> int:
         """Return number of batches this iterable will produce.

@@ -39,7 +39,7 @@ def test_non_batched(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
             shuffle=False,
             use_eager_fetch=use_eager_fetch,
@@ -78,7 +78,7 @@ def test_uneven_soma_and_result_batches(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
             shuffle=False,
             batch_size=3,
@@ -124,7 +124,7 @@ def test_batching__all_batches_full_size(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
             batch_size=3,
             shuffle=False,
@@ -164,7 +164,7 @@ def test_soma_joinids(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["soma_joinid", "label"],
             batch_size=3,
             shuffle=False,
@@ -192,7 +192,7 @@ def test_batching__partial_final_batch_size(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
             batch_size=3,
             shuffle=False,
@@ -226,7 +226,7 @@ def test_batching__exactly_one_batch(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
             batch_size=3,
             shuffle=False,
@@ -256,7 +256,7 @@ def test_batching__empty_query_result(
     ) as query:
         ds = ExperimentDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
             batch_size=3,
             use_eager_fetch=use_eager_fetch,
@@ -281,7 +281,7 @@ def test_batching__partial_soma_batches_are_concatenated(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             obs_column_names=["label"],
             batch_size=3,
             # set SOMA batch read size such that PyTorch batches will span the tail and head of two SOMA batches
@@ -323,7 +323,7 @@ def test_distributed__returns_data_partition_for_rank(
         with soma_experiment.axis_query(measurement_name="RNA") as query:
             ds = ExperimentDataset(
                 query,
-                X_name="raw",
+                layer_name="raw",
                 obs_column_names=["soma_joinid"],
                 io_batch_size=2,
                 shuffle=False,
@@ -388,7 +388,7 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
                 with soma_experiment.axis_query(measurement_name="RNA") as query:
                     ds = ExperimentDataset(
                         query,
-                        X_name="raw",
+                        layer_name="raw",
                         obs_column_names=["soma_joinid"],
                         io_batch_size=2,
                         shuffle=False,
@@ -410,7 +410,7 @@ def test__shuffle(soma_experiment: Experiment):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             shuffle=True,
         )
 
@@ -437,7 +437,7 @@ def test_experiment_axis_query_iterable_error_checks(
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         ds = ExperimentDataset(
             query,
-            X_name="raw",
+            layer_name="raw",
             shuffle=True,
         )
         with pytest.raises(NotImplementedError):
@@ -447,6 +447,6 @@ def test_experiment_axis_query_iterable_error_checks(
             ExperimentDataset(
                 query,
                 obs_column_names=(),
-                X_name="raw",
+                layer_name="raw",
                 shuffle=True,
             )

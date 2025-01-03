@@ -6,7 +6,6 @@
 import gc
 import logging
 import time
-from os.path import splitext
 from typing import Iterable, Iterator, Optional, Sequence, Tuple
 
 import attrs
@@ -20,7 +19,7 @@ from tiledbsoma_ml._utils import EagerIterator, batched
 from tiledbsoma_ml.common import NDArrayJoinId
 from tiledbsoma_ml.obs_ids import Chunks
 
-logger = logging.getLogger(f"tiledbsoma_ml.{splitext(__file__)[0]}")
+logger = logging.getLogger("tiledbsoma_ml.io_batches")
 IOBatch = Tuple[CSR_IO_Buffer, pd.DataFrame]
 
 

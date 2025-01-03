@@ -4,7 +4,6 @@
 # Licensed under the MIT License.
 
 import logging
-from os.path import splitext
 from typing import Iterable, Iterator, Tuple
 
 import attrs
@@ -16,7 +15,7 @@ from tiledbsoma_ml._utils import EagerIterator
 from tiledbsoma_ml.common import Batch, NDArrayNumber
 from tiledbsoma_ml.io_batches import IOBatches
 
-logger = logging.getLogger(f"tiledbsoma_ml.{splitext(__file__)[0]}")
+logger = logging.getLogger("tiledbsoma_ml.gpu_batches")
 
 
 @attrs.define(frozen=True)

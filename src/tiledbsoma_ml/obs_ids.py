@@ -4,7 +4,6 @@
 # Licensed under the MIT License.
 import logging
 from contextlib import contextmanager
-from os.path import splitext
 from typing import (
     Dict,
     Generator,
@@ -29,7 +28,7 @@ from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_wo
 from tiledbsoma_ml._utils import batched, splits
 from tiledbsoma_ml.common import NDArrayJoinId
 
-logger = logging.getLogger(f"tiledbsoma_ml.{splitext(__file__)[0]}")
+logger = logging.getLogger("tiledbsoma_ml.obs_ids")
 
 
 Chunks = List[Tuple[int, ...]]

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 from math import ceil
-from os.path import splitext
 from typing import (
     Iterator,
     Optional,
@@ -28,7 +27,7 @@ from tiledbsoma_ml.gpu_batches import GPUBatches
 from tiledbsoma_ml.io_batches import IOBatches
 from tiledbsoma_ml.obs_ids import ObsIDs
 
-logger = logging.getLogger(f"tiledbsoma_ml.{splitext(__file__)[0]}")
+logger = logging.getLogger("tiledbsoma_ml.dataset")
 
 
 class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]

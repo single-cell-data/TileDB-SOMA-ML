@@ -7,16 +7,16 @@ from __future__ import annotations
 
 from typing import Any, TypeVar
 
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
+from tiledbsoma_ml import ExperimentDataset
 from tiledbsoma_ml._distributed import init_multiprocessing
-from tiledbsoma_ml.common import Batch
 
 _T = TypeVar("_T")
 
 
 def experiment_dataloader(
-    ds: Dataset[Batch],
+    ds: ExperimentDataset,
     **dataloader_kwargs: Any,
 ) -> DataLoader:
     """Factory method for :class:`torch.utils.data.DataLoader`. This method can be used to safely instantiate a

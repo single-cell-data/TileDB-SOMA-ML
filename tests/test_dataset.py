@@ -24,6 +24,7 @@ from tests._utils import (
     assert_array_almost_equal,
     assert_array_equal,
     mock_distributed,
+    parametrize,
     pytorch_x_value_gen,
 )
 from tiledbsoma_ml.dataset import ExperimentDataset
@@ -73,7 +74,7 @@ def cases(
                 replace(case0, use_eager_fetch=not case0.use_eager_fetch),
             ]
         ]
-    return pytest.mark.parametrize(
+    return parametrize(
         "case,obs_range,var_range,X_value_gen",
         [(case, case.obs_range, case.var_range, case.X_value_gen) for case in cases],
     )
@@ -254,11 +255,11 @@ def test_distributed_120_10_5_4(soma_experiment, case):
     check(soma_experiment, case)
 
 
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen",
     [(range(100_000_000, 100_000_003), 3, pytorch_x_value_gen)],
 )
-@pytest.mark.parametrize("use_eager_fetch", [True, False])
+@parametrize("use_eager_fetch", [True, False])
 def test_soma_joinids(
     soma_experiment: Experiment,
     use_eager_fetch: bool,
@@ -279,7 +280,7 @@ def test_soma_joinids(
 
 
 # fmt: off
-@pytest.mark.parametrize(
+@parametrize(
     "obs_range,var_range,X_value_gen,world_size,num_workers,splits",
     [
         (12, 3, pytorch_x_value_gen, 3, 2, [[0, 2, 4], [4,  6,  8], [ 8, 10, 12]]),
@@ -331,9 +332,7 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
                 assert soma_joinids == expected_joinids
 
 
-@pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)]
-)
+@parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
 def test_experiment_axis_query_iterable_error_checks(
     soma_experiment: Experiment,
 ):

@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pyarrow as pa
+import pytest
 from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma._collection import CollectionBase
 from torch.utils.data._utils.worker import WorkerInfo
@@ -24,6 +25,7 @@ def assert_array_almost_equal(
     np.testing.assert_array_almost_equal(actual, np.array(expected, dtype=np.float32))
 
 
+parametrize = pytest.mark.parametrize
 XValueGen = Callable[[range, range], spmatrix]
 
 

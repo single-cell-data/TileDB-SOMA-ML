@@ -95,7 +95,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type:ignore[misc]
     def __init__(
         self,
         query: ExperimentAxisQuery,
-        X_name: str,
+        layer_name: str,
         obs_column_names: Sequence[str] = ("soma_joinid",),
         batch_size: int = 1,
         shuffle: bool = True,
@@ -115,7 +115,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type:ignore[misc]
         Args:
             query:
                 A :class:`tiledbsoma.ExperimentAxisQuery`, defining the data to iterate over.
-            X_name:
+            layer_name:
                 The name of the X layer to read.
             obs_column_names:
                 The names of the ``obs`` columns to return. At least one column name must be specified.
@@ -172,7 +172,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type:ignore[misc]
 
         # Anything set in the instance needs to be pickle-able for multi-process DataLoaders
         self.experiment_locator = ExperimentLocator.create(query.experiment)
-        self.layer_name = X_name
+        self.layer_name = layer_name
         self.measurement_name = query.measurement_name
         self.obs_query = query._matrix_axis_query.obs
         self.var_query = query._matrix_axis_query.var

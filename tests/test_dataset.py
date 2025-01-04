@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,10 +12,10 @@ import tiledbsoma as soma
 from pandas._testing import assert_frame_equal
 from scipy import sparse
 from tiledbsoma import Experiment
-from torch.utils.data._utils.worker import WorkerInfo
 
 from tests._utils import (
     assert_array_equal,
+    mock_distributed,
     parametrize,
     pytorch_seq_x_value_gen,
     pytorch_x_value_gen,
@@ -310,31 +308,25 @@ def test_distributed__returns_data_partition_for_rank(
     to avoid having to do real PyTorch distributed setup."""
 
     with (
-        patch("torch.distributed.is_initialized") as mock_dist_is_initialized,
-        patch("torch.distributed.get_rank") as mock_dist_get_rank,
-        patch("torch.distributed.get_world_size") as mock_dist_get_world_size,
+        mock_distributed(rank=rank, world_size=world_size),
+        soma_experiment.axis_query(measurement_name="RNA") as query,
     ):
-        mock_dist_is_initialized.return_value = True
-        mock_dist_get_rank.return_value = rank
-        mock_dist_get_world_size.return_value = world_size
+        ds = ExperimentDataset(
+            query,
+            layer_name="raw",
+            obs_column_names=["soma_joinid"],
+            io_batch_size=2,
+            shuffle=False,
+        )
+        batches = list(iter(ds))
+        soma_joinids = np.concatenate(
+            [batch[1]["soma_joinid"].to_numpy() for batch in batches]
+        )
 
-        with soma_experiment.axis_query(measurement_name="RNA") as query:
-            ds = ExperimentDataset(
-                query,
-                layer_name="raw",
-                obs_column_names=["soma_joinid"],
-                io_batch_size=2,
-                shuffle=False,
-            )
-            batches = list(iter(ds))
-            soma_joinids = np.concatenate(
-                [batch[1]["soma_joinid"].to_numpy() for batch in batches]
-            )
-
-            expected_joinids = np.array_split(np.arange(obs_range), world_size)[rank][
-                0 : obs_range // world_size
-            ].tolist()
-            assert sorted(soma_joinids) == expected_joinids
+        expected_joinids = np.array_split(np.arange(obs_range), world_size)[rank][
+            0 : obs_range // world_size
+        ].tolist()
+        assert sorted(soma_joinids) == expected_joinids
 
 
 # fmt: off
@@ -371,34 +363,24 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
                 range(proc_splits[worker_id], proc_splits[worker_id + 1])
             )
             with (
-                patch("torch.utils.data.get_worker_info") as mock_get_worker_info,
-                patch("torch.distributed.is_initialized") as mock_dist_is_initialized,
-                patch("torch.distributed.get_rank") as mock_dist_get_rank,
-                patch("torch.distributed.get_world_size") as mock_dist_get_world_size,
+                mock_distributed(rank, world_size, (worker_id, num_workers, 1234)),
+                soma_experiment.axis_query(measurement_name="RNA") as query,
             ):
-                mock_get_worker_info.return_value = WorkerInfo(
-                    id=worker_id, num_workers=num_workers, seed=1234
+                ds = ExperimentDataset(
+                    query,
+                    layer_name="raw",
+                    obs_column_names=["soma_joinid"],
+                    io_batch_size=2,
+                    shuffle=False,
                 )
-                mock_dist_is_initialized.return_value = True
-                mock_dist_get_rank.return_value = rank
-                mock_dist_get_world_size.return_value = world_size
 
-                with soma_experiment.axis_query(measurement_name="RNA") as query:
-                    ds = ExperimentDataset(
-                        query,
-                        layer_name="raw",
-                        obs_column_names=["soma_joinid"],
-                        io_batch_size=2,
-                        shuffle=False,
-                    )
+                batches = list(iter(ds))
 
-                    batches = list(iter(ds))
+                soma_joinids = np.concatenate(
+                    [batch[1]["soma_joinid"].to_numpy() for batch in batches]
+                ).tolist()
 
-                    soma_joinids = np.concatenate(
-                        [batch[1]["soma_joinid"].to_numpy() for batch in batches]
-                    ).tolist()
-
-                    assert soma_joinids == expected_joinids
+                assert soma_joinids == expected_joinids
 
 
 @parametrize("obs_range,var_range,X_value_gen", [(16, 1, pytorch_seq_x_value_gen)])

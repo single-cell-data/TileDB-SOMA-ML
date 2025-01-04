@@ -25,7 +25,7 @@ from tiledbsoma_ml._distributed import (
 from tiledbsoma_ml.common import Batch, NDArrayJoinId
 from tiledbsoma_ml.gpu_batches import GPUBatches
 from tiledbsoma_ml.io_batches import IOBatches
-from tiledbsoma_ml.obs_ids import ObsIDs
+from tiledbsoma_ml.query_ids import QueryIDs
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")
 
@@ -45,7 +45,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     def __init__(
         self,
         query: Optional[ExperimentAxisQuery] = None,
-        obs_ids: Optional[ObsIDs] = None,
+        query_ids: Optional[QueryIDs] = None,
         layer_name: Optional[str] = None,
         obs_column_names: Sequence[str] = ("soma_joinid",),
         batch_size: int = 1,
@@ -120,14 +120,14 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
 
         super().__init__()
 
-        if obs_ids:
+        if query_ids:
             if query:
                 raise ValueError("Provide only one of {exp_loc,query}")
-            self.original_obs_ids = obs_ids
+            self.original_query_ids = query_ids
         else:
             if not query:
                 raise ValueError("Provide one of {exp_loc,query}")
-            self.original_obs_ids = ObsIDs.create(
+            self.original_query_ids = QueryIDs.create(
                 query=query,
                 layer_name=layer_name,
             )
@@ -155,10 +155,10 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         )
         self.sample = sample
         self.sample_inverted = False
-        self.sampled_obs_ids: ObsIDs | None = None
+        self.sampled_query_ids: QueryIDs | None = None
         if sample is not None:
-            acc, _ = self.original_obs_ids.sample(abs(sample), seed=seed)
-            self.sampled_obs_ids = acc
+            acc, _ = self.original_query_ids.sample(abs(sample), seed=seed)
+            self.sampled_query_ids = acc
 
         self.return_sparse_X = return_sparse_X
         self.use_eager_fetch = use_eager_fetch
@@ -170,28 +170,28 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
             raise RuntimeError("Can only invert sampled ExperimentDatasets")
 
         self.sample_inverted = not self.sample_inverted
-        acc, rej = self.original_obs_ids.sample(abs(sample), seed=self.seed)
-        self.sampled_obs_ids = rej if self.sample_inverted else acc
+        acc, rej = self.original_query_ids.sample(abs(sample), seed=self.seed)
+        self.sampled_query_ids = rej if self.sample_inverted else acc
 
     @property
-    def obs_ids(self) -> ObsIDs:
-        return self.sampled_obs_ids or self.original_obs_ids
+    def query_ids(self) -> QueryIDs:
+        return self.sampled_query_ids or self.original_query_ids
 
     @property
     def measurement_name(self) -> str:
-        return self.obs_ids.measurement_name
+        return self.query_ids.measurement_name
 
     @property
     def layer_name(self) -> Optional[str]:
-        return self.obs_ids.layer_name
+        return self.query_ids.layer_name
 
     @property
     def obs_joinids(self) -> NDArrayJoinId:
-        return self.obs_ids.obs_joinids
+        return self.query_ids.obs_joinids
 
     @property
     def var_joinids(self) -> NDArrayJoinId:
-        return self.obs_ids.var_joinids
+        return self.query_ids.var_joinids
 
     def __iter__(self) -> Iterator[Batch]:
         """Create iterator over query.
@@ -202,7 +202,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         Lifecycle:
             experimental
         """
-        obs_ids = self.obs_ids.partition()
+        query_ids = self.query_ids.partition()
         io_batch_size = self.io_batch_size
         shuffle = self.shuffle
         shuffle_chunk_size = self.shuffle_chunk_size
@@ -210,19 +210,19 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         use_eager_fetch = self.use_eager_fetch
         seed = self.seed
         if shuffle:
-            chunks = obs_ids.shuffle_chunks(
+            chunks = query_ids.shuffle_chunks(
                 shuffle_chunk_size=shuffle_chunk_size,
                 seed=seed,
             )
         else:
-            chunks = [tuple(obs_ids.obs_joinids)]
+            chunks = [query_ids.obs_joinids]
 
-        with obs_ids.open() as (X, obs):
+        with query_ids.open() as (X, obs):
             io_batches = IOBatches(
                 chunks=chunks,
                 io_batch_size=io_batch_size,
                 obs=obs,
-                var_joinids=obs_ids.var_joinids,
+                var_joinids=query_ids.var_joinids,
                 X=X,
                 obs_column_names=self.obs_column_names,
                 seed=seed,

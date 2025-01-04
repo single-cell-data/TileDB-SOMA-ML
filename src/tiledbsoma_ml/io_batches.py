@@ -17,7 +17,7 @@ from tiledbsoma import DataFrame, IntIndexer, SparseNDArray
 from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._utils import EagerIterator, batched
 from tiledbsoma_ml.common import NDArrayJoinId
-from tiledbsoma_ml.obs_ids import Chunks
+from tiledbsoma_ml.query_ids import Chunks
 
 logger = logging.getLogger("tiledbsoma_ml.io_batches")
 IOBatch = Tuple[CSR_IO_Buffer, pd.DataFrame]

@@ -11,7 +11,6 @@ from typing import (
     Optional,
     Tuple,
     Union,
-    cast,
 )
 
 import numpy as np
@@ -28,10 +27,10 @@ from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_wo
 from tiledbsoma_ml._utils import batched, splits
 from tiledbsoma_ml.common import NDArrayJoinId
 
-logger = logging.getLogger("tiledbsoma_ml.obs_ids")
+logger = logging.getLogger("tiledbsoma_ml.query_ids")
 
 
-Chunks = List[Tuple[int, ...]]
+Chunks = List[NDArrayJoinId]
 
 
 @define(frozen=True)
@@ -43,8 +42,8 @@ class Partition:
 
 
 @define(frozen=True, kw_only=True)
-class ObsIDs:
-    """State required to open the Experiment.
+class QueryIDs:
+    """Wrapper for obs and var IDs from an ExperimentAxisQuery.
 
     Serializable across multiple processes.
     """
@@ -57,19 +56,17 @@ class ObsIDs:
     tiledb_timestamp_ms: int
     tiledb_config: Dict[str, Union[str, float]]
 
-    def __getitem__(self, index: int) -> np.int64:
-        return cast(np.int64, self.obs_joinids[index])
-
     @classmethod
     def create(
         cls,
         query: ExperimentAxisQuery,
         layer_name: Optional[str],
-    ) -> "ObsIDs":
+    ) -> "QueryIDs":
+        """Initialize a ``QueryIDs`` object from an :class:`ExperimentAxisQuery` and ``layer_name``."""
         exp: Experiment = query.experiment
         obs_joinids = query.obs_joinids().to_numpy()
         var_joinids = query.var_joinids().to_numpy()
-        return ObsIDs(
+        return QueryIDs(
             uri=exp.uri,
             measurement_name=query.measurement_name,
             layer_name=layer_name,
@@ -82,9 +79,13 @@ class ObsIDs:
     def partition(
         self,
         partition: Optional[Partition] = None,
-    ) -> "ObsIDs":
-        obs_joinids = self.obs_joinids
+    ) -> "QueryIDs":
+        """Reduce this ``QueryIDs`` to just the  ``obs_joinids`` corresponding to a given GPU/worker ``Partition``.
 
+        If ``None`` is passed, infer world size, rank, num workers, and worker ID using global helper
+        functions (that read env vars).
+        """
+        obs_joinids = self.obs_joinids
         if partition:
             rank = partition.rank
             world_size = partition.world_size
@@ -119,7 +120,7 @@ class ObsIDs:
         self,
         frac: float,
         seed: Optional[int] = None,
-    ) -> Tuple["ObsIDs", "ObsIDs"]:
+    ) -> Tuple["QueryIDs", "QueryIDs"]:
         obs_joinids = self.obs_joinids
         n_obs = len(obs_joinids)
         n_acc = round(n_obs * frac)
@@ -139,15 +140,21 @@ class ObsIDs:
         shuffle_chunk_size: int,
         seed: Optional[int] = None,
     ) -> Chunks:
-        shuffle_chunks: List[Tuple[int, ...]] = list(
-            batched(self.obs_joinids, shuffle_chunk_size)
-        )
+        """Divide ``obs_joinids`` into chunks of size ``shuffle_chunk_size``, and shuffle them.
+
+        Used as a compromise between a full random shuffle (optimal for training performance/convergence)
+        and a sequential, un-shuffled traversal (optimal for I/O efficiency).
+        """
+        shuffle_chunks: List[NDArrayJoinId] = [
+            np.array(chunk) for chunk in batched(self.obs_joinids, shuffle_chunk_size)
+        ]
         shuffle_rng = np.random.default_rng(seed)
         shuffle_rng.shuffle(shuffle_chunks)
         return shuffle_chunks
 
     @contextmanager
     def open(self) -> Generator[Tuple[SparseNDArray, DataFrame], None, None]:
+        """Open the :class:`Experiment`, yield its ``X`` and ``obs`` TileDB-SOMA objects."""
         context = SOMATileDBContext(tiledb_config=self.tiledb_config)
         with Experiment.open(
             self.uri, tiledb_timestamp=self.tiledb_timestamp_ms, context=context

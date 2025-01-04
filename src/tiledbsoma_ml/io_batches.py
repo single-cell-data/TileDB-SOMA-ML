@@ -60,7 +60,10 @@ class IOBatches(Iterable[IOBatch]):
             if "soma_joinid" in self.obs_column_names
             else ["soma_joinid", *self.obs_column_names]
         )
-        var_indexer = IntIndexer(self.var_joinids, context=context)
+        # Round-trip though tuple avoids `TypeError: IntIndexer only supports array of type int64`.
+        # TODO: debug / work around that error; serde'ing the ndarray apparently results in a second np.int64 instance, that fails reference equality check vs. the version from the worker-process.
+        var_joinids = np.array(tuple(self.var_joinids))
+        var_indexer = IntIndexer(var_joinids, context=X.context)
 
         for obs_coords in self.io_batch_ids:
             st_time = time.perf_counter()

@@ -194,7 +194,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         return self.query_ids.var_joinids
 
     def __iter__(self) -> Iterator[Batch]:
-        """Create iterator over query.
+        """Emit ``Batch``es (aligned ``X``` and ``obs`` rows).
 
         Returns:
             ``iterator``

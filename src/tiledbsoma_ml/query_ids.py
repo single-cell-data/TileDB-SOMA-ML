@@ -80,10 +80,13 @@ class QueryIDs:
         self,
         partition: Optional[Partition] = None,
     ) -> "QueryIDs":
-        """Reduce this ``QueryIDs`` to just the  ``obs_joinids`` corresponding to a given GPU/worker ``Partition``.
+        """Create a new ``QueryIDs`` with ``obs_joinids`` corresponding to a given GPU/worker ``Partition``.
 
-        If ``None`` is passed, infer world size, rank, num workers, and worker ID using global helper
-        functions (that read env vars).
+        If ``None`` is provided, world size, rank, num workers, and worker ID will be inferred
+        using helper functions that read env vars.
+
+        When ``WORLD_SIZE > 1``, each GPU will receive the same number of samples (meaning up to
+        ``WORLD_SIZE-1`` samples may be dropped).
         """
         obs_joinids = self.obs_joinids
         if partition:

@@ -34,22 +34,22 @@ class IOBatches(Iterable[IOBatch]):
     seed: Optional[int] = None
     shuffle: bool = True
     use_eager_fetch: bool = True
+    """Given a list of obs_joinid chunks, re-chunk them into (optionally shuffled) "IO batches".
+
+    An "IO Batch" is a tuple consisting of a batch of rows from the ``X`` ``SparseNDArray``, as
+    well as the corresponding rows from the ``obs`` ``DataFrame``. The ``X`` rows are returned in
+    an optimized ``CSR_IO_Buffer``."""
 
     @property
     def io_batch_ids(self) -> Iterable[Tuple[int, ...]]:
+        """Re-chunk the ``obs_joinids`` according to the desired ``io_batch_size``."""
         return batched(
             (joinid for chunk in self.chunks for joinid in chunk),
             self.io_batch_size,
         )
 
     def __iter__(self) -> Iterator[IOBatch]:
-        """Iterate over IO batches, i.e., SOMA query reads, producing tuples of ``(X: csr_array, obs: DataFrame)``.
-
-        ``obs`` joinids read are controlled by the ``obs_joinid_iter``. Iterator results will be reindexed and shuffled
-        (if shuffling enabled).
-
-        Private method.
-        """
+        """Emit IO batches, i.e. ``(X: CSR_IO_Buffer, obs: pd.DataFrame)`` tuples."""
         # Create RNG - does not need to be identical across processes, but use the seed anyway
         # for reproducibility.
         shuffle_rng = np.random.default_rng(self.seed)
@@ -63,7 +63,7 @@ class IOBatches(Iterable[IOBatch]):
         # Round-trip though tuple avoids `TypeError: IntIndexer only supports array of type int64`.
         # TODO: debug / work around that error; serde'ing the ndarray apparently results in a second np.int64 instance, that fails reference equality check vs. the version from the worker-process.
         var_joinids = np.array(tuple(self.var_joinids))
-        var_indexer = IntIndexer(var_joinids, context=X.context)
+        var_indexer = IntIndexer(var_joinids, context=context)
 
         for obs_coords in self.io_batch_ids:
             st_time = time.perf_counter()

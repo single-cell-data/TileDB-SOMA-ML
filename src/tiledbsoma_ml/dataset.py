@@ -65,6 +65,12 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         :class:`pandas.DataFrame`, respectively.
 
         Args:
+            query:
+                Optional :class:`tiledbsoma.ExperimentAxisQuery`, defining the data to iterate over.
+                ``query`` xor ``query_ids`` should be provided.
+            query_ids:
+                Optional :class:`tiledbsoma_ml.QueryIDs`, defining the data to iterate over.
+                ``query`` xor ``query_ids`` should be provided.
             layer_name:
                 The name of the X layer to read.
             obs_column_names:

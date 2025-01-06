@@ -5,25 +5,22 @@
 
 from __future__ import annotations
 
-import gc
 import logging
-import time
 from math import ceil
 from typing import Iterator, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import torch
 from scipy import sparse
-from tiledbsoma import DataFrame, ExperimentAxisQuery, IntIndexer, SparseNDArray
+from tiledbsoma import DataFrame, ExperimentAxisQuery, SparseNDArray
 from torch.utils.data import IterableDataset
 
-from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
 from tiledbsoma_ml._utils import EagerIterator
 from tiledbsoma_ml.common import Batch, NDArrayJoinId, NDArrayNumber
-from tiledbsoma_ml.query_ids import QueryIDs
+from tiledbsoma_ml.io_batches import IOBatches
+from tiledbsoma_ml.query_ids import Chunks, QueryIDs
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")
 
@@ -75,11 +72,12 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
        chunks". The chunks are then shuffled amongst themselves (but retain their internal order, at this stage). If
        ``shuffle=False``, one "chunk" is emitted containing all |ED.obs_joinids|.
 
-    3. IO-batching: shuffle-chunks are re-grouped into "IO batches" of size ``io_batch_size``. If ``shuffle=True``, each
-       IO-batch is shuffled, then the corresponding ``X`` and ``obs`` rows are fetched from the underlying
-       ``Experiment``.
+    3. IO-batching (|Iterable|\\[|IOBatch|\\]): shuffle-chunks are re-grouped into "IO batches" of size
+       ``io_batch_size``. If ``shuffle=True``, each |IOBatch| is shuffled, then the corresponding ``X`` and ``obs`` rows
+       are fetched from the underlying ``Experiment``.
 
-    4. GPU-batching (|Iterable|\\[|Batch|\\]): IO-batch tuples are re-grouped into "GPU batches" of size ``batch_size``.
+    4. GPU-batching (|Iterable|\\[|Batch|\\]): |IOBatch| tuples are re-grouped into "GPU batches" of size
+       ``batch_size``.
 
     Shuffling support (in steps 2. and 3.) is enabled with the ``shuffle`` parameter, and should be used in lieu of
     |DataLoader|'s default shuffling functionality. Similarly, ``batch_size`` should be used instead of |DataLoader|'s
@@ -114,7 +112,8 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     shuffle: bool
     """Whether to shuffle the ``obs`` and ``X`` data being returned."""
     shuffle_chunk_size: int
-    """Number of contiguous rows shuffled as an atomic unit (before later concatenation/shuffling within IO-batches)."""
+    """Number of contiguous rows shuffled as an atomic unit (before later concatenation and shuffling within
+    |IOBatch|'s)."""
     seed: int
     """Random seed used for shuffling."""
     return_sparse_X: bool
@@ -263,7 +262,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     def var_joinids(self) -> NDArrayJoinId:
         return self.query_ids.var_joinids
 
-    def _obs_chunk_iter(self) -> Iterator[NDArrayJoinId]:
+    def _obs_chunks(self) -> Chunks:
         """Partition ``obs_joinids`` for the current GPU/worker, and optionally break into "shuffle chunks".
 
         See |QueryIDs| for more info.
@@ -273,14 +272,12 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         query_ids = self.query_ids.partitioned()
 
         if self.shuffle:
-            chunks = query_ids.shuffle_chunks(
+            return query_ids.shuffle_chunks(
                 shuffle_chunk_size=self.shuffle_chunk_size,
                 seed=self.seed,
             )
         else:
-            chunks = [query_ids.obs_joinids]
-
-        return iter(chunks)
+            return [query_ids.obs_joinids]
 
     def __iter__(self) -> Iterator[Batch]:
         """Emit |Batch|'s (aligned ``X`` and ``obs`` rows).
@@ -316,8 +313,12 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
                     "Experiment only supports X layers which are of type SparseNDArray"
                 )
 
-            obs_chunk_iter = self._obs_chunk_iter()
-            _mini_batch_iter = self._mini_batch_iter(obs, X, obs_chunk_iter)
+            obs_chunks = self._obs_chunks()
+            _mini_batch_iter = self._mini_batch_iter(
+                obs=obs,
+                X=X,
+                obs_chunks=obs_chunks,
+            )
             if self.use_eager_fetch:
                 _mini_batch_iter = EagerIterator(
                     _mini_batch_iter, pool=X.context.threadpool
@@ -389,108 +390,28 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
             "`Experiment` can only be iterated - does not support mapping"
         )
 
-    def _io_batch_iter(
-        self,
-        obs: DataFrame,
-        X: SparseNDArray,
-        obs_chunk_iter: Iterator[NDArrayJoinId],
-    ) -> Iterator[Tuple[CSR_IO_Buffer, pd.DataFrame]]:
-        """Iterate over IO batches, i.e., SOMA query reads, producing tuples of ``(X: csr_array, obs: DataFrame)``.
-
-        ``obs`` joinids read are controlled by the ``obs_chunk_iter``. Iterator results will be reindexed and shuffled
-        (if shuffling enabled).
-
-        Private method.
-        """
-        # Create RNG - does not need to be identical across processes, but use the seed anyway
-        # for reproducibility.
-        shuffle_rng = np.random.default_rng(self.seed + self.epoch)
-
-        obs_column_names = (
-            list(self.obs_column_names)
-            if "soma_joinid" in self.obs_column_names
-            else ["soma_joinid", *self.obs_column_names]
-        )
-        # Round-trip though tuple avoids `TypeError: IntIndexer only supports array of type int64`.
-        # TODO: debug / work around that error; serde'ing the ndarray apparently results in a second np.int64 instance, that fails reference equality check vs. the version from the worker-process.
-        var_joinids = np.array(tuple(self.var_joinids))
-        var_indexer = IntIndexer(var_joinids, context=X.context)
-
-        for obs_chunk in obs_chunk_iter:
-            st_time = time.perf_counter()
-            obs_shuffled_coords = (
-                obs_chunk if not self.shuffle else shuffle_rng.permuted(obs_chunk)
-            )
-            obs_indexer = IntIndexer(obs_shuffled_coords, context=X.context)
-            logger.debug(f"Retrieving next SOMA IO batch of length {len(obs_chunk)}...")
-
-            # To maximize opportunities for concurrency, when in eager_fetch mode,
-            # create the X read iterator first, as the eager iterator will begin
-            # the read-ahead immediately. Then proceed to fetch obs DataFrame.
-            # This matters most on latent backing stores, e.g., S3.
-            X_tbl_iter: Iterator[pa.Table] = X.read(
-                coords=(obs_chunk, self.var_joinids)
-            ).tables()
-
-            def make_io_buffer(
-                X_tbl: pa.Table,
-                obs_coords: NDArrayJoinId,
-                var_coords: NDArrayJoinId,
-                obs_indexer: IntIndexer,
-            ) -> CSR_IO_Buffer:
-                """This function provides a GC after we throw off (large) garbage."""
-                m = CSR_IO_Buffer.from_ijd(
-                    obs_indexer.get_indexer(X_tbl["soma_dim_0"]),
-                    var_indexer.get_indexer(X_tbl["soma_dim_1"]),
-                    X_tbl["soma_data"].to_numpy(),
-                    shape=(len(obs_coords), len(var_coords)),
-                )
-                gc.collect(generation=0)
-                return m
-
-            _io_buf_iter = (
-                make_io_buffer(X_tbl, obs_chunk, self.var_joinids, obs_indexer)
-                for X_tbl in X_tbl_iter
-            )
-            if self.use_eager_fetch:
-                _io_buf_iter = EagerIterator(_io_buf_iter, pool=X.context.threadpool)
-
-            # Now that X read is potentially in progress (in eager mode), go fetch obs data
-            # fmt: off
-            obs_io_batch = (
-                obs.read(coords=(obs_chunk,), column_names=obs_column_names)
-                .concat()
-                .to_pandas()
-                .set_index("soma_joinid")
-                .reindex(obs_shuffled_coords, copy=False)
-                .reset_index()  # demote "soma_joinid" to a column
-                [self.obs_column_names]
-            )  # fmt: on
-
-            X_io_batch = CSR_IO_Buffer.merge(tuple(_io_buf_iter))
-
-            del obs_indexer, obs_chunk, obs_shuffled_coords, _io_buf_iter
-            gc.collect()
-
-            tm = time.perf_counter() - st_time
-            logger.debug(
-                f"Retrieved SOMA IO batch, took {tm:.2f}sec, {X_io_batch.shape[0]/tm:0.1f} samples/sec"
-            )
-            yield X_io_batch, obs_io_batch
-
     def _mini_batch_iter(
         self,
         obs: DataFrame,
         X: SparseNDArray,
-        obs_chunk_iter: Iterator[NDArrayJoinId],
+        obs_chunks: Chunks,
     ) -> Iterator[Batch]:
         """Break IO batches into shuffled mini-batch-sized chunks.
 
         Private method.
         """
-        io_batch_iter = self._io_batch_iter(obs, X, obs_chunk_iter)
-        if self.use_eager_fetch:
-            io_batch_iter = EagerIterator(io_batch_iter, pool=X.context.threadpool)
+        io_batches = IOBatches(
+            chunks=obs_chunks,
+            io_batch_size=self.io_batch_size,
+            obs=obs,
+            var_joinids=self.var_joinids,
+            X=X,
+            obs_column_names=self.obs_column_names,
+            seed=self.seed,
+            shuffle=self.shuffle,
+            use_eager_fetch=self.use_eager_fetch,
+        )
+        io_batch_iter = iter(io_batches)
 
         mini_batch_size = self.batch_size
         result: Tuple[NDArrayNumber, pd.DataFrame] | None = None

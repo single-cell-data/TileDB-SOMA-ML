@@ -61,6 +61,9 @@ rst_prolog = """
 .. |Partition| replace:: :class:`~tiledbsoma_ml.query_ids.Partition`
 .. |QueryIDs| replace:: :class:`~tiledbsoma_ml.query_ids.QueryIDs`
 .. |Q.obs_joinids| replace:: :obj:`~tiledbsoma_ml.query_ids.QueryIDs.obs_joinids`
+.. |Chunks| replace:: :class:`~tiledbsoma_ml.query_ids.Chunks`
+.. |IOBatch| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatch`
+.. |IOBatches| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatches`
 .. |CSR_IO_Buffer| replace:: :class:`~tiledbsoma_ml._csr.CSR_IO_Buffer`
 .. |get_distributed_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_distributed_world_rank`
 .. |get_worker_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_worker_world_rank`
@@ -72,6 +75,7 @@ rst_prolog = """
 .. |Experiment| replace:: :class:`~tiledbsoma.Experiment`
 .. |ExperimentAxisQuery| replace:: :class:`~tiledbsoma.ExperimentAxisQuery`
 .. |Measurement| replace:: :class:`~tiledbsoma.Measurement`
+.. |SparseNDArray| replace:: :class:`~tiledbsoma.SparseNDArray`
 .. |DataLoader| replace:: :class:`~torch.utils.data.DataLoader`
 .. |IterableDataset| replace:: :class:`~torch.utils.data.IterableDataset`
 .. |DistributedDataParallel| replace:: :class:`~torch.nn.parallel.DistributedDataParallel`

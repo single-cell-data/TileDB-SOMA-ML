@@ -46,12 +46,21 @@ QueryIDs
    :undoc-members:
    :member-order: bysource
 
+.. autoclass:: Chunks
+
 Partition
 ~~~~~~~~~
 .. autoclass:: Partition
    :members:
    :undoc-members:
    :member-order: bysource
+
+``io_batches``
+^^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.io_batches
+   :members:
+   :undoc-members:
 
 ``_distributed``
 ^^^^^^^^^^^^^^^^

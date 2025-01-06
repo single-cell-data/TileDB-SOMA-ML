@@ -79,6 +79,7 @@ class CSR_IO_Buffer:
 
     @property
     def dtype(self) -> npt.DTypeLike:
+        """Underlying |ndarray| dtype."""
         return self.data.dtype
 
     def slice_tonumpy(self, row_index: slice) -> NDArrayNumber:

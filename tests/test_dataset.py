@@ -21,7 +21,6 @@ from tiledbsoma import Experiment
 
 from tests._utils import (
     XValueGen,
-    assert_array_almost_equal,
     assert_array_equal,
     mock_distributed,
     parametrize,
@@ -163,7 +162,7 @@ def check_case(
             if batch_size == 1 and not return_sparse_X:
                 assert len(e_X) == 1
                 e_X = e_X[0]
-            assert_array_almost_equal(a_X, e_X)
+            assert_array_equal(a_X, e_X)
             assert_frame_equal(a_obs, e_obs)
 
 

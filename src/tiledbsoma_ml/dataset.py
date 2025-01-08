@@ -7,21 +7,14 @@ from __future__ import annotations
 
 import logging
 from math import ceil
-from typing import (
-    Iterator,
-    Optional,
-    Sequence,
-    Tuple,
-)
+from typing import Iterator, Optional, Sequence, Tuple
 
 import numpy as np
+import torch
 from somacore import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
-from tiledbsoma_ml._distributed import (
-    get_distributed_world_rank,
-    get_worker_world_rank,
-)
+from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
 from tiledbsoma_ml.common import Batch, NDArrayJoinId
 from tiledbsoma_ml.gpu_batches import GPUBatches
 from tiledbsoma_ml.io_batches import IOBatches
@@ -199,6 +192,26 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     def var_joinids(self) -> NDArrayJoinId:
         return self.query_ids.var_joinids
 
+    def _multiproc_check(self) -> None:
+        """Rule out config combinations that are invalid in multiprocess mode."""
+        if self.return_sparse_X:
+            worker_info = torch.utils.data.get_worker_info()
+            if worker_info and worker_info.num_workers > 0:
+                raise NotImplementedError(
+                    "torch does not work with sparse tensors in multi-processing mode "
+                    "(see https://github.com/pytorch/pytorch/issues/20248)"
+                )
+
+        world_size, rank = get_distributed_world_rank()
+        n_workers, worker_id = get_worker_world_rank()
+        logger.debug(
+            f"Iterator created {rank=}, {world_size=}, {worker_id=}, {n_workers=}, seed={self.seed}, epoch={self.epoch}"
+        )
+        if world_size > 1 and self.shuffle and self.seed is None:
+            raise ValueError(
+                "Experiment requires an explicit `seed` when shuffle is used in a multi-process configuration."
+            )
+
     def __iter__(self) -> Iterator[Batch]:
         """Emit ``Batch``es (aligned ``X``` and ``obs`` rows).
 
@@ -208,19 +221,23 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         Lifecycle:
             experimental
         """
-        query_ids = self.query_ids.partition()
+        self._multiproc_check()
+
         io_batch_size = self.io_batch_size
         shuffle = self.shuffle
-        shuffle_chunk_size = self.shuffle_chunk_size
         batch_size = self.batch_size
         use_eager_fetch = self.use_eager_fetch
         seed = self.seed
+
+        query_ids = self.query_ids.partition()
         if shuffle:
             chunks = query_ids.shuffle_chunks(
-                shuffle_chunk_size=shuffle_chunk_size,
+                shuffle_chunk_size=self.shuffle_chunk_size,
                 seed=seed,
             )
         else:
+            # In no-shuffle mode, all the `obs_joinids` can be treated as one "shuffle chunk",
+            # which IO-batches will stride over.
             chunks = [query_ids.obs_joinids]
 
         with query_ids.open() as (X, obs):

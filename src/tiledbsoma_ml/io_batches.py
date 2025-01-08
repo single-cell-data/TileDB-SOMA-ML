@@ -38,7 +38,8 @@ class IOBatches(Iterable[IOBatch]):
 
     An "IO Batch" is a tuple consisting of a batch of rows from the ``X`` ``SparseNDArray``, as
     well as the corresponding rows from the ``obs`` ``DataFrame``. The ``X`` rows are returned in
-    an optimized ``CSR_IO_Buffer``."""
+    an optimized ``CSR_IO_Buffer``.
+    """
 
     @property
     def io_batch_ids(self) -> Iterable[Tuple[int, ...]]:

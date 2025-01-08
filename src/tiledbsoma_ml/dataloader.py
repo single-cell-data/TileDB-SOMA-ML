@@ -19,26 +19,25 @@ def experiment_dataloader(
     ds: ExperimentDataset,
     **dataloader_kwargs: Any,
 ) -> DataLoader:
-    """Factory method for :class:`torch.utils.data.DataLoader`. This method can be used to safely instantiate a
-    :class:`torch.utils.data.DataLoader` that works with :class:`tiledbsoma_ml.ExperimentDataset`.
+    """|DataLoader| factory method for safely wrapping an |ExperimentDataset|.
 
-    Several :class:`torch.utils.data.DataLoader` constructor parameters are not applicable, or are non-performant,
+    Several |DataLoader| constructor parameters are not applicable, or are non-performant,
     when using loaders from this module, including ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``.
     Specifying any of these parameters will result in an error.
 
     Refer to ``https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader`` for more information on
-    :class:`torch.utils.data.DataLoader` parameters.
+    |DataLoader| parameters.
 
     Args:
         ds:
-            A :class:`torch.utils.data.IterableDataset`. May include chained data pipes.
+            A |IterableDataset|. May include chained data pipes.
         **dataloader_kwargs:
-            Additional keyword arguments to pass to the :class:`torch.utils.data.DataLoader` constructor,
+            Additional keyword arguments to pass to the |DataLoader| constructor,
             except for ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``, which are not
             supported when using data loaders in this module.
 
     Returns:
-        A :class:`torch.utils.data.DataLoader`.
+        |DataLoader|
 
     Raises:
         ValueError: if any of the ``shuffle``, ``batch_size``, ``sampler``, or ``batch_sampler`` params
@@ -73,7 +72,7 @@ def experiment_dataloader(
 
 
 def _collate_noop(datum: _T) -> _T:
-    """Noop collation for use with a dataloader instance.
+    """Noop collation used by |experiment_dataloader|.
 
     Private.
     """

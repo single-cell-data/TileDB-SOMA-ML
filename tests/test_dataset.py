@@ -83,7 +83,7 @@ sweep_cases = partial(cases, sweep_sparse=True, sweep_eager=True)
 
 
 def check(soma_experiment: Experiment, case: Case):
-    """Wrapper around ``check_case`` that "spreads" the ``Case``'s fields"""
+    """Wrapper around ``check_case`` that "spreads" the ``Case``'s fields."""
     check_case(soma_experiment, **asdict(case))
 
 
@@ -104,9 +104,8 @@ def check_case(
     use_eager_fetch: bool,
     return_sparse_X: bool,
 ):
-    """Given fields from a ``Case``, and an ``Experiment``, create an ``ExperimentBatchDataset``
-    and verify that its emitted batches match ``Case.expected``.
-    """
+    """Given fields from a ``Case``, and an ``Experiment``, create an ``ExperimentBatchDataset`` and verify that its
+    emitted batches match ``Case.expected``."""
     if gpu or worker:
         distributed_ctx = mock_distributed(*(gpu or (0, 1)), (*worker, seed))
     else:
@@ -301,9 +300,9 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
     num_workers: int,
     splits: list[list[int]],
 ):
-    """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode and
-    DataLoader multiprocessing mode, using mocks to avoid having to do distributed pytorch
-    setup or real DataLoader multiprocessing."""
+    """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode and DataLoader
+    multiprocessing mode, using mocks to avoid having to do distributed pytorch setup or real DataLoader
+    multiprocessing."""
 
     for rank in range(world_size):
         proc_splits = splits[rank]

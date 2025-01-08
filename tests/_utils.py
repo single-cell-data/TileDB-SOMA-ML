@@ -23,10 +23,10 @@ def assert_array_equal(
     expected: NDArrayJoinId | List[List[float]] | List[float],
     strict: bool = True,
 ):
-    """Wrap Numpy's ``assert_array_equal``, set some defaults and convert ``List``s to ``np.array``s.
+    """Wrap :py:obj:`np.testing.assert_array_equal`, set some defaults and convert ``List``s to |np.ndarray|s.
 
-    - ``X`` batches are 1- or 2-D arrays of ``float32``s; this helper allows tests to pass ``List``
-      or ``List`` of ``List``s, for convenience.
+    - ``X`` batches are 1- or 2-D arrays of ``float32``s; this helper allows tests to pass ``List`` or ``List`` of
+      ``List``s, for convenience.
     - Set ``strict=True`` by default (ensuring e.g. dtypes match).
     """
     if isinstance(expected, list):
@@ -46,11 +46,10 @@ def coords_to_float(r: int, c: int) -> float:
 def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
     """Create a sample sparse matrix for use in tests.
 
-    The matrix has every other element nonzero, in a "checkerboard" pattern, and the nonzero
-    elements encode their row- and column-indices, so tests can confidently assert that the
-    contents of a given row are what's expected, e.g.:
+    The matrix has every other element nonzero, in a "checkerboard" pattern, and the nonzero elements encode their row-
+    and column-indices, so tests can confidently assert that the contents of a given row are what's expected, e.g.:
 
-    ```
+    ```python
     assert_array_equal(
         pytorch_x_value_gen(range(5), range(5)),
         [
@@ -82,8 +81,10 @@ def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
 
 
 def pytorch_seq_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
-    """A sparse matrix where the values of each col are the obs_range values. Useful for checking the
-    X values are being returned in the correct order."""
+    """A sparse matrix where the values of each col are the obs_range values.
+
+    Useful for checking the X values are being returned in the correct order.
+    """
     data = np.vstack([list(obs_range)] * len(var_range)).flatten()
     rows = np.vstack([list(obs_range)] * len(var_range)).flatten()
     cols = np.column_stack([list(var_range)] * len(obs_range)).flatten()

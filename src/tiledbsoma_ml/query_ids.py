@@ -2,6 +2,12 @@
 # Copyright (c) 2021-2024 TileDB, Inc.
 #
 # Licensed under the MIT License.
+"""
+.. |obs_joinids| replace:: :attr:`~tiledbsoma_ml.query_ids.QueryIDs.obs_joinids`
+
+Shuffle-chunk and partition (across GPU and DataLoader-worker processes) while reading from a SOMA |Experiment|.
+"""
+
 import logging
 from contextlib import contextmanager
 from typing import (
@@ -15,10 +21,10 @@ from typing import (
 
 import numpy as np
 from attrs import define, evolve
-from somacore import ExperimentAxisQuery
 from tiledbsoma import (
     DataFrame,
     Experiment,
+    ExperimentAxisQuery,
     SOMATileDBContext,
     SparseNDArray,
 )
@@ -36,25 +42,36 @@ Chunks = List[NDArrayJoinId]
 @define(frozen=True)
 class Partition:
     rank: int
+    """GPU-process rank."""
     world_size: int
+    """Number of GPU processes."""
     worker_id: int
+    """DataLoader-worker index."""
     n_workers: int
+    """Number of DataLoader-workers (within this GPU process)"""
 
 
 @define(frozen=True, kw_only=True)
 class QueryIDs:
-    """Wrapper for obs and var IDs from an ExperimentAxisQuery.
+    """Wrapper for obs and var IDs from an |ExperimentAxisQuery|.
 
     Serializable across multiple processes.
     """
 
     uri: str
+    """SOMA |Experiment| URI."""
     measurement_name: str
+    """SOMA |Experiment| measurement name (containing the ``X`` array to read)"""
     layer_name: Optional[str]
+    """``X`` array name to read (within the measurement)"""
     obs_joinids: NDArrayJoinId
+    """``obs`` row coordinates to read."""
     var_joinids: NDArrayJoinId
+    """``var`` column coordinates to read."""
     tiledb_timestamp_ms: int
+    """Timestamp to open the |Experiment| at."""
     tiledb_config: Dict[str, Union[str, float]]
+    """Configs to open the |Experiment| with."""
 
     @classmethod
     def create(
@@ -62,7 +79,7 @@ class QueryIDs:
         query: ExperimentAxisQuery,
         layer_name: Optional[str],
     ) -> "QueryIDs":
-        """Initialize a ``QueryIDs`` object from an :class:`ExperimentAxisQuery` and ``layer_name``."""
+        """Initialize a |QueryIDs| object |ExperimentAxisQuery| and :attr:`.layer_name`."""
         exp: Experiment = query.experiment
         obs_joinids = query.obs_joinids().to_numpy()
         var_joinids = query.var_joinids().to_numpy()
@@ -80,13 +97,13 @@ class QueryIDs:
         self,
         partition: Optional[Partition] = None,
     ) -> "QueryIDs":
-        """Create a new ``QueryIDs`` with ``obs_joinids`` corresponding to a given GPU/worker ``Partition``.
+        """Create a new |QueryIDs| with |obs_joinids| corresponding to a given GPU/worker |Partition|.
 
-        If ``None`` is provided, world size, rank, num workers, and worker ID will be inferred
-        using helper functions that read env vars.
+        If ``None`` is provided, world size, rank, num workers, and worker ID will be inferred using helper functions
+        that read env vars.
 
-        When ``WORLD_SIZE > 1``, each GPU will receive the same number of samples (meaning up to
-        ``WORLD_SIZE-1`` samples may be dropped).
+        When ``WORLD_SIZE > 1``, each GPU will receive the same number of samples (meaning up to ``WORLD_SIZE-1``
+        samples may be dropped).
         """
         obs_joinids = self.obs_joinids
         if partition:
@@ -145,8 +162,8 @@ class QueryIDs:
     ) -> Chunks:
         """Divide ``obs_joinids`` into chunks of size ``shuffle_chunk_size``, and shuffle them.
 
-        Used as a compromise between a full random shuffle (optimal for training performance/convergence)
-        and a sequential, un-shuffled traversal (optimal for I/O efficiency).
+        Used as a compromise between a full random shuffle (optimal for training performance/convergence) and a
+        sequential, un-shuffled traversal (optimal for I/O efficiency).
         """
         shuffle_chunks: List[NDArrayJoinId] = [
             np.array(chunk) for chunk in batched(self.obs_joinids, shuffle_chunk_size)
@@ -157,7 +174,7 @@ class QueryIDs:
 
     @contextmanager
     def open(self) -> Generator[Tuple[SparseNDArray, DataFrame], None, None]:
-        """Open the :class:`Experiment`, yield its ``X`` and ``obs`` TileDB-SOMA objects."""
+        """Open the |Experiment| at ``uri``, yield its ``X`` and ``obs`` TileDB-SOMA objects."""
         context = SOMATileDBContext(tiledb_config=self.tiledb_config)
         with Experiment.open(
             self.uri, tiledb_timestamp=self.tiledb_timestamp_ms, context=context

@@ -231,7 +231,6 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         self.seed = (
             seed if seed is not None else np.random.default_rng().integers(0, 2**32 - 1)
         )
-        self._user_specified_seed = seed is not None
         self.return_sparse_X = return_sparse_X
         self.use_eager_fetch = use_eager_fetch
         self.epoch = 0
@@ -275,7 +274,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         logger.debug(
             f"Iterator created {rank=}, {world_size=}, {worker_id=}, {n_workers=}, seed={self.seed}, epoch={self.epoch}"
         )
-        if world_size > 1 and self.shuffle and self._user_specified_seed is None:
+        if world_size > 1 and self.shuffle and self.seed is None:
             raise ValueError(
                 "Experiment requires an explicit `seed` when shuffle is used in a multi-process configuration."
             )

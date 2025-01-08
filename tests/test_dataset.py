@@ -47,17 +47,17 @@ def test_non_batched(
         assert ds.shape == (6, 3)
         batch_iter = iter(ds)
         for idx, (X_batch, obs_batch) in enumerate(batch_iter):
-            expected_X = [0, 1, 0] if idx % 2 == 0 else [1, 0, 1]
+            expected_X = [0, idx + 0.1, 0] if idx % 2 == 0 else [idx, 0, idx + 0.2]
             if return_sparse_X:
                 assert isinstance(X_batch, sparse.csr_matrix)
                 # Sparse batches are always 2D
                 assert X_batch.shape == (1, 3)
-                assert X_batch.todense().tolist() == [expected_X]
+                assert_array_equal(X_batch.todense(), [expected_X])
             else:
                 assert isinstance(X_batch, np.ndarray)
                 # Dense single-row batches are "squeezed" down to 1-D
                 assert X_batch.shape == (3,)
-                assert X_batch.tolist() == expected_X
+                assert_array_equal(X_batch, expected_X)
 
             assert_frame_equal(obs_batch, pd.DataFrame({"label": [str(idx)]}))
 
@@ -95,7 +95,7 @@ def test_uneven_soma_and_result_batches(
             X_batch = X_batch.todense()
         else:
             assert isinstance(X_batch, np.ndarray)
-        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
+        assert_array_equal(X_batch, [[0, 0.1, 0], [1, 0, 1.2], [0, 2.1, 0]])
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
 
         X_batch, obs_batch = next(batch_iter)
@@ -105,7 +105,7 @@ def test_uneven_soma_and_result_batches(
             X_batch = X_batch.todense()
         else:
             assert isinstance(X_batch, np.ndarray)
-        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0], [1, 0, 1]]
+        assert_array_equal(X_batch, [[3, 0, 3.2], [0, 4.1, 0], [5, 0, 5.2]])
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
 
 
@@ -137,14 +137,14 @@ def test_batching__all_batches_full_size(
         if return_sparse_X:
             assert isinstance(X_batch, sparse.csr_matrix)
             X_batch = X_batch.todense()
-        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
+        assert_array_equal(X_batch, [[0, 0.1, 0], [1, 0, 1.2], [0, 2.1, 0]])
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
 
         X_batch, obs_batch = next(batch_iter)
         if return_sparse_X:
             assert isinstance(X_batch, sparse.csr_matrix)
             X_batch = X_batch.todense()
-        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0], [1, 0, 1]]
+        assert_array_equal(X_batch, [[3, 0, 3.2], [0, 4.1, 0], [5, 0, 5.2]])
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
 
         with pytest.raises(StopIteration):
@@ -206,7 +206,7 @@ def test_batching__partial_final_batch_size(
         if return_sparse_X:
             assert isinstance(X_batch, sparse.csr_matrix)
             X_batch = X_batch.todense()
-        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0]]
+        assert_array_equal(X_batch, [[3, 0, 3.2], [0, 4.1, 0]])
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4"]}))
 
         with pytest.raises(StopIteration):
@@ -234,7 +234,7 @@ def test_batching__exactly_one_batch(
         assert ds.shape == (1, 3)
         batch_iter = iter(ds)
         X_batch, obs_batch = next(batch_iter)
-        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
+        assert_array_equal(X_batch, [[0, 0.1, 0], [1, 0, 1.2], [0, 2.1, 0]])
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
 
         with pytest.raises(StopIteration):

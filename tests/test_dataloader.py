@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 from tiledbsoma import Experiment
 
-from tests._utils import parametrize, pytorch_x_value_gen
+from tests._utils import assert_array_equal, parametrize, pytorch_x_value_gen
 from tiledbsoma_ml.common import NDArrayNumber
 from tiledbsoma_ml.dataloader import experiment_dataloader
 from tiledbsoma_ml.dataset import ExperimentDataset
@@ -61,7 +61,7 @@ def test_experiment_dataloader__non_batched(
         assert all(obs.shape == (1, 1) for _, obs in batches)
 
         X, obs = batches[0]
-        assert X.tolist() == [0, 1, 0]
+        assert_array_equal(X, [0, 0.1, 0])
         assert obs["label"].tolist() == ["0"]
 
 
@@ -83,7 +83,7 @@ def test_experiment_dataloader__batched(
         batches = list(iter(dl))
 
         X, obs = batches[0]
-        assert X.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
+        assert_array_equal(X, [[0, 0.1, 0], [1, 0, 1.2], [0, 2.1, 0]])
         assert obs.to_numpy().tolist() == [[0], [1], [2]]
 
 

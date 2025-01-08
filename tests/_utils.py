@@ -5,8 +5,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager, nullcontext
-from functools import partial
-from typing import Callable, Tuple
+from typing import Callable, List, Tuple
 from unittest.mock import patch
 
 import numpy as np
@@ -16,21 +15,69 @@ from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma._collection import CollectionBase
 from torch.utils.data._utils.worker import WorkerInfo
 
-assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
+from tiledbsoma_ml.common import NDArrayJoinId
+
+
+def assert_array_equal(
+    actual: np.ndarray,
+    expected: NDArrayJoinId | List[List[float]] | List[float],
+    strict: bool = True,
+):
+    """Wrap :obj:`np.testing.assert_array_equal`, set some defaults and convert |List|'s to |np.ndarray|'s.
+
+    - ``X`` batches are 1- or 2-D arrays of ``float32``s; this helper allows tests to pass |List| or |List| of
+      |List|'s, for convenience.
+    - Set ``strict=True`` by default (ensuring e.g. dtypes match).
+    """
+    if isinstance(expected, list):
+        expected = np.array(expected, dtype=np.float32)
+    np.testing.assert_array_equal(actual, expected, strict=strict)
+
+
 parametrize = pytest.mark.parametrize
 
 XValueGen = Callable[[range, range], spmatrix]
 
 
+def coords_to_float(r: int, c: int) -> float:
+    return float(f"{r}.{str(c)[::-1]}")
+
+
 def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
+    """Create a sample sparse matrix for use in tests.
+
+    The matrix has every other element nonzero, in a "checkerboard" pattern, and the nonzero elements encode their row-
+    and column-indices, so tests can confidently assert that the contents of a given row are what's expected, e.g.:
+
+    ```python
+    assert_array_equal(
+        pytorch_x_value_gen(range(5), range(5)),
+        [
+            [ 0 , 0.1 , 0   , 0.3 , 0   ],
+            [ 1 , 0   , 1.2 , 0   , 1.4 ],
+            [ 0 , 2.1 , 0   , 2.3 , 0   ],
+            [ 3 , 0   , 3.2 , 0   , 3.4 ],
+            [ 0 , 4.1 , 0   , 4.3 , 0   ],
+        ]
+    )
+    ```
+    """
     occupied_shape = (
         obs_range.stop - obs_range.start,
         var_range.stop - var_range.start,
     )
-    checkerboard_of_ones = coo_matrix(np.indices(occupied_shape).sum(axis=0) % 2)
-    checkerboard_of_ones.row += obs_range.start
-    checkerboard_of_ones.col += var_range.start
-    return checkerboard_of_ones
+    floats = np.array(
+        [
+            [coords_to_float(r, c) for c in range(var_range.start, var_range.stop)]
+            for r in range(obs_range.start, obs_range.stop)
+        ]
+    )
+    pos_floats_checkerboard = coo_matrix(
+        (np.indices(occupied_shape).sum(axis=0) % 2) * floats
+    )
+    pos_floats_checkerboard.row += obs_range.start
+    pos_floats_checkerboard.col += var_range.start
+    return pos_floats_checkerboard
 
 
 def pytorch_seq_x_value_gen(obs_range: range, var_range: range) -> spmatrix:

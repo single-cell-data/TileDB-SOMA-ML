@@ -306,8 +306,8 @@ def test_distributed__returns_data_partition_for_rank(
     world_size: int,
     rank: int,
 ):
-    """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode,
-    using mocks to avoid having to do real PyTorch distributed setup."""
+    """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode, using mocks
+    to avoid having to do real PyTorch distributed setup."""
 
     with (
         patch("torch.distributed.is_initialized") as mock_dist_is_initialized,
@@ -360,9 +360,9 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
     num_workers: int,
     splits: list[list[int]],
 ):
-    """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode and
-    DataLoader multiprocessing mode, using mocks to avoid having to do distributed pytorch
-    setup or real DataLoader multiprocessing."""
+    """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode and DataLoader
+    multiprocessing mode, using mocks to avoid having to do distributed pytorch setup or real DataLoader
+    multiprocessing."""
 
     for rank in range(world_size):
         proc_splits = splits[rank]

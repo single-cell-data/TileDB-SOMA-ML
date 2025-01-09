@@ -34,7 +34,7 @@ def get_distributed_world_rank() -> Tuple[int, int]:
 
 
 def get_worker_world_rank() -> Tuple[int, int]:
-    """Return number of DataLoader workers and our worker rank/id"""
+    """Return number of DataLoader workers and our worker rank/id."""
     num_workers, worker = 1, 0
     if "WORKER" in os.environ and "NUM_WORKERS" in os.environ:
         num_workers = int(os.environ["NUM_WORKERS"])

@@ -21,11 +21,11 @@ class CSR_IO_Buffer:
     """Implement a minimal CSR matrix with specific optimizations for use in this package.
 
     Operations supported are:
-    * Incrementally build a CSR from COO, allowing overlapped I/O and CSR conversion for I/O batches,
-      and a final "merge" step which combines the result.
-    * Zero intermediate copy conversion of an arbitrary row slice to dense (i.e., mini-batch extraction).
-    * Parallel processing, where possible (construction, merge, etc.).
-    * Minimize memory use for index arrays.
+      - Incrementally build a CSR from COO, allowing overlapped I/O and CSR conversion for I/O batches, and a final
+        "merge" step which combines the result.
+      - Zero intermediate copy conversion of an arbitrary row slice to dense (i.e., mini-batch extraction).
+      - Parallel processing, where possible (construction, merge, etc.).
+      - Minimize memory use for index arrays.
 
     Overall is significantly faster, and uses less memory, than the equivalent ``scipy.sparse`` operations.
     """
@@ -54,7 +54,7 @@ class CSR_IO_Buffer:
     def from_ijd(
         i: _CSRIdxArray, j: _CSRIdxArray, d: NDArrayNumber, shape: Tuple[int, int]
     ) -> "CSR_IO_Buffer":
-        """Factory from COO"""
+        """Factory from COO."""
         nnz = len(d)
         indptr: _CSRIdxArray = np.zeros((shape[0] + 1), dtype=smallest_uint_dtype(nnz))
         indices: _CSRIdxArray = np.empty((nnz,), dtype=smallest_uint_dtype(shape[1]))
@@ -66,7 +66,7 @@ class CSR_IO_Buffer:
     def from_pjd(
         p: _CSRIdxArray, j: _CSRIdxArray, d: NDArrayNumber, shape: Tuple[int, int]
     ) -> "CSR_IO_Buffer":
-        """Factory from CSR"""
+        """Factory from CSR."""
         return CSR_IO_Buffer(p, j, d, shape)
 
     @property
@@ -82,7 +82,10 @@ class CSR_IO_Buffer:
         return self.data.dtype
 
     def slice_tonumpy(self, row_index: slice) -> NDArrayNumber:
-        """Extract slice as a dense ndarray. Does not assume any particular ordering of minor axis."""
+        """Extract slice as a dense ndarray.
+
+        Does not assume any particular ordering of minor axis.
+        """
         assert isinstance(row_index, slice)
         assert row_index.step in (1, None)
         row_idx_start, row_idx_end, _ = row_index.indices(self.indptr.shape[0] - 1)
@@ -95,8 +98,11 @@ class CSR_IO_Buffer:
         return out
 
     def slice_toscipy(self, row_index: slice) -> sparse.csr_matrix:
-        """Extract slice as a ``sparse.csr_matrix``. Does not assume any particular ordering of
-        minor axis, but will return a canonically ordered scipy sparse object."""
+        """Extract slice as a ``sparse.csr_matrix``.
+
+        Does not assume any particular ordering of minor axis, but will return a canonically ordered scipy sparse
+        object.
+        """
         assert isinstance(row_index, slice)
         assert row_index.step in (1, None)
         row_idx_start, row_idx_end, _ = row_index.indices(self.indptr.shape[0] - 1)
@@ -262,7 +268,7 @@ def _coo_to_csr_inner(
 
 @numba.njit(nogil=True, parallel=True)  # type: ignore[misc]
 def _csr_sort_indices(Bp: _CSRIdxArray, Bj: _CSRIdxArray, Bd: NDArrayNumber) -> None:
-    """In-place sort of minor axis indices"""
+    """In-place sort of minor axis indices."""
     n_rows = len(Bp) - 1
     for r in numba.prange(n_rows):
         row_start = Bp[r]

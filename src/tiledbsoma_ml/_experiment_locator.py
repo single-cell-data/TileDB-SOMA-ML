@@ -12,7 +12,7 @@ from tiledbsoma import Experiment, SOMATileDBContext
 
 @attrs.define(frozen=True, kw_only=True)
 class ExperimentLocator:
-    """State required to open the Experiment.
+    """State required to open an |Experiment|.
 
     Serializable across multiple processes.
 

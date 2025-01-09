@@ -2,6 +2,7 @@
 # Copyright (c) 2021-2024 TileDB, Inc.
 #
 # Licensed under the MIT License.
+"""Utilities for multiprocess training: determine GPU "rank" / "world_size" and DataLoader worker ID / count."""
 
 import logging
 import os
@@ -13,7 +14,7 @@ logger = logging.getLogger("tiledbsoma_ml.pytorch")
 
 
 def get_distributed_world_rank() -> Tuple[int, int]:
-    """Return tuple containing equivalent of ``torch.distributed`` world size and rank."""
+    """Return tuple containing equivalent of |torch.distributed| world size and rank."""
     world_size, rank = 1, 0
     if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
         world_size = int(os.environ["WORLD_SIZE"])
@@ -34,7 +35,7 @@ def get_distributed_world_rank() -> Tuple[int, int]:
 
 
 def get_worker_world_rank() -> Tuple[int, int]:
-    """Return number of DataLoader workers and our worker rank/id"""
+    """Return number of DataLoader workers and our worker ID."""
     num_workers, worker = 1, 0
     if "WORKER" in os.environ and "NUM_WORKERS" in os.environ:
         num_workers = int(os.environ["NUM_WORKERS"])
@@ -50,10 +51,9 @@ def get_worker_world_rank() -> Tuple[int, int]:
 def init_multiprocessing() -> None:
     """Ensures use of "spawn" for starting child processes with multiprocessing.
 
-    Forked processes are known to be problematic:
-      https://pytorch.org/docs/stable/notes/multiprocessing.html#avoiding-and-fighting-deadlocks
-    Also, CUDA does not support forked child processes:
-      https://pytorch.org/docs/stable/notes/multiprocessing.html#cuda-in-multiprocessing
+    Note:
+      - Forked processes are known to be problematic: `Avoiding and fighting deadlocks <https://pytorch.org/docs/stable/notes/multiprocessing.html#avoiding-and-fighting-deadlocks>`_.
+      - CUDA does not support forked child processes: `CUDA in multiprocessing <https://pytorch.org/docs/stable/notes/multiprocessing.html#cuda-in-multiprocessing>`_.
 
     Private.
     """

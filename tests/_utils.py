@@ -30,8 +30,10 @@ def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
 
 
 def pytorch_seq_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
-    """A sparse matrix where the values of each col are the obs_range values. Useful for checking the
-    X values are being returned in the correct order."""
+    """A sparse matrix where the values of each col are the obs_range values.
+
+    Useful for checking the X values are being returned in the correct order.
+    """
     data = np.vstack([list(obs_range)] * len(var_range)).flatten()
     rows = np.vstack([list(obs_range)] * len(var_range)).flatten()
     cols = np.column_stack([list(var_range)] * len(obs_range)).flatten()

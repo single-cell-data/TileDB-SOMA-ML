@@ -1,0 +1,4 @@
+numpy
+somacore
+sphinx
+sphinx-rtd-theme

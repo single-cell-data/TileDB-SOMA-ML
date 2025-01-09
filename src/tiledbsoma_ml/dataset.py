@@ -10,17 +10,15 @@ from math import ceil
 from typing import Iterator, Optional, Sequence, Tuple
 
 import numpy as np
-import pandas as pd
 import torch
-from scipy import sparse
-from tiledbsoma import DataFrame, ExperimentAxisQuery, SparseNDArray
+from tiledbsoma import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
 from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
-from tiledbsoma_ml._utils import EagerIterator
-from tiledbsoma_ml.common import Batch, NDArrayJoinId, NDArrayNumber
+from tiledbsoma_ml.common import Batch, NDArrayJoinId
+from tiledbsoma_ml.gpu_batches import GPUBatches
 from tiledbsoma_ml.io_batches import IOBatches
-from tiledbsoma_ml.query_ids import Chunks, QueryIDs
+from tiledbsoma_ml.query_ids import QueryIDs
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")
 
@@ -262,23 +260,6 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     def var_joinids(self) -> NDArrayJoinId:
         return self.query_ids.var_joinids
 
-    def _obs_chunks(self) -> Chunks:
-        """Partition ``obs_joinids`` for the current GPU/worker, and optionally break into "shuffle chunks".
-
-        See |QueryIDs| for more info.
-
-        Private method.
-        """
-        query_ids = self.query_ids.partitioned()
-
-        if self.shuffle:
-            return query_ids.shuffle_chunks(
-                shuffle_chunk_size=self.shuffle_chunk_size,
-                seed=self.seed,
-            )
-        else:
-            return [query_ids.obs_joinids]
-
     def _multiproc_check(self) -> None:
         """Rule out config combinations that are invalid in multiprocess mode."""
         if self.return_sparse_X:
@@ -310,29 +291,49 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         """
         self._multiproc_check()
 
-        with self.query_ids.open() as (X, obs):
-            if not isinstance(X, SparseNDArray):
-                raise NotImplementedError(
-                    "Experiment only supports X layers which are of type SparseNDArray"
-                )
+        io_batch_size = self.io_batch_size
+        shuffle = self.shuffle
+        batch_size = self.batch_size
+        use_eager_fetch = self.use_eager_fetch
+        seed = self.seed
 
-            obs_chunks = self._obs_chunks()
-            _mini_batch_iter = self._mini_batch_iter(
-                obs=obs,
-                X=X,
-                obs_chunks=obs_chunks,
+        query_ids = self.query_ids.partitioned()
+        if shuffle:
+            chunks = query_ids.shuffle_chunks(
+                shuffle_chunk_size=self.shuffle_chunk_size,
+                seed=seed,
             )
-            if self.use_eager_fetch:
-                _mini_batch_iter = EagerIterator(
-                    _mini_batch_iter, pool=X.context.threadpool
-                )
+        else:
+            # In no-shuffle mode, all the `obs_joinids` can be treated as one "shuffle chunk",
+            # which IO-batches will stride over.
+            chunks = [query_ids.obs_joinids]
 
-            if self.batch_size == 1:
-                for X, obs in _mini_batch_iter:
-                    X = X[0]  # This is a no-op for `csr_matrix`s
-                    yield X, obs
-            else:
-                yield from _mini_batch_iter
+        with query_ids.open() as (X, obs):
+            io_batches = IOBatches(
+                chunks=chunks,
+                io_batch_size=io_batch_size,
+                obs=obs,
+                var_joinids=query_ids.var_joinids,
+                X=X,
+                obs_column_names=self.obs_column_names,
+                seed=seed,
+                shuffle=shuffle,
+                use_eager_fetch=use_eager_fetch,
+            )
+
+            gpu_batches = GPUBatches(
+                io_batches=io_batches,
+                batch_size=batch_size,
+                use_eager_fetch=use_eager_fetch,
+                return_sparse_X=self.return_sparse_X,
+            )
+
+            for X_batch, obs_batch in gpu_batches:
+                if batch_size == 1:
+                    # This is a no-op for `csr_matrix`s
+                    yield X_batch[0], obs_batch
+                else:
+                    yield X_batch, obs_batch
 
         self.epoch += 1
 
@@ -392,86 +393,3 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         raise NotImplementedError(
             "`Experiment` can only be iterated - does not support mapping"
         )
-
-    def _mini_batch_iter(
-        self,
-        obs: DataFrame,
-        X: SparseNDArray,
-        obs_chunks: Chunks,
-    ) -> Iterator[Batch]:
-        """Break IO batches into shuffled mini-batch-sized chunks.
-
-        Private method.
-        """
-        io_batches = IOBatches(
-            chunks=obs_chunks,
-            io_batch_size=self.io_batch_size,
-            obs=obs,
-            var_joinids=self.var_joinids,
-            X=X,
-            obs_column_names=self.obs_column_names,
-            seed=self.seed,
-            shuffle=self.shuffle,
-            use_eager_fetch=self.use_eager_fetch,
-        )
-        io_batch_iter = iter(io_batches)
-
-        mini_batch_size = self.batch_size
-        result: Tuple[NDArrayNumber, pd.DataFrame] | None = None
-        for X_io_batch, obs_io_batch in io_batch_iter:
-            assert X_io_batch.shape[0] == obs_io_batch.shape[0]
-            assert X_io_batch.shape[1] == len(self.var_joinids)
-            iob_idx = 0  # current offset into io batch
-            iob_len = X_io_batch.shape[0]
-
-            while iob_idx < iob_len:
-                if result is None:
-                    # perform zero copy slice where possible
-                    X_datum = (
-                        X_io_batch.slice_toscipy(
-                            slice(iob_idx, iob_idx + mini_batch_size)
-                        )
-                        if self.return_sparse_X
-                        else X_io_batch.slice_tonumpy(
-                            slice(iob_idx, iob_idx + mini_batch_size)
-                        )
-                    )
-                    result = (
-                        X_datum,
-                        obs_io_batch.iloc[
-                            iob_idx : iob_idx + mini_batch_size
-                        ].reset_index(drop=True),
-                    )
-                    iob_idx += len(result[1])
-                else:
-                    # Use any remnant from previous IO batch
-                    to_take = min(mini_batch_size - len(result[1]), iob_len - iob_idx)
-                    X_datum = (
-                        sparse.vstack(
-                            [result[0], X_io_batch.slice_toscipy(slice(0, to_take))]
-                        )
-                        if self.return_sparse_X
-                        else np.concatenate(
-                            [result[0], X_io_batch.slice_tonumpy(slice(0, to_take))]
-                        )
-                    )
-                    result = (
-                        X_datum,
-                        pd.concat(
-                            [result[1], obs_io_batch.iloc[0:to_take]],
-                            # Index `obs_batch` from 0 to N-1, instead of disjoint, concatenated pieces of IO batches'
-                            # indices
-                            ignore_index=True,
-                        ),
-                    )
-                    iob_idx += to_take
-
-                assert result[0].shape[0] == result[1].shape[0]
-                if result[0].shape[0] == mini_batch_size:
-                    yield result
-                    result = None
-
-        else:
-            # yield the remnant, if any
-            if result is not None:
-                yield result

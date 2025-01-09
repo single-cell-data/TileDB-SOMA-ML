@@ -72,6 +72,8 @@ class QueryIDs:
     """Timestamp to open the |Experiment| at."""
     tiledb_config: Dict[str, Union[str, float]]
     """Configs to open the |Experiment| with."""
+    partition: Optional[Partition] = None
+    """GPU/Worker-partition info; typically populated by :meth:`partitioned`"""
 
     @classmethod
     def create(
@@ -93,7 +95,7 @@ class QueryIDs:
             tiledb_config=exp.context.tiledb_config,
         )
 
-    def partition(
+    def partitioned(
         self,
         partition: Optional[Partition] = None,
     ) -> "QueryIDs":
@@ -105,6 +107,11 @@ class QueryIDs:
         When ``WORLD_SIZE > 1``, each GPU will receive the same number of samples (meaning up to ``WORLD_SIZE-1``
         samples may be dropped).
         """
+        if self.partition:
+            raise ValueError(
+                f"QueryIDs has already been partitioned ({self.partition})"
+            )
+
         obs_joinids = self.obs_joinids
         if partition:
             rank = partition.rank
@@ -115,6 +122,12 @@ class QueryIDs:
             world_size, rank = get_distributed_world_rank()
             n_workers, worker_id = get_worker_world_rank()
 
+        partition = Partition(
+            rank=rank,
+            world_size=world_size,
+            worker_id=worker_id,
+            n_workers=n_workers,
+        )
         gpu_splits = splits(len(obs_joinids), world_size)
         gpu_split = obs_joinids[gpu_splits[rank] : gpu_splits[rank + 1]]
 
@@ -133,8 +146,7 @@ class QueryIDs:
         logger.debug(
             f"Partitioned IDs: {rank=}, {world_size=}, {worker_id=}, {n_workers=}"
         )
-
-        return evolve(self, obs_joinids=worker_joinids)
+        return evolve(self, obs_joinids=worker_joinids, partition=partition)
 
     def sample(
         self,

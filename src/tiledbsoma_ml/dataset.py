@@ -304,7 +304,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         use_eager_fetch = self.use_eager_fetch
         seed = self.seed
 
-        query_ids = self.query_ids.partition()
+        query_ids = self.query_ids.partitioned()
         if shuffle:
             chunks = query_ids.shuffle_chunks(
                 shuffle_chunk_size=self.shuffle_chunk_size,

@@ -64,6 +64,13 @@ Chunks
    :members:
    :undoc-members:
 
+``gpu_batches``
+^^^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.gpu_batches
+   :members:
+   :undoc-members:
+
 ``_distributed``
 ^^^^^^^^^^^^^^^^
 

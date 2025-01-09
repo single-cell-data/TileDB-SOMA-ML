@@ -70,6 +70,13 @@ Chunks
    :members:
    :undoc-members:
 
+``mini_batches``
+^^^^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.mini_batches
+   :members:
+   :undoc-members:
+
 ``x_locator``
 ^^^^^^^^^^^^^
 

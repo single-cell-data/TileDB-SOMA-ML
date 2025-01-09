@@ -4,7 +4,7 @@
 # Licensed under the MIT License.
 
 import logging
-from typing import Iterable, Iterator, Tuple
+from typing import Iterable, Iterator
 
 import attrs
 import numpy as np
@@ -12,7 +12,7 @@ import pandas as pd
 from scipy import sparse
 
 from tiledbsoma_ml._utils import EagerIterator
-from tiledbsoma_ml.common import Batch, NDArrayNumber
+from tiledbsoma_ml.common import Batch
 from tiledbsoma_ml.io_batches import IOBatches
 
 logger = logging.getLogger("tiledbsoma_ml.gpu_batches")
@@ -27,7 +27,7 @@ class GPUBatches(Iterable[Batch]):
 
     def _iter(self) -> Iterator[Batch]:
         batch_size = self.batch_size
-        result: Tuple[NDArrayNumber, pd.DataFrame] | None = None
+        result: Batch | None = None
         for X_io_batch, obs_io_batch in self.io_batches:
             assert X_io_batch.shape[0] == obs_io_batch.shape[0]
             iob_idx = 0  # current offset into io batch

@@ -279,16 +279,8 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         else:
             return [query_ids.obs_joinids]
 
-    def __iter__(self) -> Iterator[Batch]:
-        """Emit |Batch|'s (aligned ``X`` and ``obs`` rows).
-
-        Returns:
-            |Iterator|\\[|Batch|\\]
-
-        Lifecycle:
-            experimental
-        """
-
+    def _multiproc_check(self) -> None:
+        """Rule out config combinations that are invalid in multiprocess mode."""
         if self.return_sparse_X:
             worker_info = torch.utils.data.get_worker_info()
             if worker_info and worker_info.num_workers > 0:
@@ -306,6 +298,17 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
             raise ValueError(
                 "Experiment requires an explicit `seed` when shuffle is used in a multi-process configuration."
             )
+
+    def __iter__(self) -> Iterator[Batch]:
+        """Emit |Batch|'s (aligned ``X`` and ``obs`` rows).
+
+        Returns:
+            |Iterator|\\[|Batch|\\]
+
+        Lifecycle:
+            experimental
+        """
+        self._multiproc_check()
 
         with self.query_ids.open() as (X, obs):
             if not isinstance(X, SparseNDArray):

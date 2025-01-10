@@ -2,11 +2,7 @@
 # Copyright (c) 2021-2024 TileDB, Inc.
 #
 # Licensed under the MIT License.
-"""
-.. |obs_joinids| replace:: :attr:`~tiledbsoma_ml.query_ids.QueryIDs.obs_joinids`
-
-Shuffle-chunk and partition (across GPU and DataLoader-worker processes) while reading from a SOMA |Experiment|.
-"""
+"""Shuffle-chunk and partition (across GPU and DataLoader-worker processes) while reading from a SOMA |Experiment|."""
 
 import logging
 from contextlib import contextmanager
@@ -100,10 +96,10 @@ class QueryIDs:
         self,
         partition: Optional[Partition] = None,
     ) -> "QueryIDs":
-        """Create a new |QueryIDs| with |obs_joinids| corresponding to a given GPU/worker |Partition|.
+        """Create a new |QueryIDs| with |Q.obs_joinids| corresponding to a given GPU/worker |Partition|.
 
         If ``None`` is provided, world size, rank, num workers, and worker ID will be inferred using helper functions
-        that read env vars.
+        that read env vars (see |get_distributed_world_rank|, |get_worker_world_rank|).
 
         When ``WORLD_SIZE > 1``, each GPU will receive the same number of samples (meaning up to ``WORLD_SIZE-1``
         samples may be dropped).

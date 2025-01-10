@@ -49,9 +49,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     soma_joinid
     0     57905025
 
-    .. |obs_joinids| replace:: :obj:`~tiledbsoma_ml.ExperimentDataset.obs_joinids`
-
-    When :obj:`__iter__ <.__iter__>` is invoked, |obs_joinids|  goes through several partitioning, shuffling, and
+    When :obj:`__iter__ <.__iter__>` is invoked, |ED.obs_joinids|  goes through several partitioning, shuffling, and
     batching steps, ultimately yielding :class:`GPU batches <tiledbsoma_ml.common.Batch>` (tuples of matched ``X`` and
     ``obs`` rows):
 
@@ -60,17 +58,17 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         .. NOTE: for some reason, `$` math blocks only render if there is at least one `:math:` directive.
 
         a. GPU-partitioning: if this is one of :math:`N>1` GPU processes (see |get_distributed_world_rank|),
-           |obs_joinids| is partitioned so that the $N$ GPUs will each receive the same number of samples (meaning up
+           |ED.obs_joinids| is partitioned so that the $N$ GPUs will each receive the same number of samples (meaning up
            to $N-1$ samples may be dropped). Then, only the partition corresponding to the current GPU is kept, The
-           resulting |obs_joinids| is used in subsequent steps.
+           resulting |ED.obs_joinids| is used in subsequent steps.
 
         b. |DataLoader|-worker partitioning: if this is one of $M>1$ |DataLoader|-worker processes (see
-           |get_worker_world_rank|), |obs_joinids| is further split $M$ ways, and only |obs_joinids| corresponding to
-           the current process are kept.
+           |get_worker_world_rank|), |ED.obs_joinids| is further split $M$ ways, and only |ED.obs_joinids| corresponding
+           to the current process are kept.
 
-    2. Shuffle-chunking (|List|\\[|NDArrayJoinID|\\]): if ``shuffle=True``, |obs_joinids| are broken into "shuffle
+    2. Shuffle-chunking (|List|\\[|NDArrayJoinID|\\]): if ``shuffle=True``, |ED.obs_joinids| are broken into "shuffle
        chunks". The chunks are then shuffled amongst themselves (but retain their internal order, at this stage). If
-       ``shuffle=False``, one "chunk" is emitted containing all |obs_joinids|.
+       ``shuffle=False``, one "chunk" is emitted containing all |ED.obs_joinids|.
 
     3. IO-batching (|Iterable|\\[|IOBatch|\\]): shuffle-chunks are re-grouped into "IO batches" of size
        ``io_batch_size``. If ``shuffle=True``, each |IOBatch| is shuffled, then the corresponding ``X`` and ``obs`` rows
@@ -101,8 +99,6 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         experimental
     """
 
-    query_ids: QueryIDs
-    """Coordinates (from an |ExperimentAxisQuery|) to iterate over."""
     obs_column_names: Sequence[str]
     """Names of ``obs`` columns to return."""
     batch_size: int
@@ -112,8 +108,8 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     shuffle: bool
     """Whether to shuffle the ``obs`` and ``X`` data being returned."""
     shuffle_chunk_size: int
-    """Number of contiguous rows shuffled as an atomic unit (before later concatenation and shuffling within "IO
-    batches")."""
+    """Number of contiguous rows shuffled as an atomic unit (before later concatenation and shuffling within
+    |IOBatch|'s)."""
     seed: int
     """Random seed used for shuffling."""
     return_sparse_X: bool
@@ -268,8 +264,8 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
 
     @property
     def obs_joinids(self) -> NDArrayJoinId:
-        """Return this |ExperimentDataset|'s obs coordinates (possibly partitioned for a GPU process / DataLoader
-        worker.
+        """Return this |ExperimentDataset|'s obs coordinates (possibly partitioned for a GPU process / |DataLoader|
+        worker).
 
         Returns
         -------
@@ -303,16 +299,12 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
             )
 
     def __iter__(self) -> Iterator[Batch]:
-        """Emit batches of aligned X and obs rows.
+        """Emit |Batch|'s (aligned ``X`` and ``obs`` rows).
 
-        Returns
-        -------
-        |Iterator|\\[|Batch|\\]
-            An iterator that yields |Batch| objects containing aligned X and obs rows.
+        Returns:
+            |Iterator|\\[|Batch|\\]
 
-        Notes
-        -----
-        Lifecycle
+        Lifecycle:
             experimental
         """
         self._multiproc_check()
@@ -407,8 +399,9 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     def set_epoch(self, epoch: int) -> None:
         """Set the epoch for this Data iterator.
 
-        When :attr:`~tiledbsoma_ml.ExperimentDataset.shuffle` is ``True``, this will ensure that all replicas use a different random ordering for each epoch.
-        Failure to call this method before each epoch will result in the same data ordering.
+        When :attr:`~tiledbsoma_ml.ExperimentDataset.shuffle` is ``True``, this will ensure that all replicas use a
+        different random ordering for each epoch. Failure to call this method before each epoch will result in the same
+        data ordering.
 
         This call must be made before the per-epoch iterator is created.
         """

@@ -1,6 +1,5 @@
 numpy
 somacore
 sphinx
-sphinx-math-dollar
 sphinx-rtd-theme
 tiledbsoma

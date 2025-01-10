@@ -4,12 +4,12 @@ import sys
 sys.path.insert(0, os.path.abspath("../src"))
 
 html_theme = "sphinx_rtd_theme"
-html_static_path = ['_static']
+html_static_path = ["_static"]
 
 
 def setup(app):
     # Add '_blank' target to all external links
-    app.add_js_file('js/external_links.js')
+    app.add_js_file("js/external_links.js")
 
 
 extensions = [
@@ -22,7 +22,7 @@ extensions = [
 
 mathjax3_config = {
     "tex": {
-        'inlineMath': [['$', '$'], ['\\(', '\\)']],
+        "inlineMath": [["$", "$"], ["\\(", "\\)"]],
     }
 }
 
@@ -53,16 +53,18 @@ rst_prolog = """
 .. |Iterable| replace:: :class:`~typing.Iterable`
 .. |Iterator| replace:: :class:`~typing.Iterator`
 .. |ExperimentDataset| replace:: :class:`~tiledbsoma_ml.dataset.ExperimentDataset`
+.. |ED.obs_joinids| replace:: :obj:`~tiledbsoma_ml.ExperimentDataset.obs_joinids`
 .. |ExperimentDataset.__iter__| replace:: :obj:`ExperimentDataset.__iter__ <tiledbsoma_ml.ExperimentDataset.__iter__>`
 .. |experiment_dataloader| replace:: :obj:`~tiledbsoma_ml.experiment_dataloader`
 .. |Batch| replace:: :class:`~tiledbsoma_ml.common.Batch`
 .. |NDArrayJoinId| replace:: :class:`~tiledbsoma_ml.common.NDArrayJoinId`
-.. |CSR_IO_Buffer| replace:: :class:`~tiledbsoma_ml._csr.CSR_IO_Buffer`
 .. |Partition| replace:: :class:`~tiledbsoma_ml.query_ids.Partition`
 .. |QueryIDs| replace:: :class:`~tiledbsoma_ml.query_ids.QueryIDs`
+.. |Q.obs_joinids| replace:: :obj:`~tiledbsoma_ml.query_ids.QueryIDs.obs_joinids`
 .. |Chunks| replace:: :class:`~tiledbsoma_ml.query_ids.Chunks`
 .. |IOBatch| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatch`
 .. |IOBatches| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatches`
+.. |CSR_IO_Buffer| replace:: :class:`~tiledbsoma_ml._csr.CSR_IO_Buffer`
 .. |get_distributed_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_distributed_world_rank`
 .. |get_worker_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_worker_world_rank`
 .. |TileDB-SOMA-ML| replace:: TileDB-SOMA-ML_

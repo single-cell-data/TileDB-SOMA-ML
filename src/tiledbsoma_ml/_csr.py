@@ -21,11 +21,11 @@ class CSR_IO_Buffer:
     """Implement a minimal CSR matrix with specific optimizations for use in this package.
 
     Operations supported are:
-    * Incrementally build a CSR from COO, allowing overlapped I/O and CSR conversion for I/O batches,
-      and a final "merge" step which combines the result.
-    * Zero intermediate copy conversion of an arbitrary row slice to dense (i.e., mini-batch extraction).
-    * Parallel processing, where possible (construction, merge, etc.).
-    * Minimize memory use for index arrays.
+      - Incrementally build a CSR from COO, allowing overlapped I/O and CSR conversion for I/O batches, and a final
+        "merge" step which combines the result.
+      - Zero intermediate copy conversion of an arbitrary row slice to dense (i.e., mini-batch extraction).
+      - Parallel processing, where possible (construction, merge, etc.).
+      - Minimize memory use for index arrays.
 
     Overall is significantly faster, and uses less memory, than the equivalent ``scipy.sparse`` operations.
     """
@@ -79,6 +79,7 @@ class CSR_IO_Buffer:
 
     @property
     def dtype(self) -> npt.DTypeLike:
+        """Underlying |ndarray| dtype."""
         return self.data.dtype
 
     def slice_tonumpy(self, row_index: slice) -> NDArrayNumber:

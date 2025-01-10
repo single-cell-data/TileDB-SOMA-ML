@@ -20,7 +20,7 @@ Module Contents
    :special-members: __init__, __iter__, __len__
 
 ``dataloader``
-^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
 
 .. autofunction:: tiledbsoma_ml.experiment_dataloader
 
@@ -46,6 +46,8 @@ QueryIDs
    :undoc-members:
    :member-order: bysource
 
+.. autoclass:: Chunks
+
 Partition
 ~~~~~~~~~
 .. autoclass:: Partition
@@ -64,5 +66,19 @@ Partition
 ^^^^^^^^^^^^^^^
 
 .. automodule:: tiledbsoma_ml.gpu_batches
+   :members:
+   :undoc-members:
+
+``_distributed``
+^^^^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml._distributed
+   :members:
+   :undoc-members:
+
+CSR
+^^^
+
+.. automodule:: tiledbsoma_ml._csr
    :members:
    :undoc-members:

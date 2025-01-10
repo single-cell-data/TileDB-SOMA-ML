@@ -20,6 +20,8 @@ logger = logging.getLogger("tiledbsoma_ml.gpu_batches")
 
 @attrs.define(frozen=True)
 class GPUBatches(Iterable[Batch]):
+    """Convert (possibly shuffled) |IOBatches| into |Batch|'s suitable for passing to PyTorch."""
+
     io_batches: IOBatches
     batch_size: int
     use_eager_fetch: bool = True

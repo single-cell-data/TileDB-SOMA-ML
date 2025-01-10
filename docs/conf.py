@@ -51,6 +51,7 @@ python_use_unqualified_type_names = True  # Enables shorter references
 rst_prolog = """
 .. |List| replace:: :class:`~typing.List`
 .. |Iterable| replace:: :class:`~typing.Iterable`
+.. |Iterator| replace:: :class:`~typing.Iterator`
 .. |ExperimentDataset| replace:: :class:`~tiledbsoma_ml.dataset.ExperimentDataset`
 .. |ExperimentDataset.__iter__| replace:: :obj:`ExperimentDataset.__iter__ <tiledbsoma_ml.ExperimentDataset.__iter__>`
 .. |experiment_dataloader| replace:: :obj:`~tiledbsoma_ml.experiment_dataloader`
@@ -80,6 +81,5 @@ rst_prolog = """
 .. |np.ndarray| replace:: :class:`np.ndarray <numpy.ndarray>`
 .. |pd.DataFrame| replace:: :class:`pd.DataFrame <pandas.DataFrame>`
 .. |csr_matrix| replace:: :class:`~scipy.sparse.csr_matrix`
-.. |Iterator| replace:: :class:`~typing.Iterator`
 """
 default_domain = "py"

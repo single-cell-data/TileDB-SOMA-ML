@@ -40,6 +40,35 @@ Batching and Data Management
    :members:
    :undoc-members:
 
+``query_ids``
+^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.query_ids
+
+QueryIDs
+~~~~~~~~
+.. autoclass:: QueryIDs
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
+Partition
+~~~~~~~~~
+.. autoclass:: Partition
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
+Chunks
+~~~~~~
+.. autoclass:: Chunks
+
+``x_locator``
+^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.x_locator
+   :members:
+
 ``_distributed``
 ^^^^^^^^^^^^^^^^
 

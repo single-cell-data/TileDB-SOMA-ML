@@ -9,6 +9,7 @@ from importlib.metadata import PackageNotFoundError, version
 from .common import MiniBatch, NDArrayJoinId, NDArrayNumber, XBatch
 from .dataloader import experiment_dataloader
 from .dataset import ExperimentDataset
+from .query_ids import Chunks, Partition, QueryIDs
 
 try:
     __version__ = version("tiledbsoma-ml")
@@ -25,4 +26,8 @@ __all__ = [
     "NDArrayJoinId",
     "NDArrayNumber",
     "XBatch",
+    # `.query_ids`
+    "Chunks",
+    "Partition",
+    "QueryIDs",
 ]

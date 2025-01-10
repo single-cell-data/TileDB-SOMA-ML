@@ -53,10 +53,14 @@ rst_prolog = """
 .. |Iterable| replace:: :class:`~typing.Iterable`
 .. |Iterator| replace:: :class:`~typing.Iterator`
 .. |ExperimentDataset| replace:: :class:`~tiledbsoma_ml.dataset.ExperimentDataset`
+.. |ED.obs_joinids| replace:: :obj:`~tiledbsoma_ml.ExperimentDataset.obs_joinids`
 .. |ExperimentDataset.__iter__| replace:: :obj:`ExperimentDataset.__iter__ <tiledbsoma_ml.ExperimentDataset.__iter__>`
 .. |experiment_dataloader| replace:: :obj:`~tiledbsoma_ml.experiment_dataloader`
 .. |Batch| replace:: :class:`~tiledbsoma_ml.common.Batch`
 .. |NDArrayJoinId| replace:: :class:`~tiledbsoma_ml.common.NDArrayJoinId`
+.. |Partition| replace:: :class:`~tiledbsoma_ml.query_ids.Partition`
+.. |QueryIDs| replace:: :class:`~tiledbsoma_ml.query_ids.QueryIDs`
+.. |Q.obs_joinids| replace:: :obj:`~tiledbsoma_ml.query_ids.QueryIDs.obs_joinids`
 .. |CSR_IO_Buffer| replace:: :class:`~tiledbsoma_ml._csr.CSR_IO_Buffer`
 .. |get_distributed_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_distributed_world_rank`
 .. |get_worker_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_worker_world_rank`

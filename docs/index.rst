@@ -31,6 +31,28 @@ Module Contents
    :members:
    :undoc-members:
 
+Batching and Data Management
+----------------------------
+
+``query_ids``
+^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.query_ids
+
+QueryIDs
+~~~~~~~~
+.. autoclass:: QueryIDs
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
+Partition
+~~~~~~~~~
+.. autoclass:: Partition
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
 ``_distributed``
 ^^^^^^^^^^^^^^^^
 

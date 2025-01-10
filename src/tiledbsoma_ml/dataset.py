@@ -7,31 +7,23 @@ from __future__ import annotations
 
 import gc
 import logging
-import os
 import time
-from contextlib import nullcontext
 from math import ceil
-from typing import ContextManager, Iterator, Sequence, Tuple
+from typing import Iterator, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import torch
 from scipy import sparse
-from tiledbsoma import (
-    DataFrame,
-    Experiment,
-    ExperimentAxisQuery,
-    IntIndexer,
-    SparseNDArray,
-)
+from tiledbsoma import DataFrame, ExperimentAxisQuery, IntIndexer, SparseNDArray
 from torch.utils.data import IterableDataset
 
 from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
-from tiledbsoma_ml._experiment_locator import ExperimentLocator
-from tiledbsoma_ml._utils import EagerIterator, batched, splits
+from tiledbsoma_ml._utils import EagerIterator
 from tiledbsoma_ml.common import Batch, NDArrayJoinId, NDArrayNumber
+from tiledbsoma_ml.query_ids import QueryIDs
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")
 
@@ -62,7 +54,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     soma_joinid
     0     57905025
 
-    When :obj:`__iter__ <.__iter__>` is invoked, ``obs_joinids``  goes through several partitioning, shuffling, and
+    When :obj:`__iter__ <.__iter__>` is invoked, |ED.obs_joinids|  goes through several partitioning, shuffling, and
     batching steps, ultimately yielding :class:`GPU batches <tiledbsoma_ml.common.Batch>` (tuples of matched ``X`` and
     ``obs`` rows):
 
@@ -71,17 +63,17 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         .. NOTE: for some reason, `$` math blocks only render if there is at least one `:math:` directive.
 
         a. GPU-partitioning: if this is one of :math:`N>1` GPU processes (see |get_distributed_world_rank|),
-           ``obs_joinids`` is partitioned so that the $N$ GPUs will each receive the same number of samples (meaning up
+           |ED.obs_joinids| is partitioned so that the $N$ GPUs will each receive the same number of samples (meaning up
            to $N-1$ samples may be dropped). Then, only the partition corresponding to the current GPU is kept, The
-           resulting ``obs_joinids`` is used in subsequent steps.
+           resulting |ED.obs_joinids| is used in subsequent steps.
 
         b. |DataLoader|-worker partitioning: if this is one of $M>1$ |DataLoader|-worker processes (see
-           |get_worker_world_rank|), ``obs_joinids`` is further split $M$ ways, and only ``obs_joinids`` corresponding
+           |get_worker_world_rank|), |ED.obs_joinids| is further split $M$ ways, and only |ED.obs_joinids| corresponding
            to the current process are kept.
 
-    2. Shuffle-chunking (|List|\\[|NDArrayJoinID|\\]): if ``shuffle=True``, ``obs_joinids`` are broken into "shuffle
+    2. Shuffle-chunking (|List|\\[|NDArrayJoinID|\\]): if ``shuffle=True``, |ED.obs_joinids| are broken into "shuffle
        chunks". The chunks are then shuffled amongst themselves (but retain their internal order, at this stage). If
-       ``shuffle=False``, one "chunk" is emitted containing all ``obs_joinids``.
+       ``shuffle=False``, one "chunk" is emitted containing all |ED.obs_joinids|.
 
     3. IO-batching: shuffle-chunks are re-grouped into "IO batches" of size ``io_batch_size``. If ``shuffle=True``, each
        IO-batch is shuffled, then the corresponding ``X`` and ``obs`` rows are fetched from the underlying
@@ -111,8 +103,8 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         experimental
     """
 
-    layer_name: str
-    """``X`` layer to read (within |ExperimentAxisQuery|'s |Measurement|)."""
+    query_ids: QueryIDs
+    """Coordinates (from an |ExperimentAxisQuery|) to iterate over."""
     obs_column_names: Sequence[str]
     """Names of ``obs`` columns to return."""
     batch_size: int
@@ -132,8 +124,9 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
 
     def __init__(
         self,
-        query: ExperimentAxisQuery,
-        layer_name: str,
+        query: Optional[ExperimentAxisQuery] = None,
+        query_ids: Optional[QueryIDs] = None,
+        layer_name: Optional[str] = None,
         obs_column_names: Sequence[str] = ("soma_joinid",),
         batch_size: int = 1,
         io_batch_size: int = 2**16,
@@ -147,7 +140,11 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
 
         Args:
             query:
-                A |ExperimentAxisQuery|, defining the data to iterate over.
+                Optional |ExperimentAxisQuery|, defining data to iterate over.
+                ``query`` xor ``query_ids`` should be provided.
+            query_ids:
+                Optional |QueryIDs|, defining data to iterate over.
+                ``query`` xor ``query_ids`` should be provided.
             layer_name:
                 The name of the X layer to read.
             obs_column_names:
@@ -203,12 +200,19 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         """
         super().__init__()
 
+        if query_ids:
+            if query:
+                raise ValueError("Provide only one of {exp_loc,query}")
+            self.query_ids = query_ids
+        else:
+            if not query:
+                raise ValueError("Provide one of {exp_loc,query}")
+            self.query_ids = QueryIDs.create(
+                query=query,
+                layer_name=layer_name,
+            )
+
         # Anything set in the instance needs to be pickle-able for multi-process DataLoaders
-        self.experiment_locator = ExperimentLocator.create(query.experiment)
-        self.layer_name = layer_name
-        self.measurement_name = query.measurement_name
-        self.obs_query = query._matrix_axis_query.obs
-        self.var_query = query._matrix_axis_query.var
         self.obs_column_names = list(obs_column_names)
         if not self.obs_column_names:
             raise ValueError("Must specify at least one value in `obs_column_names`")
@@ -233,112 +237,50 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         self._user_specified_seed = seed is not None
         self.return_sparse_X = return_sparse_X
         self.use_eager_fetch = use_eager_fetch
-
-        self._obs_joinids: NDArrayJoinId | None = None
-        self._var_joinids: NDArrayJoinId | None = None
-        self._initialized = False
         self.epoch = 0
 
-    def _create_obs_joinids_partition(self) -> Iterator[NDArrayJoinId]:
-        """Create iterator over obs id chunks with split size of (roughly) io_batch_size.
+    @property
+    def measurement_name(self) -> str:
+        return self.query_ids.measurement_name
 
-        As appropriate, will chunk, shuffle and apply partitioning per worker.
+    @property
+    def layer_name(self) -> Optional[str]:
+        return self.query_ids.layer_name
 
-        IMPORTANT: in any scenario using :mod:`torch.distributed`, where WORLD_SIZE > 1, this will always partition such
-        that each process has the same number of samples. Where the number of ``obs_joinids`` is not evenly divisible by
-        the number of processes, the number of joinids will be dropped (dropped ids can never exceed WORLD_SIZE-1).
+    @property
+    def obs_joinids(self) -> NDArrayJoinId:
+        """Return this |ExperimentDataset|'s obs coordinates (possibly partitioned for a GPU process / |DataLoader|
+        worker).
 
-        Abstractly, the steps taken:
-        1. Split the joinids into WORLD_SIZE sections (aka number of GPUS in DDP)
-        2. Trim the splits to be of equal length
-        3. Chunk and optionally shuffle the chunks
-        4. Partition by number of data loader workers (to not generate redundant batches
-           in cases where the DataLoader is running with `n_workers>1`).
+        Returns
+        -------
+        |NDArrayJoinId|
+            A NumPy array of 64-bit integers containing the observation join IDs.
+        """
+        return self.query_ids.obs_joinids
+
+    @property
+    def var_joinids(self) -> NDArrayJoinId:
+        return self.query_ids.var_joinids
+
+    def _obs_chunk_iter(self) -> Iterator[NDArrayJoinId]:
+        """Partition ``obs_joinids`` for the current GPU/worker, and optionally break into "shuffle chunks".
+
+        See |QueryIDs| for more info.
 
         Private method.
         """
-        assert self._obs_joinids is not None
-        obs_joinids: NDArrayJoinId = self._obs_joinids
+        query_ids = self.query_ids.partitioned()
 
-        # 1. Get the split for the model replica/GPU
-        world_size, rank = get_distributed_world_rank()
-        _gpu_splits = splits(len(obs_joinids), world_size)
-        _gpu_split = obs_joinids[_gpu_splits[rank] : _gpu_splits[rank + 1]]
-
-        # 2. Trim to be all of equal length - equivalent to a "drop_last"
-        # TODO: may need to add an option to do padding as well.
-        min_len = np.diff(_gpu_splits).min()
-        assert 0 <= (np.diff(_gpu_splits).min() - min_len) <= 1
-        _gpu_split = _gpu_split[:min_len]
-
-        # 3. Chunk and optionally shuffle chunks
         if self.shuffle:
-            assert self.io_batch_size % self.shuffle_chunk_size == 0
-            shuffle_split = np.array_split(
-                _gpu_split, max(1, ceil(min_len / self.shuffle_chunk_size))
-            )
-
-            # Deterministically create RNG - state must be same across all processes, ensuring
-            # that the joinid partitions are identical across all processes.
-            rng = np.random.default_rng(self.seed + self.epoch + 99)
-            rng.shuffle(shuffle_split)
-            obs_joinids_chunked = [
-                np.concatenate(b)
-                for b in batched(
-                    shuffle_split, self.io_batch_size // self.shuffle_chunk_size
-                )
-            ]
-        else:
-            obs_joinids_chunked = np.array_split(
-                _gpu_split, max(1, ceil(len(_gpu_split) / self.io_batch_size))
-            )
-
-        # 4. Partition by DataLoader worker
-        n_workers, worker_id = get_worker_world_rank()
-        obs_splits = splits(len(obs_joinids_chunked), n_workers)
-        obs_partition_joinids = obs_joinids_chunked[
-            obs_splits[worker_id] : obs_splits[worker_id + 1]
-        ].copy()
-
-        if logger.isEnabledFor(logging.DEBUG):
-            partition_size = sum([len(chunk) for chunk in obs_partition_joinids])
-            logger.debug(
-                f"Process {os.getpid()} {rank=}, {world_size=}, {worker_id=}, n_workers={n_workers}, epoch={self.epoch}, {partition_size=}"
-            )
-
-        return iter(obs_partition_joinids)
-
-    def _init_once(self, exp: Experiment | None = None) -> None:
-        """One-time per worker initialization.
-
-        All operations should be idempotent in order to support pipe reset().
-
-        Private method.
-        """
-        if self._initialized:
-            return
-
-        logger.debug(f"Initializing Experiment (shuffle={self.shuffle})")
-
-        if exp is None:
-            # If no user-provided Experiment, open/close it ourselves
-            exp_cm: ContextManager[Experiment] = (
-                self.experiment_locator.open_experiment()
+            chunks = query_ids.shuffle_chunks(
+                shuffle_chunk_size=self.shuffle_chunk_size,
+                seed=self.seed,
             )
         else:
-            # else, it is caller responsibility to open/close the experiment
-            exp_cm = nullcontext(exp)
+            chunks = [query_ids.obs_joinids]
 
-        with exp_cm as exp:
-            with exp.axis_query(
-                measurement_name=self.measurement_name,
-                obs_query=self.obs_query,
-                var_query=self.var_query,
-            ) as query:
-                self._obs_joinids = query.obs_joinids().to_numpy()
-                self._var_joinids = query.var_joinids().to_numpy()
-
-        self._initialized = True
+        return iter(chunks)
 
     def __iter__(self) -> Iterator[Batch]:
         """Emit |Batch|'s (aligned ``X`` and ``obs`` rows).
@@ -368,19 +310,17 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
                 "Experiment requires an explicit `seed` when shuffle is used in a multi-process configuration."
             )
 
-        with self.experiment_locator.open_experiment() as exp:
-            self._init_once(exp)
-            X = exp.ms[self.measurement_name].X[self.layer_name]
+        with self.query_ids.open() as (X, obs):
             if not isinstance(X, SparseNDArray):
                 raise NotImplementedError(
                     "Experiment only supports X layers which are of type SparseNDArray"
                 )
 
-            obs_joinid_iter = self._create_obs_joinids_partition()
-            _mini_batch_iter = self._mini_batch_iter(exp.obs, X, obs_joinid_iter)
+            obs_chunk_iter = self._obs_chunk_iter()
+            _mini_batch_iter = self._mini_batch_iter(obs, X, obs_chunk_iter)
             if self.use_eager_fetch:
                 _mini_batch_iter = EagerIterator(
-                    _mini_batch_iter, pool=exp.context.threadpool
+                    _mini_batch_iter, pool=X.context.threadpool
                 )
 
             if self.batch_size == 1:
@@ -421,20 +361,17 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         Lifecycle:
             experimental
         """
-        self._init_once()
-        assert self._obs_joinids is not None
-        assert self._var_joinids is not None
         world_size, rank = get_distributed_world_rank()
         n_workers, worker_id = get_worker_world_rank()
         # Every "distributed" process must receive the same number of "obs" rows; the last ≤world_size may be dropped
         # (see _create_obs_joinids_partition).
-        obs_per_proc = len(self._obs_joinids) // world_size
+        obs_per_proc = len(self.obs_joinids) // world_size
         obs_per_worker, obs_rem = divmod(obs_per_proc, n_workers)
         # obs rows assigned to this worker process
         n_worker_obs = obs_per_worker + bool(worker_id < obs_rem)
         n_batches, rem = divmod(n_worker_obs, self.batch_size)
         # (num batches this worker will produce, num features)
-        return n_batches + bool(rem), len(self._var_joinids)
+        return n_batches + bool(rem), len(self.var_joinids)
 
     def set_epoch(self, epoch: int) -> None:
         """Set the epoch for this Data iterator.
@@ -456,17 +393,15 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         self,
         obs: DataFrame,
         X: SparseNDArray,
-        obs_joinid_iter: Iterator[NDArrayJoinId],
+        obs_chunk_iter: Iterator[NDArrayJoinId],
     ) -> Iterator[Tuple[CSR_IO_Buffer, pd.DataFrame]]:
         """Iterate over IO batches, i.e., SOMA query reads, producing tuples of ``(X: csr_array, obs: DataFrame)``.
 
-        ``obs`` joinids read are controlled by the ``obs_joinid_iter``. Iterator results will be reindexed and shuffled
+        ``obs`` joinids read are controlled by the ``obs_chunk_iter``. Iterator results will be reindexed and shuffled
         (if shuffling enabled).
 
         Private method.
         """
-        assert self._var_joinids is not None
-
         # Create RNG - does not need to be identical across processes, but use the seed anyway
         # for reproducibility.
         shuffle_rng = np.random.default_rng(self.seed + self.epoch)
@@ -476,25 +411,25 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
             if "soma_joinid" in self.obs_column_names
             else ["soma_joinid", *self.obs_column_names]
         )
-        var_indexer = IntIndexer(self._var_joinids, context=X.context)
+        # Round-trip though tuple avoids `TypeError: IntIndexer only supports array of type int64`.
+        # TODO: debug / work around that error; serde'ing the ndarray apparently results in a second np.int64 instance, that fails reference equality check vs. the version from the worker-process.
+        var_joinids = np.array(tuple(self.var_joinids))
+        var_indexer = IntIndexer(var_joinids, context=X.context)
 
-        for obs_coords in obs_joinid_iter:
+        for obs_chunk in obs_chunk_iter:
             st_time = time.perf_counter()
             obs_shuffled_coords = (
-                obs_coords if not self.shuffle else shuffle_rng.permuted(obs_coords)
+                obs_chunk if not self.shuffle else shuffle_rng.permuted(obs_chunk)
             )
             obs_indexer = IntIndexer(obs_shuffled_coords, context=X.context)
-            logger.debug(
-                f"Retrieving next SOMA IO batch of length {len(obs_coords)}..."
-            )
+            logger.debug(f"Retrieving next SOMA IO batch of length {len(obs_chunk)}...")
 
             # To maximize opportunities for concurrency, when in eager_fetch mode,
             # create the X read iterator first, as the eager iterator will begin
             # the read-ahead immediately. Then proceed to fetch obs DataFrame.
             # This matters most on latent backing stores, e.g., S3.
-            #
             X_tbl_iter: Iterator[pa.Table] = X.read(
-                coords=(obs_coords, self._var_joinids)
+                coords=(obs_chunk, self.var_joinids)
             ).tables()
 
             def make_io_buffer(
@@ -514,7 +449,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
                 return m
 
             _io_buf_iter = (
-                make_io_buffer(X_tbl, obs_coords, self._var_joinids, obs_indexer)
+                make_io_buffer(X_tbl, obs_chunk, self.var_joinids, obs_indexer)
                 for X_tbl in X_tbl_iter
             )
             if self.use_eager_fetch:
@@ -523,7 +458,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
             # Now that X read is potentially in progress (in eager mode), go fetch obs data
             # fmt: off
             obs_io_batch = (
-                obs.read(coords=(obs_coords,), column_names=obs_column_names)
+                obs.read(coords=(obs_chunk,), column_names=obs_column_names)
                 .concat()
                 .to_pandas()
                 .set_index("soma_joinid")
@@ -534,7 +469,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
 
             X_io_batch = CSR_IO_Buffer.merge(tuple(_io_buf_iter))
 
-            del obs_indexer, obs_coords, obs_shuffled_coords, _io_buf_iter
+            del obs_indexer, obs_chunk, obs_shuffled_coords, _io_buf_iter
             gc.collect()
 
             tm = time.perf_counter() - st_time
@@ -547,16 +482,13 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         self,
         obs: DataFrame,
         X: SparseNDArray,
-        obs_joinid_iter: Iterator[NDArrayJoinId],
+        obs_chunk_iter: Iterator[NDArrayJoinId],
     ) -> Iterator[Batch]:
         """Break IO batches into shuffled mini-batch-sized chunks.
 
         Private method.
         """
-        assert self._obs_joinids is not None
-        assert self._var_joinids is not None
-
-        io_batch_iter = self._io_batch_iter(obs, X, obs_joinid_iter)
+        io_batch_iter = self._io_batch_iter(obs, X, obs_chunk_iter)
         if self.use_eager_fetch:
             io_batch_iter = EagerIterator(io_batch_iter, pool=X.context.threadpool)
 
@@ -564,7 +496,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         result: Tuple[NDArrayNumber, pd.DataFrame] | None = None
         for X_io_batch, obs_io_batch in io_batch_iter:
             assert X_io_batch.shape[0] == obs_io_batch.shape[0]
-            assert X_io_batch.shape[1] == len(self._var_joinids)
+            assert X_io_batch.shape[1] == len(self.var_joinids)
             iob_idx = 0  # current offset into io batch
             iob_len = X_io_batch.shape[0]
 

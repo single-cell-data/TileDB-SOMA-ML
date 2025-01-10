@@ -4,8 +4,14 @@ import sys
 sys.path.insert(0, os.path.abspath("../src"))
 
 html_theme = "sphinx_rtd_theme"
+html_static_path = ['_static']
 
-# docs/conf.py additions
+
+def setup(app):
+    # Add '_blank' target to all external links
+    app.add_js_file('js/external_links.js')
+
+
 extensions = [
     "sphinx.ext.autodoc",  # Auto-generate docs from docstrings
     "sphinx.ext.mathjax",
@@ -14,7 +20,13 @@ extensions = [
     "sphinx.ext.intersphinx",  # Link to other projects' documentation
 ]
 
-# If you want to link to external Python docs
+mathjax3_config = {
+    "tex": {
+        'inlineMath': [['$', '$'], ['\\(', '\\)']],
+    }
+}
+
+# Link to external Python docs
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "torch": ("https://pytorch.org/docs/stable", None),
@@ -28,7 +40,7 @@ doctest_test_doctest_blocks = None  # Don't try to run any code samples
 
 nitpicky = True
 nitpick_ignore = {
-    # These lack usable link targets
+    # These lack usable external link targets
     ("py:class", "numpy.int64"),
     ("py:class", "numpy._typing._dtype_like._SupportsDType"),
     ("py:class", "numpy._typing._dtype_like._DTypeDict"),
@@ -41,7 +53,7 @@ rst_prolog = """
 .. |Iterable| replace:: :class:`~typing.Iterable`
 .. |ExperimentDataset| replace:: :class:`~tiledbsoma_ml.dataset.ExperimentDataset`
 .. |ExperimentDataset.__iter__| replace:: :obj:`ExperimentDataset.__iter__ <tiledbsoma_ml.ExperimentDataset.__iter__>`
-.. |experiment_dataloader| replace:: :func:`~tiledbsoma_ml.experiment_dataloader`
+.. |experiment_dataloader| replace:: :obj:`~tiledbsoma_ml.experiment_dataloader`
 .. |Batch| replace:: :class:`~tiledbsoma_ml.common.Batch`
 .. |NDArrayJoinId| replace:: :class:`~tiledbsoma_ml.common.NDArrayJoinId`
 .. |CSR_IO_Buffer| replace:: :class:`~tiledbsoma_ml._csr.CSR_IO_Buffer`
@@ -52,6 +64,10 @@ rst_prolog = """
 .. |IOBatches| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatches`
 .. |get_distributed_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_distributed_world_rank`
 .. |get_worker_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_worker_world_rank`
+.. |TileDB-SOMA-ML| replace:: TileDB-SOMA-ML_
+.. _TileDB-SOMA-ML: https://github.com/single-cell-data/TileDB-SOMA-ML
+.. |SOMA| replace:: SOMA_
+.. _SOMA: https://github.com/single-cell-data/SOMA
 .. |DataFrame| replace:: :class:`~tiledbsoma.DataFrame`
 .. |Experiment| replace:: :class:`~tiledbsoma.Experiment`
 .. |ExperimentAxisQuery| replace:: :class:`~tiledbsoma.ExperimentAxisQuery`

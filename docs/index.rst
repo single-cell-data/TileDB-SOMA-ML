@@ -1,8 +1,8 @@
-===================
+==============
 TileDB-SOMA-ML
-===================
+==============
 
-TileDB-SOMA-ML is a machine learning library for working with SOMA data formats.
+|TileDB-SOMA-ML| is a machine learning library for working with |SOMA| data formats.
 
 .. contents:: Table of Contents
    :depth: 2

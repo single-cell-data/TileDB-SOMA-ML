@@ -21,10 +21,17 @@ from tiledbsoma_ml.query_ids import Chunks
 
 logger = logging.getLogger("tiledbsoma_ml.io_batches")
 IOBatch = Tuple[CSR_IO_Buffer, pd.DataFrame]
+"""Tuple type emitted by |IOBatches|, containing ``X`` rows (as a |CSR_IO_Buffer|) and ``obs`` rows (|pd.DataFrame|)."""
 
 
 @attrs.define(frozen=True)
 class IOBatches(Iterable[IOBatch]):
+    """Given a list of ``obs_joinid`` |Chunks|, re-chunk them into (optionally shuffled) |IOBatch|'s".
+
+    An |IOBatch| is a tuple consisting of a batch of rows from the ``X`` |SparseNDArray|, as well as the corresponding
+    rows from the ``obs`` |DataFrame|. The ``X`` rows are returned in an optimized |CSR_IO_Buffer|.
+    """
+
     chunks: Chunks
     io_batch_size: int
     obs: DataFrame
@@ -34,23 +41,17 @@ class IOBatches(Iterable[IOBatch]):
     seed: Optional[int] = None
     shuffle: bool = True
     use_eager_fetch: bool = True
-    """Given a list of obs_joinid chunks, re-chunk them into (optionally shuffled) "IO batches".
-
-    An "IO Batch" is a tuple consisting of a batch of rows from the ``X`` ``SparseNDArray``, as
-    well as the corresponding rows from the ``obs`` ``DataFrame``. The ``X`` rows are returned in
-    an optimized ``CSR_IO_Buffer``.
-    """
 
     @property
     def io_batch_ids(self) -> Iterable[Tuple[int, ...]]:
-        """Re-chunk the ``obs_joinids`` according to the desired ``io_batch_size``."""
+        """Re-chunk ``obs_joinids`` according to the desired ``io_batch_size``."""
         return batched(
             (joinid for chunk in self.chunks for joinid in chunk),
             self.io_batch_size,
         )
 
     def __iter__(self) -> Iterator[IOBatch]:
-        """Emit IO batches, i.e. ``(X: CSR_IO_Buffer, obs: pd.DataFrame)`` tuples."""
+        """Emit |IOBatch|'s."""
         # Create RNG - does not need to be identical across processes, but use the seed anyway
         # for reproducibility.
         shuffle_rng = np.random.default_rng(self.seed)

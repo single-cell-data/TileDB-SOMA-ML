@@ -26,7 +26,7 @@ logger = logging.getLogger("tiledbsoma_ml.dataset")
 class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     """An |IterableDataset| that reads from a |ExperimentAxisQuery|.
 
-    Provides an iterator over batches of ``obs`` and ``X`` data. Each |Batch| is a tuple containing an |ndarray| and a
+    Provides an iterator over |Batch|'s of ``obs`` and ``X`` data. Each |Batch| is a tuple containing an |ndarray| and a
     |pd.DataFrame|.
 
     An |ExperimentDataset| can be passed to |experiment_dataloader| to enable multi-process reading/fetching.
@@ -49,48 +49,51 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     soma_joinid
     0     57905025
 
-    When :meth:`.__iter__` is invoked, ``obs_joinids``  goes through several partitioning and batching steps, ultimately
-    yielding "GPU batches" (tuples of matched ``X`` and ``obs`` rows):
+    When :obj:`__iter__ <.__iter__>` is invoked, ``obs_joinids``  goes through several partitioning, shuffling, and batching
+    steps, ultimately yielding :class:`GPU batches <tiledbsoma_ml.common.Batch>` (tuples of matched ``X`` and ``obs``
+    rows):
 
-    1. Partitioning (``NDArrayJoinID``):
+    1. Partitioning (|NDArrayJoinID|):
 
-        a. GPU-partitioning: if this is one of $N>1$ GPU processes (see ``get_distributed_world_rank``),
-           ``obs_joinids`` is partitioned so that the $N$ GPUs will each receive the same number of samples (meaning
-           up to $N-1$ samples may be dropped). Then, only the partition corresponding to the current GPU is kept, The
+        .. NOTE: for some reason, `$` math blocks only render if there is at least one `:math:` directive.
+
+        a. GPU-partitioning: if this is one of :math:`N>1` GPU processes (see |get_distributed_world_rank|),
+           ``obs_joinids`` is partitioned so that the $N$ GPUs will each receive the same number of samples (meaning up
+           to $N-1$ samples may be dropped). Then, only the partition corresponding to the current GPU is kept, The
            resulting ``obs_joinids`` is used in subsequent steps.
 
-        b. DataLoader-worker partitioning: if this is one of $M>1$ DataLoader-worker processes (see
-           ``get_worker_world_rank``), ``obs_joinids`` is further split $M$ ways, and only ``obs_joinids``
-           corresponding to the current process are kept.
+        b. |DataLoader|-worker partitioning: if this is one of $M>1$ |DataLoader|-worker processes (see
+           |get_worker_world_rank|), ``obs_joinids`` is further split $M$ ways, and only ``obs_joinids`` corresponding
+           to the current process are kept.
 
-    2. Optional shuffle-chunking (``List[NDArrayJoinID]``): if ``shuffle=True``, ``obs_joinids`` are broken into
-       "shuffle chunks". The chunks are then shuffled amongst themselves (but retain their internal order, at this
-       stage). If ``shuffle=False``, one "chunk" is emitted (containing all this partition's ``obs_joinids``).
+    2. Shuffle-chunking (|List|\\[|NDArrayJoinID|\\]): if ``shuffle=True``, ``obs_joinids`` are broken into "shuffle
+       chunks". The chunks are then shuffled amongst themselves (but retain their internal order, at this stage). If
+       ``shuffle=False``, one "chunk" is emitted containing all ``obs_joinids``.
 
-    3. IO-batching (``Iterable[(X, obs)]``): shuffle-chunks are re-chunked into IO batches of size ``io_Batch_size``.
-       If ``shuffle=True``, each IO batch's obs_joinids are shuffled, then the corresponding ``X`` and ``obs`` rows
+    3. IO-batching (|Iterable|\\[|IOBatch|\\]): shuffle-chunks are re-grouped into "IO batches" of size
+       ``io_batch_size``. If ``shuffle=True``, each |IOBatch| is shuffled, then the corresponding ``X`` and ``obs`` rows
        are fetched from the underlying ``Experiment``.
 
-    4. GPU-batching (``Iterable[(X, obs)]``): "IO batch" tuples are re-chunked into GPU batches of size
-       ``batch_size``. If ``batch_size`` is 1, each batch will have rank 1, otherwise it will have rank 2
+    4. GPU-batching (``|Iterable|\\[|Batch|\\]): |IOBatch| tuples are re-grouped into "GPU batches" of size
+       ``batch_size``.
 
-    Shuffling support (in steps 2. and 3. above) is enabled with the ``shuffle`` parameter, and should be used in lieu
-    of |DataLoader|'s default shuffling. Similarly, ``batch_size`` should be used instead of
-    relying on |DataLoader|'s default batching behavior. |experiment_dataloader| is the recommended way to wrap an
-    |ExperimentDataset| in a |DataLoader|, as it enforces these constraints while passing through other |DataLoader|
-    args.
+    Shuffling support (in steps 2. and 3.) is enabled with the ``shuffle`` parameter, and should be used in lieu of
+    |DataLoader|'s default shuffling functionality. Similarly, ``batch_size`` should be used instead of |DataLoader|'s
+    default batching. |experiment_dataloader| is the recommended way to wrap an |ExperimentDataset| in a
+    |DataLoader|, as it enforces these constraints while passing through other |DataLoader| args.
 
-    Describing the process another way, we read randomly selected groups of observations from across all query results,
-    concatenate those into an I/O buffer, and shuffle the buffer before returning GPU-batches. The randomness of the
-    shuffle is therefore determined by the ``shuffle_chunk_size`` (granularity of the global shuffle step; chunks of
-    this many contiguous rows are shuffled together) as well as the ``io_batch_size`` (number of rows read at once,
-    comprised of shuffled shuffle-chunks). Decreasing ``shuffle_chunk_size`` increases shuffling randomness, but
-    decreases I/O performance.
+    Describing the whole process another way, we read randomly selected groups of ``obs`` coordinates from across all
+    |ExperimentAxisQuery| results, concatenate those into an I/O buffer, shuffle the buffer element-wise, fetch the full
+    row data (``X`` and ``obs``) for each coordinate, and send that on to PyTorch / the GPU, in batches. The randomness
+    of the shuffle is determined by:
 
-    :meth:`.__iter__` detects when it's invoked in a multiprocessing mode (e.g. as a worker in a multi-worker
-    |DataLoader|, and/or when multi-process training using |DistributedDataParallel|, and will automatically partition
-    data appropriately. In the latter case of distributed training, the number of samples assigned to each GPU-process
-    must be equal; any data tail will be dropped.
+      - ``shuffle_chunk_size``: controls the granularity of the global shuffle. ``shuffle_chunk_size=1`` corresponds to
+        a full global shuffle, but decreases I/O performance. Larger values cause chunks of rows to be shuffled,
+        increasing I/O performance (by taking advantage of data locality in the underlying |Experiment|) but decreasing
+        overall randomness of the yielded data.
+      - ``io_batch_size``: number of rows to fetch at once (comprised of concatenated shuffle-chunks, and shuffled
+        row-wise). Larger values increase shuffle-randomness (by shuffling more "shuffle chunks" together), I/O
+        performance, and memory usage.
 
     Lifecycle:
         experimental

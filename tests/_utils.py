@@ -23,10 +23,10 @@ def assert_array_equal(
     expected: NDArrayJoinId | List[List[float]] | List[float],
     strict: bool = True,
 ):
-    """Wrap :py:obj:`np.testing.assert_array_equal`, set some defaults and convert ``List``s to |np.ndarray|s.
+    """Wrap :obj:`np.testing.assert_array_equal`, set some defaults and convert |List|'s to |np.ndarray|'s.
 
-    - ``X`` batches are 1- or 2-D arrays of ``float32``s; this helper allows tests to pass ``List`` or ``List`` of
-      ``List``s, for convenience.
+    - ``X`` batches are 1- or 2-D arrays of ``float32``s; this helper allows tests to pass |List| or |List| of
+      |List|'s, for convenience.
     - Set ``strict=True`` by default (ensuring e.g. dtypes match).
     """
     if isinstance(expected, list):

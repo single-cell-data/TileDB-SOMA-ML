@@ -37,6 +37,7 @@ logger = logging.getLogger("tiledbsoma_ml.query_ids")
 
 
 Chunks = List[NDArrayJoinId]
+"""Return-type of :meth:`QueryIDs.shuffle_chunks <tiledbsoma_ml.query_ids.QueryIDs.shuffle_chunks>`."""
 
 
 @define(frozen=True)
@@ -81,7 +82,7 @@ class QueryIDs:
         query: ExperimentAxisQuery,
         layer_name: Optional[str],
     ) -> "QueryIDs":
-        """Initialize a |QueryIDs| object |ExperimentAxisQuery| and :attr:`.layer_name`."""
+        """Initialize a |QueryIDs| object from an |ExperimentAxisQuery| and :attr:`.layer_name`."""
         exp: Experiment = query.experiment
         obs_joinids = query.obs_joinids().to_numpy()
         var_joinids = query.var_joinids().to_numpy()
@@ -186,7 +187,7 @@ class QueryIDs:
 
     @contextmanager
     def open(self) -> Generator[Tuple[SparseNDArray, DataFrame], None, None]:
-        """Open the |Experiment| at ``uri``, yield its ``X`` and ``obs`` TileDB-SOMA objects."""
+        """Open the |Experiment| associated with this |QueryIDs|, yield its ``X`` and ``obs`` TileDB-SOMA objects."""
         context = SOMATileDBContext(tiledb_config=self.tiledb_config)
         with Experiment.open(
             self.uri, tiledb_timestamp=self.tiledb_timestamp_ms, context=context

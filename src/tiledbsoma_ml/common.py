@@ -18,7 +18,7 @@ XBatch = Union[NDArrayNumber, sparse.csr_matrix]
 Batch = Tuple[XBatch, pd.DataFrame]
 """Yielded by |ExperimentDataset|; pairs a slice of ``X`` rows with corresponding ``obs`` rows.
 
-In the default case, a Batch is a tuple of |np.ndarray| and |pd.DataFrame| (for ``X`` and ``obs``, respectively). If the
-iterator is created with ``return_sparse_X`` as True, the ``X`` slice is returned as a |csr_matrix| instead. If the
-``batch_size`` is 1, the |ndarray| will be returned with rank 1; in all other cases, objects are returned with rank 2.
+When ``return_sparse_X=False`` (the default), a |Batch| is a tuple of |ndarray| and |pd.DataFrame| (for ``X`` and
+``obs``, respectively). If ``batch_size=1``, the |ndarray| will have rank 1 (representing a single row), otherwise it
+will have rank 2. If ``return_sparse_X=True``, the ``X`` slice is returned as a |csr_matrix| (which is always rank 2).
 """

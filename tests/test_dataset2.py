@@ -26,7 +26,14 @@ from tests._utils import (
     parametrize,
     pytorch_x_value_gen,
 )
+from tiledbsoma_ml._utils import batched
+from tiledbsoma_ml.common import Batch
 from tiledbsoma_ml.dataset import ExperimentDataset
+
+
+ExpectedBatch = Tuple[List[int], pd.DataFrame]
+ExpectedBatches = List[ExpectedBatch]
+Batches = Tuple[List[Batch], ExpectedBatches | None]
 
 
 @dataclass
@@ -34,7 +41,7 @@ class Case:
     obs_range: int
     batch_size: int
     io_batch_size: int
-    expected: List[List[int]]
+    expected: List[List[int]] | None = None
     var_range: int = 3
     shuffle_chunk_size: int | None = None
     seed: int | None = None
@@ -46,6 +53,9 @@ class Case:
     use_eager_fetch: bool = True
     # Print observed batches' row idxs and exit; useful for generating "expected" batch values
     debug: bool = False
+
+    def batches(self, experiment: Experiment) -> Batches:
+        return batches(experiment=experiment, **asdict(self))
 
 
 def cases(
@@ -82,13 +92,8 @@ def cases(
 sweep_cases = partial(cases, sweep_sparse=True, sweep_eager=True)
 
 
-def check(soma_experiment: Experiment, case: Case):
-    """Wrapper around ``check_case`` that "spreads" the ``Case``'s fields."""
-    check_case(soma_experiment, **asdict(case))
-
-
-def check_case(
-    soma_experiment: Experiment,
+def batches(
+    experiment: Experiment,
     obs_range: int,
     var_range: int,
     io_batch_size: int,
@@ -97,22 +102,20 @@ def check_case(
     seed: int | None,
     X_value_gen: XValueGen,
     obs_query: AxisQuery | None,
-    expected: List[List[int]],
+    expected: List[List[int]] | None,
     gpu: Tuple[int, int] | None,
     worker: Tuple[int, int] | None,
     debug: bool,
     use_eager_fetch: bool,
     return_sparse_X: bool,
-):
-    """Given fields from a ``Case``, and an ``Experiment``, create an ``ExperimentBatchDataset`` and verify that its
-    emitted batches match ``Case.expected``."""
+) -> Batches:
     if gpu or worker:
         distributed_ctx = mock_distributed(*(gpu or (0, 1)), (*worker, seed))
     else:
         distributed_ctx = nullcontext()
     with (
         distributed_ctx,
-        soma_experiment.axis_query(
+        experiment.axis_query(
             measurement_name="RNA", obs_query=obs_query
         ) as query,
     ):
@@ -129,7 +132,7 @@ def check_case(
             return_sparse_X=return_sparse_X,
         )
 
-        batches = list(iter(ds))
+        batches: List[Batch] = list(iter(ds))
         if debug:
             # Print observed batch indices and exit; useful for generating "expected" values for test cases
             out = stdout.write
@@ -139,30 +142,75 @@ def check_case(
                     out(", ")
                 out(f"[{', '.join([ f'{label:>2}' for label in obs.label ])}]")
             out("],\n")
-            return
+            return [], []
 
-        assert ds.shape == (len(expected), var_range)
-        obs = soma_experiment.obs.read().concat().to_pandas()
-        X = X_value_gen(range(obs_range), range(var_range)).toarray()
-        expected_batches = [
-            (
-                [X[row_idx].tolist() for row_idx in row_idx_batch],
-                pd.concat(
-                    [obs.loc[[row_idx], ["label"]] for row_idx in row_idx_batch]
-                ).reset_index(drop=True),
-            )
-            for row_idx_batch in expected
-        ]
-        assert len(batches) == len(expected_batches)
-        for (a_X, a_obs), (e_X, e_obs) in zip(batches, expected_batches):
-            if return_sparse_X:
-                assert isinstance(a_X, sparse.csr_matrix)
-                a_X = a_X.toarray()
-            if batch_size == 1 and not return_sparse_X:
-                assert len(e_X) == 1
-                e_X = e_X[0]
-            assert_array_equal(a_X, e_X)
-            assert_frame_equal(a_obs, e_obs)
+        if expected is not None:
+            assert ds.shape == (len(expected), var_range)
+            obs = experiment.obs.read().concat().to_pandas()
+            X = X_value_gen(range(obs_range), range(var_range)).toarray()
+            expected_batches: List[Tuple[List[int], pd.DataFrame]] | None = [
+                (
+                    [X[row_idx].tolist() for row_idx in row_idx_batch],
+                    pd.concat(
+                        [obs.loc[[row_idx], ["label"]] for row_idx in row_idx_batch]
+                    ).reset_index(drop=True),
+                )
+                for row_idx_batch in expected
+            ]
+        else:
+            expected_batches = None
+
+    return batches, expected_batches
+
+
+def check(experiment: Experiment, case: Case):
+    """Wrapper around ``check_case`` that "spreads" the ``Case``'s fields."""
+    check_case(experiment=experiment, **asdict(case))
+
+
+def check_case(
+    shuffle_chunk_size: int,
+    io_batch_size: int,
+    batch_size: int,
+    return_sparse_X: bool,
+    **kwargs,
+):
+    """Given fields from a ``Case``, and an ``Experiment``, create an ``ExperimentBatchDataset`` and verify that its
+    emitted batches match ``Case.expected``."""
+    actual_batches, expected_batches = batches(
+        shuffle_chunk_size=shuffle_chunk_size,
+        io_batch_size=io_batch_size,
+        batch_size=batch_size,
+        return_sparse_X=return_sparse_X,
+        **kwargs,
+    )
+    assert len(actual_batches) == len(expected_batches)
+    for idx, ((a_X, a_obs), (e_X, e_obs)) in enumerate(zip(actual_batches, expected_batches)):
+        if return_sparse_X:
+            assert isinstance(a_X, sparse.csr_matrix)
+            a_X = a_X.toarray()
+        if batch_size == 1 and not return_sparse_X:
+            assert len(e_X) == 1
+            e_X = e_X[0]
+        assert_array_equal(a_X, e_X)
+        assert_frame_equal(a_obs, e_obs)
+        # try:
+        # except AssertionError:
+    # expected_labels = ", ".join([ ",".join(obs.label.tolist()) for _, obs in expected_batches ])
+    # actual_labels = ", ".join([ ",".join(obs.label.tolist()) for _, obs in actual_batches ])
+    # raise AssertionError(f"Batch {idx} mismatched:\nExpected:\n{expected_labels}\nActual:\n{actual_labels}")
+    # actual_labels = [ obs.label.astype(int).tolist()[0] for _, obs in actual_batches ]
+    # io_batches = list(batched(actual_labels, io_batch_size))
+    # io_batches_shuffled = ' '.join([
+    #     '1'
+    #     if any(
+    #         max(shuffle_chunk) - min(shuffle_chunk) >= shuffle_chunk_size
+    #         for shuffle_chunk in batched(io_batch, shuffle_chunk_size)
+    #     )
+    #     else '-'
+    #     for io_batch in io_batches
+    # ])
+    # print(f" {io_batches_shuffled}")
 
 
 # fmt: off
@@ -199,15 +247,74 @@ def test_30_6_3_4(soma_experiment, case):
     check(soma_experiment, case)
 
 
+# 11: 13
+# 111: 9
+# 1111: 12
+# 11111: 10
 @cases(
-    Case(obs_range=10, io_batch_size=4, shuffle_chunk_size=2, batch_size=1, seed=seed, expected=expected)
-    for seed, expected in [
-        (111, [[ 3], [ 2], [ 0], [ 1], [ 5], [ 4], [ 9], [ 8], [ 7], [ 6]]),
-        (444, [[ 7], [ 6], [ 8], [ 9], [ 1], [ 5], [ 4], [ 0], [ 3], [ 2]]),
+    Case(obs_range=10, io_batch_size=4, shuffle_chunk_size=2, batch_size=1, seed=seed, expected=[ [idx] for idx in expected_idxs ])
+    for seed, expected_idxs in [
+        # IO batches:      |             |
+        (111, [ 3, 2, 0, 1 ,  5, 4, 9, 8 ,  7, 6 ]),
+        (222, [ 1, 0, 6, 7 ,  9, 8, 2, 3 ,  4, 5 ]),
+        (333, [ 4, 7, 5, 6 ,  3, 2, 8, 9 ,  1, 0 ]),
+        (444, [ 7, 6, 8, 9 ,  1, 5, 4, 0 ,  3, 2 ]),
+        (555, [ 9, 3, 8, 2 ,  6, 5, 7, 4 ,  0, 1 ]),
+        (666, [ 0, 6, 1, 7 ,  2, 3, 5, 4 ,  8, 9 ]),
+        (777, [ 3, 5, 2, 4 ,  9, 1, 0, 8 ,  7, 6 ]),
+        (888, [ 9, 8, 5, 4 ,  6, 2, 3, 7 ,  0, 1 ]),
+        (999, [ 5, 4, 2, 3 ,  1, 8, 0, 9 ,  6, 7 ]),
     ]
 )
 def test_10_4_2_1(soma_experiment, case):
     check(soma_experiment, case)
+
+
+# 11 + 100
+# 118 (59.0%) IO batches with some shuffle chunks interleaved
+# 82 (41.0%) IO batches with shuffle chunks all separate
+#
+# 1111 + 100:
+# 127 (63.5%) IO batches with some shuffle chunks interleaved
+# 73 (36.5%) IO batches with shuffle chunks all separate
+#
+# 11111 + 300:
+# 398 (66.3%) IO batches with some shuffle chunks interleaved
+# 202 (33.7%) IO batches with shuffle chunks all separate
+#
+# 22222 + 300:
+# 402 (67.0%) IO batches with some shuffle chunks interleaved
+# 198 (33.0%) IO batches with shuffle chunks all separate
+@parametrize("obs_range,var_range,X_value_gen", [(10, 3, pytorch_x_value_gen)])
+def test_10_4_2_1_shuffle_audit(soma_experiment):
+    cases = [
+        Case(obs_range=10, io_batch_size=4, shuffle_chunk_size=2, batch_size=1, seed=22222+seed)
+        for seed in range(300)
+    ]
+    n_shuffle_chunks_interleaved = 0
+    n_shuffle_chunks_separate = 0
+    for case in cases:
+        actual_batches, _ = case.batches(soma_experiment)
+        actual_labels = [ obs.label.astype(int).tolist()[0] for _, obs in actual_batches ]
+        io_batches = list(batched(actual_labels, case.io_batch_size))
+        io_batches_are_shuffled = [
+            any(
+                max(shuffle_chunk) - min(shuffle_chunk) >= case.shuffle_chunk_size
+                for shuffle_chunk in batched(io_batch, case.shuffle_chunk_size)
+            )
+            for io_batch in io_batches
+        ]
+        assert len(io_batches_are_shuffled) == 3
+        assert not io_batches_are_shuffled[-1]
+        io_batches_are_shuffled = io_batches_are_shuffled[:-1]
+        n_shuffled_io_batches = sum(io_batches_are_shuffled)
+        n_shuffle_chunks_interleaved += n_shuffled_io_batches
+        n_shuffle_chunks_separate += len(io_batches_are_shuffled) - n_shuffled_io_batches
+
+    n_io_batches = n_shuffle_chunks_interleaved + n_shuffle_chunks_separate
+    print()
+    print(f"{n_shuffle_chunks_interleaved} ({n_shuffle_chunks_interleaved / n_io_batches:.1%}) IO batches with some shuffle chunks interleaved")
+    print(f"{n_shuffle_chunks_separate} ({n_shuffle_chunks_separate / n_io_batches:.1%}) IO batches with shuffle chunks all separate")
 
 
 @cases(

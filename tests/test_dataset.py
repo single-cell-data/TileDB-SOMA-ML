@@ -23,10 +23,7 @@ from tests._utils import (
 from tiledbsoma_ml import ExperimentDataset
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
+@parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
 @parametrize("return_sparse_X", [True, False])
 @parametrize("use_eager_fetch", [True, False])
 def test_non_batched(
@@ -62,10 +59,7 @@ def test_non_batched(
             assert_frame_equal(obs_batch, pd.DataFrame({"label": [str(idx)]}))
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
+@parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
 @parametrize("return_sparse_X", [True, False])
 @parametrize("use_eager_fetch", [True, False])
 def test_uneven_soma_and_result_batches(
@@ -109,10 +103,7 @@ def test_uneven_soma_and_result_batches(
         assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
+@parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
 @parametrize("return_sparse_X", [True, False])
 @parametrize("use_eager_fetch", [True, False])
 def test_batching__all_batches_full_size(
@@ -177,10 +168,7 @@ def test_soma_joinids(
         assert_array_equal(soma_joinids, np.arange(100_000_000, 100_000_003))
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(5, 3, pytorch_x_value_gen)],
-)
+@parametrize("obs_range,var_range,X_value_gen", [(5, 3, pytorch_x_value_gen)])
 @parametrize("return_sparse_X", [True, False])
 @parametrize("use_eager_fetch", [True, False])
 def test_batching__partial_final_batch_size(
@@ -213,10 +201,7 @@ def test_batching__partial_final_batch_size(
             next(batch_iter)
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(3, 3, pytorch_x_value_gen)],
-)
+@parametrize("obs_range,var_range,X_value_gen", [(3, 3, pytorch_x_value_gen)])
 @parametrize("use_eager_fetch", [True, False])
 def test_batching__exactly_one_batch(
     soma_experiment: Experiment,
@@ -241,10 +226,7 @@ def test_batching__exactly_one_batch(
             next(batch_iter)
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
+@parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
 @parametrize("use_eager_fetch", [True, False])
 def test_batching__empty_query_result(
     soma_experiment: Experiment,
@@ -267,10 +249,7 @@ def test_batching__empty_query_result(
             next(batch_iter)
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(10, 1, pytorch_x_value_gen)],
-)
+@parametrize("obs_range,var_range,X_value_gen", [(10, 1, pytorch_x_value_gen)])
 @parametrize("use_eager_fetch", [True, False])
 def test_batching__partial_soma_batches_are_concatenated(
     soma_experiment: Experiment, use_eager_fetch: bool

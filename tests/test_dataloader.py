@@ -19,7 +19,7 @@ from tiledbsoma_ml.dataset import ExperimentDataset
 
 
 @parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
-def test_multiprocessing__returns_full_result(soma_experiment: Experiment) -> None:
+def test_returns_full_result(soma_experiment: Experiment) -> None:
     """Tests that ``ExperimentDataset`` provides all data, as collected from multiple processes that are managed by a
     PyTorch DataLoader with multiple workers configured."""
     with soma_experiment.axis_query(measurement_name="RNA") as query:
@@ -43,7 +43,7 @@ def test_multiprocessing__returns_full_result(soma_experiment: Experiment) -> No
 
 @parametrize("obs_range,var_range,X_value_gen", [(3, 3, pytorch_x_value_gen)])
 @parametrize("use_eager_fetch", [True, False])
-def test_experiment_dataloader__non_batched(
+def test_non_batched(
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -67,7 +67,7 @@ def test_experiment_dataloader__non_batched(
 
 @parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
 @parametrize("use_eager_fetch", [True, False])
-def test_experiment_dataloader__batched(
+def test_batched(
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -89,7 +89,7 @@ def test_experiment_dataloader__batched(
 
 @parametrize("obs_range,var_range,X_value_gen", [(10, 3, pytorch_x_value_gen)])
 @parametrize("use_eager_fetch", [True, False])
-def test_experiment_dataloader__batched_length(
+def test_batched_length(
     soma_experiment: Experiment,
     use_eager_fetch: bool,
 ) -> None:
@@ -108,7 +108,7 @@ def test_experiment_dataloader__batched_length(
 
 @parametrize("obs_range,var_range,X_value_gen", [(10, 3, pytorch_x_value_gen)])
 @parametrize("batch_size", [1, 3, 10])
-def test_experiment_dataloader__collate_fn(
+def test_collate_fn(
     soma_experiment: Experiment,
     batch_size: int,
 ) -> None:
@@ -138,7 +138,7 @@ def test_experiment_dataloader__collate_fn(
         assert len(list(dl)) > 0
 
 
-def test_experiment_dataloader__unsupported_params__fails() -> None:
+def test_unsupported_params_fail() -> None:
     with patch("tiledbsoma_ml.dataset.ExperimentDataset") as dummy_exp_dataset:
         with pytest.raises(ValueError):
             experiment_dataloader(dummy_exp_dataset, shuffle=True)

@@ -2,118 +2,74 @@
 # Copyright (c) 2021-2024 TileDB, Inc.
 #
 # Licensed under the MIT License.
+from __future__ import annotations
 
-from functools import partial
-from typing import Tuple
+from typing import Iterator, List, Tuple
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
-import pytest
-from tiledbsoma import Experiment
+from pytest import fixture, raises
+from torch.utils.data import DataLoader
 
-from tests._utils import assert_array_equal, parametrize, pytorch_x_value_gen
-from tiledbsoma_ml.common import NDArrayNumber
+from tests._utils import assert_array_equal, param, sweep
+from tiledbsoma_ml.common import Batch, NDArrayNumber
 from tiledbsoma_ml.dataloader import experiment_dataloader
 from tiledbsoma_ml.dataset import ExperimentDataset
 
 
-@parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
-def test_returns_full_result(soma_experiment: Experiment) -> None:
+@fixture
+def dataloader(ds: ExperimentDataset, num_workers: int):
+    yield experiment_dataloader(ds, num_workers=num_workers)
+
+
+@fixture
+def batch_iter(dataloader: DataLoader) -> Iterator[Batch]:
+    return iter(dataloader)
+
+
+@fixture
+def batches(batch_iter: Iterator[Batch]) -> List[Batch]:
+    return list(batch_iter)
+
+
+@param(obs_range=6)
+def test_returns_full_result(batches: List[Batch]):
     """Tests that ``ExperimentDataset`` provides all data, as collected from multiple processes that are managed by a
     PyTorch DataLoader with multiple workers configured."""
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["soma_joinid", "label"],
-            io_batch_size=3,  # two chunks, one per worker
-            shuffle_chunk_size=3,
-        )
-        # Wrap with a DataLoader, which sets up the multiprocessing
-        dl = experiment_dataloader(ds, num_workers=2)
-
-        batches = list(iter(dl))
-
-        soma_joinids = np.concatenate(
-            [obs["soma_joinid"].to_numpy() for _, obs in batches]
-        )
-        assert sorted(soma_joinids) == list(range(6))
+    soma_joinids = np.concatenate([obs["soma_joinid"].to_numpy() for _, obs in batches])
+    assert sorted(soma_joinids) == list(range(6))
 
 
-@parametrize("obs_range,var_range,X_value_gen", [(3, 3, pytorch_x_value_gen)])
-@parametrize("use_eager_fetch", [True, False])
-def test_non_batched(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            shuffle=False,
-            use_eager_fetch=use_eager_fetch,
-        )
-        dl = experiment_dataloader(ds)
-        batches = list(iter(dl))
-        assert all(X.shape == (3,) for X, _ in batches)
-        assert all(obs.shape == (1, 1) for _, obs in batches)
-
-        X, obs = batches[0]
-        assert_array_equal(X, [0, 0.1, 0])
-        assert obs["label"].tolist() == ["0"]
+@param(obs_range=3, obs_column_names=["label"], shuffle=False)
+@sweep(use_eager_fetch=[True, False])
+def test_non_batched(batches: List[Batch]):
+    assert all(X.shape == (3,) for X, _ in batches)
+    assert all(obs.shape == (1, 1) for _, obs in batches)
+    X, obs = batches[0]
+    assert_array_equal(X, [0, 0.1, 0])
+    assert obs["label"].tolist() == ["0"]
 
 
-@parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
-@parametrize("use_eager_fetch", [True, False])
-def test_batched(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            batch_size=3,
-            shuffle=False,
-            use_eager_fetch=use_eager_fetch,
-        )
-        dl = experiment_dataloader(ds)
-        batches = list(iter(dl))
-
-        X, obs = batches[0]
-        assert_array_equal(X, [[0, 0.1, 0], [1, 0, 1.2], [0, 2.1, 0]])
-        assert obs.to_numpy().tolist() == [[0], [1], [2]]
+@param(obs_range=6, batch_size=3, shuffle=False)
+@sweep(use_eager_fetch=[True, False])
+def test_batched(batches: List[Batch]):
+    X, obs = batches[0]
+    assert_array_equal(X, [[0, 0.1, 0], [1, 0, 1.2], [0, 2.1, 0]])
+    assert obs.to_numpy().tolist() == [[0], [1], [2]]
 
 
-@parametrize("obs_range,var_range,X_value_gen", [(10, 3, pytorch_x_value_gen)])
-@parametrize("use_eager_fetch", [True, False])
-def test_batched_length(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            shuffle=False,
-            use_eager_fetch=use_eager_fetch,
-        )
-        dl = experiment_dataloader(ds)
-        assert len(dl) == len(list(dl))
+@param(obs_range=10, batch_size=3, shuffle=False, obs_column_names=["label"])
+@sweep(use_eager_fetch=[True, False])
+def test_batched_length(dataloader: DataLoader):
+    assert len(dataloader) == len(list(dataloader))
 
 
-@parametrize("obs_range,var_range,X_value_gen", [(10, 3, pytorch_x_value_gen)])
-@parametrize("batch_size", [1, 3, 10])
-def test_collate_fn(
-    soma_experiment: Experiment,
-    batch_size: int,
-) -> None:
+@param(obs_range=10, obs_column_names=["label"], shuffle=False)
+@sweep(batch_size=[1, 3, 10])
+def test_collate_fn(ds: ExperimentDataset, batch_size: int):
     def collate_fn(
-        batch_size: int, data: Tuple[NDArrayNumber, pd.DataFrame]
+        data: Tuple[NDArrayNumber, pd.DataFrame]
     ) -> Tuple[NDArrayNumber, pd.DataFrame]:
         assert isinstance(data, tuple)
         assert len(data) == 2
@@ -126,25 +82,17 @@ def test_collate_fn(
         assert data[1].shape[1] <= batch_size
         return data
 
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=batch_size,
-            shuffle=False,
-        )
-        dl = experiment_dataloader(ds, collate_fn=partial(collate_fn, batch_size))
-        assert len(list(dl)) > 0
+    dl = experiment_dataloader(ds, collate_fn=collate_fn)
+    assert len(list(dl)) > 0
 
 
-def test_unsupported_params_fail() -> None:
-    with patch("tiledbsoma_ml.dataset.ExperimentDataset") as dummy_exp_dataset:
-        with pytest.raises(ValueError):
-            experiment_dataloader(dummy_exp_dataset, shuffle=True)
-        with pytest.raises(ValueError):
-            experiment_dataloader(dummy_exp_dataset, batch_size=3)
-        with pytest.raises(ValueError):
-            experiment_dataloader(dummy_exp_dataset, batch_sampler=[])
-        with pytest.raises(ValueError):
-            experiment_dataloader(dummy_exp_dataset, sampler=[])
+def test_unsupported_params_fail():
+    with patch("tiledbsoma_ml.dataset.ExperimentDataset") as mock_dataset:
+        with raises(ValueError):
+            experiment_dataloader(mock_dataset, shuffle=True)
+        with raises(ValueError):
+            experiment_dataloader(mock_dataset, batch_size=3)
+        with raises(ValueError):
+            experiment_dataloader(mock_dataset, batch_sampler=[])
+        with raises(ValueError):
+            experiment_dataloader(mock_dataset, sampler=[])

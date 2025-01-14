@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 from contextlib import contextmanager, nullcontext
-from typing import Callable, List, Tuple
+from typing import Any, Callable, List, Tuple
 from unittest.mock import patch
 
 import numpy as np
 import pyarrow as pa
 import pytest
+from _pytest.fixtures import FixtureFunction
+from pytest import fixture
 from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma._collection import CollectionBase
 from torch.utils.data._utils.worker import WorkerInfo
@@ -35,6 +37,70 @@ def assert_array_equal(
 
 
 parametrize = pytest.mark.parametrize
+
+
+def default(value: Any) -> FixtureFunction:
+    """Create a ``fixture`` that returns a default value.
+
+    When using nested ``fixture``'s, this helps simulate "optional" parameters; test cases can explicitly set values for
+    fixtures, but also omit them (which PyTest normally errors over).
+    """
+    return fixture(lambda: value)
+
+
+def param(**kwargs):
+    """``kwargs``-based wrapper around ``parametrize``, for fixtures that are constant in a given test case.
+
+    Analogous to declaring "constant" variables in the fixture DAG. This is useful/common when some ``fixture``'s depend
+    on other ``fixture``'s, and one or more of the dependencies have a fixed value in all "parametrizations" of a given
+    test case (e.g. when other parameters are being "swept" over).
+
+    For example:
+
+    >>> @param(name='Alice', phone='111-111-1111')
+    ... @sweep(dob=['1/1/2000', '1/1/3000'])  # Test multiple DOBs with this user name/phone
+    ... def test_case(user):  # Fixture `user` is constructed from `name`, `phone`, and `dob`
+    ...     ...
+
+    Is equivalent to:
+
+    >>> @parametrize("name,phone", [('Alice', '111-111-1111')])
+    ... @parametrize("dob", [['1/1/2000', '1/1/3000']])  # Test multiple DOBs with this user name/phone
+    ... def test_case(user):  # Fixture `user` is constructed from `name`, `phone`, and `dob`
+    ...     ...
+    """
+
+    def rv(fn):
+        for k, v in reversed(kwargs.items()):
+            fn = parametrize(f"{k}", [v])(fn)
+
+        return fn
+
+    return rv
+
+
+def sweep(**kwargs):
+    """``kwargs``-based wrapper around ``parametrize``, for fixtures that are not constant in a given test case, e.g.:
+
+    >>> @sweep(n=[1, 2, 3])
+    ... def test_case(n):
+    ...     ...
+
+    Is equivalent to:
+
+    >>> @parametrize("n", [1, 2, 3])
+    ... def test_case(n):
+    ...     ...
+    """
+
+    def rv(fn):
+        for k, v in reversed(kwargs.items()):
+            fn = parametrize(f"{k}", v)(fn)
+
+        return fn
+
+    return rv
+
 
 XValueGen = Callable[[range, range], spmatrix]
 

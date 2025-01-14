@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 from contextlib import contextmanager, nullcontext
-from typing import Callable, List, Tuple
+from typing import Any, Callable, List, Tuple
 from unittest.mock import patch
 
 import numpy as np
 import pyarrow as pa
 import pytest
+from _pytest.fixtures import FixtureFunction
+from pytest import fixture
 from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma._collection import CollectionBase
 from torch.utils.data._utils.worker import WorkerInfo
@@ -35,6 +37,31 @@ def assert_array_equal(
 
 
 parametrize = pytest.mark.parametrize
+
+
+def default(value: Any) -> FixtureFunction:
+    return fixture(lambda: value)
+
+
+def param(**kwargs):
+    def rv(fn):
+        for k, v in reversed(kwargs.items()):
+            fn = parametrize(f"{k}", [v])(fn)
+
+        return fn
+
+    return rv
+
+
+def sweep(**kwargs):
+    def rv(fn):
+        for k, v in reversed(kwargs.items()):
+            fn = parametrize(f"{k}", v)(fn)
+
+        return fn
+
+    return rv
+
 
 XValueGen = Callable[[range, range], spmatrix]
 

@@ -34,9 +34,18 @@ jobs:
         run: |
           pip install -r requirements.txt
           make html
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - run: pnpm i
+        working-directory: www
+      - run: npm run build  # When $CI is set, this outputs to dist/shuffle
+        working-directory: www
+      - name: Copy RTD build into www/dist
+        run: mv docs/_build/html/* www/dist/
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: 'docs/_build/html'
+          path: 'www/dist'
       - uses: actions/deploy-pages@v4
         id: deployment

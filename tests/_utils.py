@@ -70,7 +70,7 @@ def coords_to_float(r: int, c: int) -> float:
     return float(f"{r}.{str(c)[::-1]}")
 
 
-def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
+def pytorch_x_value_gen(obs_range: range, var_range: range) -> coo_matrix:
     """Create a sample sparse matrix for use in tests.
 
     The matrix has every other element nonzero, in a "checkerboard" pattern, and the nonzero elements encode their row-
@@ -89,32 +89,20 @@ def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
     )
     ```
     """
-    occupied_shape = (
+    shape = (
         obs_range.stop - obs_range.start,
         var_range.stop - var_range.start,
     )
-    floats = np.array(
-        [
-            [coords_to_float(r, c) for c in range(var_range.start, var_range.stop)]
-            for r in range(obs_range.start, obs_range.stop)
-        ]
+    rows, cols, data = list(
+        zip(
+            *[
+                (r + obs_range.start, c + var_range.start, coords_to_float(r, c))
+                for r in range(shape[0])
+                for c in range(shape[1])
+                if (r + c) % 2
+            ]
+        )
     )
-    pos_floats_checkerboard = coo_matrix(
-        (np.indices(occupied_shape).sum(axis=0) % 2) * floats
-    )
-    pos_floats_checkerboard.row += obs_range.start
-    pos_floats_checkerboard.col += var_range.start
-    return pos_floats_checkerboard
-
-
-def pytorch_seq_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
-    """A sparse matrix where the values of each col are the obs_range values.
-
-    Useful for checking the X values are being returned in the correct order.
-    """
-    data = np.vstack([list(obs_range)] * len(var_range)).flatten()
-    rows = np.vstack([list(obs_range)] * len(var_range)).flatten()
-    cols = np.column_stack([list(var_range)] * len(obs_range)).flatten()
     return coo_matrix((data, (rows, cols)))
 
 

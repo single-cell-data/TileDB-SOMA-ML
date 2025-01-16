@@ -18,7 +18,7 @@ from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_wo
 from tiledbsoma_ml.common import Batch, NDArrayJoinId
 from tiledbsoma_ml.gpu_batches import GPUBatches
 from tiledbsoma_ml.io_batches import IOBatches
-from tiledbsoma_ml.query_ids import QueryIDs
+from tiledbsoma_ml.query_ids import Partition, QueryIDs
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")
 
@@ -234,6 +234,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         self.return_sparse_X = return_sparse_X
         self.use_eager_fetch = use_eager_fetch
         self.epoch = 0
+        self.rank, self.world_size = get_distributed_world_rank()
 
     @property
     def measurement_name(self) -> str:
@@ -296,7 +297,14 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         use_eager_fetch = self.use_eager_fetch
         seed = self.seed
 
-        query_ids = self.query_ids.partitioned()
+        worker_id, n_workers = get_worker_world_rank()
+        partition = Partition(
+            rank=self.rank,
+            world_size=self.world_size,
+            worker_id=worker_id,
+            n_workers=n_workers,
+        )
+        query_ids = self.query_ids.partitioned(partition)
         if shuffle:
             chunks = query_ids.shuffle_chunks(
                 shuffle_chunk_size=self.shuffle_chunk_size,

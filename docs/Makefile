@@ -18,3 +18,9 @@ help:
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
 %: Makefile
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+dist: html
+	cd ../www && npm run build
+	cp -r $(BUILDDIR)/html/* ../www/dist/
+
+.PHONY: dist

@@ -89,13 +89,13 @@ class QueryIDs:
         else:
             rank, world_size = get_distributed_world_rank()
             worker_id, n_workers = get_worker_world_rank()
+            partition = Partition(
+                rank=rank,
+                world_size=world_size,
+                worker_id=worker_id,
+                n_workers=n_workers,
+            )
 
-        partition = Partition(
-            rank=rank,
-            world_size=world_size,
-            worker_id=worker_id,
-            n_workers=n_workers,
-        )
         gpu_splits = splits(len(obs_joinids), world_size)
         gpu_split = obs_joinids[gpu_splits[rank] : gpu_splits[rank + 1]]
 

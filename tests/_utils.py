@@ -9,15 +9,20 @@ from typing import Any, Callable, List, Tuple
 from unittest.mock import patch
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 from _pytest.fixtures import FixtureFunction
+from pandas._testing import assert_frame_equal
 from pytest import fixture
-from scipy.sparse import coo_matrix, spmatrix
+from scipy.sparse import coo_matrix, csr_matrix, spmatrix
 from tiledbsoma._collection import CollectionBase
 from torch.utils.data._utils.worker import WorkerInfo
 
-from tiledbsoma_ml.common import NDArrayJoinId
+from tiledbsoma_ml.common import MiniBatch, NDArrayJoinId
+
+XValueGen = Callable[[range, range], spmatrix]
+ExpectedBatch = Tuple[List[List[int]], pd.DataFrame]
 
 
 def assert_array_equal(
@@ -100,9 +105,6 @@ def sweep(**kwargs):
         return fn
 
     return rv
-
-
-XValueGen = Callable[[range, range], spmatrix]
 
 
 def coords_to_float(r: int, c: int) -> float:
@@ -218,3 +220,41 @@ def mock_distributed(
         mock_dist_get_rank.return_value = rank
         mock_dist_get_world_size.return_value = world_size
         yield
+
+
+def assert_batches_equal(
+    batches: List[MiniBatch],
+    expected_batches: List[ExpectedBatch],
+    batch_size: int,
+    return_sparse_X: bool = False,
+):
+    try:
+        assert len(batches) == len(expected_batches)
+        for (a_X, a_obs), (e_X, e_obs) in zip(batches, expected_batches):
+            if return_sparse_X:
+                assert isinstance(a_X, csr_matrix)
+                a_X = a_X.toarray()
+            if batch_size == 1 and not return_sparse_X:
+                # Dense single-row batches are "squeezed" down to 1-D
+                assert len(e_X) == 1
+                e_X = e_X[0]
+            assert_array_equal(a_X, e_X)
+            assert_frame_equal(a_obs, e_obs)
+    except AssertionError as e:
+        # Raise an additional exception with a string representation of the "actual" row indices; useful for generating
+        # "expected" data for test cases.
+        raise AssertionError(f"Actual: {batch_idxs_str(batches)}") from e
+
+
+def batch_idxs_str(batches: List[MiniBatch]) -> str:
+    return "[%s]" % ", ".join(
+        [
+            "[%s]"
+            % ", ".join(
+                (
+                    obs.soma_joinid.astype(str) if "soma_joinid" in obs else obs.label
+                ).tolist()
+            )
+            for _, obs in batches
+        ]
+    )

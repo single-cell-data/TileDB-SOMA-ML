@@ -4,115 +4,39 @@
 # Licensed under the MIT License.
 from __future__ import annotations
 
-from typing import Iterator, List, Sequence
+from typing import Iterator, List
 
 import numpy as np
-import pandas as pd
-from pandas._testing import assert_frame_equal
 from pytest import fixture, raises
-from scipy import sparse
 from somacore import AxisQuery
 from tiledbsoma import Experiment
 
 from tests._utils import (
-    XValueGen,
     assert_array_equal,
     param,
     parametrize,
     sweep,
 )
 from tiledbsoma_ml import ExperimentDataset
-from tiledbsoma_ml.common import Batch
+from tiledbsoma_ml.common import MiniBatch
 
 
 @fixture
-def batch_iter(ds: ExperimentDataset) -> Iterator[Batch]:
-    """Iterator over an |ExperimentDataset|'s |Batch|'s."""
+def batch_iter(ds: ExperimentDataset) -> Iterator[MiniBatch]:
+    """Iterator over an |ExperimentDataset|'s |MiniBatch|'s."""
     return iter(ds)
 
 
 @fixture
-def batches(batch_iter: Iterator[Batch]) -> List[Batch]:
-    """List of an |ExperimentDataset|'s |Batch|'s."""
+def batches(batch_iter: Iterator[MiniBatch]) -> List[MiniBatch]:
+    """List of an |ExperimentDataset|'s |MiniBatch|'s."""
     return list(batch_iter)
-
-
-@fixture
-def check(
-    expected: List[List[int]],  # Batches of row idxs
-    ds: ExperimentDataset,
-    batches: List[Batch],
-    soma_experiment: Experiment,
-    obs_range: int | range,
-    var_range: int | range,
-    X_value_gen: XValueGen,
-    obs_column_names: Sequence[str],
-    batch_size: int,
-    return_sparse_X: bool,
-):
-    """Verify the ``batches`` produced by ``ds`` match the ``expected`` values.
-
-    ``expected`` contains row indices, which are mapped to ``X`` and ``obs`` objects using the same ``X_value_gen`` /
-    ``obs_column_names`` that were used to create the ``soma_experiment``.
-
-    Test cases invoke this function by declaring a ``check`` argument. All arguments are themselves ``fixture``s, which
-    pytest will evaluate/reuse.
-    """
-    try:
-        assert ds.shape == (len(expected), var_range)
-        obs = soma_experiment.obs.read().concat().to_pandas()
-        if isinstance(obs_range, int):
-            obs_range = range(obs_range)
-        if isinstance(var_range, int):
-            var_range = range(var_range)
-
-        X = X_value_gen(obs_range, var_range)
-        X = X.tocsr()
-        expected_batches = [
-            (
-                [
-                    X[row_idx + obs_range.start].toarray()[0].tolist()
-                    for row_idx in row_idx_batch
-                ],
-                pd.concat(
-                    [obs.loc[[row_idx], obs_column_names] for row_idx in row_idx_batch]
-                ).reset_index(drop=True),
-            )
-            for row_idx_batch in expected
-        ]
-        assert len(batches) == len(expected_batches)
-        for (a_X, a_obs), (e_X, e_obs) in zip(batches, expected_batches):
-            if return_sparse_X:
-                assert isinstance(a_X, sparse.csr_matrix)
-                a_X = a_X.toarray()
-            if batch_size == 1 and not return_sparse_X:
-                # Dense single-row batches are "squeezed" down to 1-D
-                assert len(e_X) == 1
-                e_X = e_X[0]
-            assert_array_equal(a_X, e_X)
-            assert_frame_equal(a_obs, e_obs)
-    except AssertionError as e:
-        # Raise an additional exception with a string representation of the actual values; useful for generating the
-        # "expected" data for test cases.
-        actual_ids = ", ".join(
-            [
-                "[%s]"
-                % ", ".join(
-                    (
-                        obs.soma_joinid.astype(str)
-                        if "soma_joinid" in obs
-                        else obs.label
-                    ).tolist()
-                )
-                for _, obs in batches
-            ]
-        )
-        raise AssertionError(f"Actual: {actual_ids}") from e
 
 
 # Turn off formatting from this point on; many test-case "expected" values are aligned across lines deliberately, in
 # ways black/ruff would clobber.
 # fmt: off
+
 
 @sweep(io_batch_size=[ 2, 6, 10 ])
 @param(obs_range=10, shuffle=False, batch_size=3, expected=[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]])
@@ -171,14 +95,14 @@ def test_obs3_shuf3_io3_batch3(check):
     expected=[[0, 1, 2]]
 )
 @sweep(use_eager_fetch=[True, False])
-def test_large_obs_ids(batches: List[Batch], check):
+def test_large_obs_ids(batches: List[MiniBatch], check):
     soma_joinids = np.concatenate([obs["soma_joinid"].to_numpy() for X, obs in batches])
     assert_array_equal(soma_joinids, np.arange(100_000_000, 100_000_003))
 
 
 @param(obs_range=6, obs_query=AxisQuery(coords=([],)), batch_size=3)
 @sweep(use_eager_fetch=[True, False])
-def test_batching__empty_query_result(ds: ExperimentDataset, batch_iter: Iterator[Batch]):
+def test_batching__empty_query_result(ds: ExperimentDataset, batch_iter: Iterator[MiniBatch]):
     with raises(StopIteration):
         next(batch_iter)
     assert ds.shape == (0, 3)
@@ -243,18 +167,17 @@ def test_gpu_worker_partitioning__uneven_workers(check):
 
 
 @param(obs_range=6)
-def test_experiment_dataset_error_checks(
-    soma_experiment: Experiment,
-    ds: ExperimentDataset,
-):
+def test_experiment_dataset_getitem_error(ds: ExperimentDataset):
     with raises(NotImplementedError):
         ds[0]
 
+
+@param(obs_range=6)
+def test_experiment_dataset_empty_cols_error(soma_experiment: Experiment):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         with raises(ValueError):
             ExperimentDataset(
                 query,
                 obs_column_names=(),
                 layer_name="raw",
-                shuffle=True,
             )

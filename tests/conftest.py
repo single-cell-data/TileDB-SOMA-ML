@@ -22,7 +22,6 @@ from ._utils import (
     add_sparse_array,
     default,
     mock_distributed,
-    parametrize,
     pytorch_x_value_gen,
 )
 
@@ -34,6 +33,11 @@ def soma_experiment(
     var_range: Union[int, range],
     X_value_gen: XValueGen,
 ) -> Experiment:
+    """|Experiment| for testing.
+
+    Predictable obs, var, and X values allow tests to verify output of |ExperimentDataset| / |experiment_dataloader|
+    operations.
+    """
     with Experiment.create((tmp_path / "exp").as_posix()) as exp:
         if isinstance(obs_range, int):
             obs_range = range(obs_range)
@@ -50,10 +54,11 @@ def soma_experiment(
     return Experiment.open((tmp_path / "exp").as_posix())
 
 
-# Default-value fixtures
+# Default-value fixtures, can be overridden on a per-test-case basis using ``parametrize`` / ``params`` / ``sweep``
 obs_column_names = default(("soma_joinid",))
 obs_query = default(None)
-shuffle = default(True)
+# Defaults to True, unless `seed=False` is set (a test-only convenience)
+shuffle = default(None)
 var_range = default(3)
 X_value_gen = default(pytorch_x_value_gen)
 shuffle_chunk_size = default(64)
@@ -61,7 +66,6 @@ io_batch_size = default(2**16)
 batch_size = default(1)
 use_eager_fetch = default(True)
 return_sparse_X = default(False)
-expected_shape = default(None)
 rank = default(0)
 world_size = default(1)
 worker_id = default(0)
@@ -74,20 +78,28 @@ def ds(
     soma_experiment: Experiment,
     obs_query: AxisQuery | None,
     obs_column_names: Tuple[str],
-    shuffle: bool,
+    shuffle: bool | None,
     shuffle_chunk_size: int,
     io_batch_size: int,
     batch_size: int,
     return_sparse_X: bool,
     use_eager_fetch: bool,
-    expected_shape: Tuple[int, ...] | None,
     rank: int,
     world_size: int,
     worker_id: int,
     num_workers: int,
-    seed: int | None,
+    # `seed=False` is test-only shorthand for `shuffle=False`, used alongside mappings from seed values to expected
+    # batch values.
+    seed: int | bool | None,
 ) -> ExperimentDataset:
+    """|ExperimentDataset| for testing, constructed from ``soma_experiment`` and other ``fixture`` args.
+
+    ``rank``/``world_size`` control multi-GPU simulation, and ``worker_id``/``num_workers`` simulate multi-worker
+    training|DataLoader|'s.
+    """
     worker_info = (worker_id, num_workers, seed) if num_workers > 1 else None
+    if shuffle is None:
+        shuffle = seed is not False
     with (
         mock_distributed(rank, world_size, worker_info),
         soma_experiment.axis_query(
@@ -106,24 +118,4 @@ def ds(
             return_sparse_X=return_sparse_X,
             use_eager_fetch=use_eager_fetch,
         )
-        if expected_shape is not None:
-            assert ds.shape == expected_shape
         yield ds
-
-
-def rank_sweep(*world_sizes: int):
-    return parametrize(
-        "rank,world_size",
-        [
-            (rank, world_size)
-            for world_size in world_sizes
-            for rank in range(world_size)
-        ],
-    )
-
-
-def worker_sweep(num_workers: int):
-    return parametrize(
-        "worker_id,num_workers",
-        [(worker_id, num_workers) for worker_id in range(num_workers)],
-    )

@@ -20,16 +20,19 @@ from tiledbsoma_ml.dataset import ExperimentDataset
 
 @fixture
 def dataloader(ds: ExperimentDataset, num_workers: int):
+    """Wrap an |ExperimentDataset| fixture in a |DataLoader|, for use in tests."""
     yield experiment_dataloader(ds, num_workers=num_workers)
 
 
 @fixture
 def batch_iter(dataloader: DataLoader) -> Iterator[Batch]:
+    """Iterator over a |DataLoader|'s |Batch|'s."""
     return iter(dataloader)
 
 
 @fixture
 def batches(batch_iter: Iterator[Batch]) -> List[Batch]:
+    """List of a |DataLoader|'s |Batch|'s."""
     return list(batch_iter)
 
 

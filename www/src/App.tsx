@@ -1,24 +1,32 @@
-import { Dispatch, KeyboardEventHandler, ReactNode, useEffect, useMemo, useState } from "react"
-import './App.css'
+import { Dispatch, forwardRef, KeyboardEventHandler, ReactNode, SVGProps, useEffect, useMemo, useState } from "react"
 import { A, batched, interp, log, range, round, scan, shuffle, sum, } from "@rdub/base"
 import { flatten } from "lodash"
 import { ClassName } from "@rdub/base/classname"
+import { Tooltip } from "@mui/material"
 
 import seedrandom from 'seedrandom'
+import useSessionStorageState from "use-session-storage-state";
 
-const getBarW = interp([ 40, .7 ], [ 100, .5 ])
+const getBarW = interp([ 40, .9 ], [ 100, .5 ])
 
-function Bar({ i, n, x, w, h, }: { i: number, n: number, x: number, w: number, h: number }) {
-  const fill = `hsl(${315 * i / n}, 100%, 50%)`
-  return (
-    <rect
-      width={w}
-      height={h}
-      x={x}
-      fill={fill}
-    />
-  )
-}
+const Bar = forwardRef<
+  SVGRectElement,
+  { i: number, n: number, x: number, w: number, h: number } & SVGProps<SVGRectElement>
+>(
+  ({ i, n, x, w, h, ...props }, ref) => {
+    const fill = `hsl(${315 * i / n}, 100%, 50%)`
+    return (
+      <rect
+        {...props}
+        ref={ref}
+        width={w}
+        height={h}
+        x={x}
+        fill={fill}
+      />
+    )
+  }
+)
 
 function getBarWX({ nBars, nChunks, }: {
   nBars: number
@@ -40,7 +48,19 @@ function getBarWX({ nBars, nChunks, }: {
   return { w, x }
 }
 
-export function Bars({ groups, n, y = 0, h, className }: { groups: number[][], n?: number, y?: number, h: number } & ClassName) {
+export type BarTooltip = (_: { i: number }) => ReactNode
+export type GroupTooltip = (_: { idx: number, group: number[] }) => ReactNode
+
+export type BarsProps = {
+  groups: number[][]
+  n?: number
+  y?: number
+  h: number
+  barTooltip?: BarTooltip
+  groupTooltip?: GroupTooltip
+} & ClassName
+
+export function Bars({ groups, n, y = 0, h, barTooltip, groupTooltip, className }: BarsProps) {
   const groupLens = groups.map(g => g.length)
   n = n ?? sum(groupLens)
   const startIdxs = scan(groupLens, (acc, x) => acc + x, 0)
@@ -48,13 +68,38 @@ export function Bars({ groups, n, y = 0, h, className }: { groups: number[][], n
   const bars = getBarWX({ nBars: n, nChunks: groups.length })
   return (
     <g className={className} transform={`translate(0, ${y ?? 0})`}>{
-      groups.map((group, chunkIdx) => {
-        return <g className={"shuffleChunk"} key={chunkIdx}>{
-          group.map((i, idx) => {
-            const xIdx = startIdxs[chunkIdx] + idx
-            return <Bar key={i} i={i} n={n} x={bars.x(xIdx, chunkIdx)} w={bars.w} h={h} />
-          })
-        }</g>
+      groups.map((group, groupIdx) => {
+        const groupX0 = bars.x(startIdxs[groupIdx], groupIdx)
+        const groupX1 = bars.x(startIdxs[groupIdx + 1], groupIdx)
+        const groupWidth = groupX1 - groupX0
+        const barGap = groupWidth / group.length - bars.w
+        return (
+          <g className={"shuffleChunk"} key={groupIdx}>
+            {
+              group.map((i, idx) => {
+                const xIdx = startIdxs[groupIdx] + idx
+                const bar = <Bar key={i} i={i} n={n} x={bars.x(xIdx, groupIdx)} w={bars.w} h={h}/>
+                if (barTooltip) {
+                  return <Tooltip key={i} title={barTooltip({ i })}>{bar}</Tooltip>
+                } else {
+                  return bar
+                }
+              })
+            }
+            {groupTooltip && (
+              <Tooltip title={groupTooltip({ idx: groupIdx, group, })}>
+                <rect
+                  x={groupX0 - barGap / 2}
+                  y={0}
+                  width={groupWidth}
+                  height={h}
+                  fill="transparent"
+                  className="cursor-pointer"
+                />
+              </Tooltip>
+            )}
+          </g>
+        )
       })
     }</g>
   )
@@ -101,11 +146,11 @@ function logFactorial(n: number) {
 }
 
 function App() {
-  const [ n, setN ] = useState(100)
-  const [ seed, setSeed ] = useState(0)
-  const [ shuffleChunkSize, setShuffleChunkSize ] = useState(5)
-  const [ ioBatchSize, setIoBatchSize ] = useState(20)
-  const [ gpuBatchSize, setGpuBatchSize ] = useState(4)
+  const [ n, setN ] = useSessionStorageState("n", { defaultValue: 100 })
+  const [ seed, setSeed ] = useSessionStorageState("seed", { defaultValue: 0 })
+  const [ shuffleChunkSize, setShuffleChunkSize ] = useSessionStorageState("shuffleChunkSize", { defaultValue: 5 })
+  const [ ioBatchSize, setIoBatchSize ] = useSessionStorageState("ioBatchSize", { defaultValue: 20 })
+  const [ gpuBatchSize, setGpuBatchSize ] = useSessionStorageState("gpuBatchSize", { defaultValue: 4 })
   const [ regenNonce, setRegenNonce ] = useState(0)
 
   const rng = useMemo((() => seedrandom(`${seed + regenNonce}`)), [ seed, regenNonce ])
@@ -116,14 +161,14 @@ function App() {
   const shuffleChunks = useMemo(() => shuffle(batched(idxs, shuffleChunkSize), rng), [ idxs, shuffleChunkSize, rng ])
   const ioBatches = useMemo(() => batched(flatten(shuffleChunks), ioBatchSize).map(ioBatch => shuffle(ioBatch, rng)), [shuffleChunks, ioBatchSize, rng])
   const gpuBatches = useMemo(() => batched(flatten(ioBatches), gpuBatchSize), [ioBatches, gpuBatchSize])
-  const groups = [
-    [idxs],
-    shuffleChunks,
-    ioBatches,
-    gpuBatches
+  const barGroups: Pick<BarsProps, 'groups' | 'barTooltip' | 'groupTooltip'>[] = [
+    { groups: [idxs], barTooltip: ({ i }) => <span>Row {i}</span> },
+    { groups: shuffleChunks, groupTooltip: ({ idx, group }) => <span>Shuffle chunk {idx}: [{group[0]}, {group[group.length - 1] + 1})</span> },
+    { groups: ioBatches, groupTooltip: ({ idx, group }) => <span>IO batch {idx}: {group.join(", ")}</span> },
+    { groups: gpuBatches, groupTooltip: ({ idx, group }) => <span>GPU batch {idx}: {group.join(", ")}</span> },
   ]
   const rowH = barH + barsGap
-  const H = groups.length * rowH - barsGap
+  const H = barGroups.length * rowH - barsGap
 
   const idealBits = useMemo(() => logFactorial(n), [n])
   const shuffleChunkBits = useMemo(() => logFactorial(shuffleChunks.length), [ shuffleChunks.length ])
@@ -140,7 +185,9 @@ function App() {
           <h1><A href={"https://github.com/single-cell-data/TileDB-SOMA-ML"}>TileDB-SOMA-ML</A> shuffle simulator</h1>
         </div>
         <svg viewBox={`0 0 100 ${H}`}>{
-          groups.map((groups, idx) => <Bars key={idx} groups={groups} y={idx * rowH} h={barH} />)
+          barGroups.map(({ groups, barTooltip, groupTooltip, }, idx) =>
+            <Bars key={idx} groups={groups} barTooltip={barTooltip} groupTooltip={groupTooltip} y={idx * rowH} h={barH} />
+          )
         }
         </svg>
         <div className={"controls"}>

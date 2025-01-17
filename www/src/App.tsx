@@ -152,8 +152,11 @@ function App() {
   const [ ioBatchSize, setIoBatchSize ] = useSessionStorageState("ioBatchSize", { defaultValue: 20 })
   const [ gpuBatchSize, setGpuBatchSize ] = useSessionStorageState("gpuBatchSize", { defaultValue: 4 })
   const [ regenNonce, setRegenNonce ] = useState(0)
-
-  const rng = useMemo((() => seedrandom(`${seed + regenNonce}`)), [ seed, regenNonce ])
+  const rng = useMemo(
+    // Need a terminator after stringified number: https://github.com/davidbau/seedrandom/issues/48
+    () => seedrandom(`${seed + regenNonce}\n`),
+    [ seed, regenNonce ]
+  )
 
   const barH = 3
   const barsGap = 3

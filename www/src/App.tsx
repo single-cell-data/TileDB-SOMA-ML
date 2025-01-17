@@ -92,8 +92,9 @@ function App() {
   const [ shuffleChunkSize, setShuffleChunkSize ] = useState(5)
   const [ ioBatchSize, setIoBatchSize ] = useState(20)
   const [ gpuBatchSize, setGpuBatchSize ] = useState(4)
+  const [ regenNonce, setRegenNonce ] = useState(0)
 
-  const rng = useMemo((() => seedrandom(`${seed}`)), [ seed ])
+  const rng = useMemo((() => seedrandom(`${seed + regenNonce}`)), [ seed, regenNonce ])
 
   const barH = 3
   const barsGap = 3
@@ -122,6 +123,7 @@ function App() {
           <Number label={"Shuffle chunk"} min={1} state={[ shuffleChunkSize, setShuffleChunkSize ]} />
           <Number label={"IO batch"} min={1} state={[ ioBatchSize, setIoBatchSize ]} />
           <Number label={"GPU batch"} min={1} state={[ gpuBatchSize, setGpuBatchSize ]} />
+          <input type={"button"} value={"Shuffle"} onClick={() => setRegenNonce(nonce => nonce + 1)} />
         </div>
       </div>
     </>

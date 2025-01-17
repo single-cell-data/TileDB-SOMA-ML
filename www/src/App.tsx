@@ -1,4 +1,4 @@
-import { Dispatch, ReactNode, useEffect, useMemo, useState } from "react"
+import { Dispatch, KeyboardEventHandler, ReactNode, useEffect, useMemo, useState } from "react"
 import './App.css'
 import { batched, interp, range, scan, shuffle } from "@rdub/base"
 import { flatten, sum } from "lodash"
@@ -71,6 +71,17 @@ function Number({ label, min, state: [ val, set ] }: { label: ReactNode, min?: n
       set(val)
     }
   }, [ str, setErr, ])
+  const onKeyDown: KeyboardEventHandler<HTMLInputElement> = e => {
+    if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault()
+      const currentVal = parseInt(str)
+      if (!isNaN(currentVal)) {
+        const newVal = currentVal + (e.key === 'ArrowUp' ? 10 : -10)
+        const finalVal = min !== undefined ? Math.max(min, newVal) : newVal
+        setStr(finalVal.toString())
+      }
+    }
+  }
   return <label className={"number"}>
     <span>{label}</span>
     <input
@@ -79,9 +90,8 @@ function Number({ label, min, state: [ val, set ] }: { label: ReactNode, min?: n
       value={str}
       width={5}
       min={min}
-      onChange={e => {
-        setStr(e.target.value)
-      }}
+      onChange={e => { setStr(e.target.value) }}
+      onKeyDown={onKeyDown}
     />
   </label>
 }

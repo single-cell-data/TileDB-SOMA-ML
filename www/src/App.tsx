@@ -80,14 +80,14 @@ export function Bars({ groups, n, y = 0, h, barTooltip, groupTooltip, className 
                 const xIdx = startIdxs[groupIdx] + idx
                 const bar = <Bar key={i} i={i} n={n} x={bars.x(xIdx, groupIdx)} w={bars.w} h={h}/>
                 if (barTooltip) {
-                  return <Tooltip key={i} title={barTooltip({ i })}>{bar}</Tooltip>
+                  return <Tooltip arrow key={i} title={barTooltip({ i })}>{bar}</Tooltip>
                 } else {
                   return bar
                 }
               })
             }
             {groupTooltip && (
-              <Tooltip title={groupTooltip({ idx: groupIdx, group, })}>
+              <Tooltip arrow title={groupTooltip({ idx: groupIdx, group, })}>
                 <rect
                   x={groupX0 - barGap / 2}
                   y={0}

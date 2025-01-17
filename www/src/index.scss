@@ -1,9 +1,11 @@
+$fg: rgba(255, 255, 255, 0.87);
+
 body, :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  color: rgba(255, 255, 255, 0.87);
+  color: $fg;
   background-color: #242424;
 
   font-synthesis: none;
@@ -32,11 +34,19 @@ body, :root {
   label {
     margin-right: 1em;
     span {
-      margin-right: 0.2em;
+      margin-right: 0.3em;
     }
     &.number {
       input[type="number"] {
-        width: 4em;
+        width: 3em;
+        background-color: transparent;
+        color: inherit;
+        border: 1px solid rgba($fg, 0.4);
+        font-size: 1.1em;
+        text-align: center;
+        &::-webkit-inner-spin-button {
+          //margin-left: 0.3em;
+        }
       }
     }
   }

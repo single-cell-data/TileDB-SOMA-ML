@@ -1,0 +1,9 @@
+name: GitHub Pages publish
+on:
+  workflow_dispatch:  # Allows manual triggering
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder step
+        run: echo "This is a placeholder workflow file, the real action is on the www branch"

@@ -1,7 +1,7 @@
 import { Dispatch, KeyboardEventHandler, ReactNode, useEffect, useMemo, useState } from "react"
 import './App.css'
-import { batched, interp, range, scan, shuffle } from "@rdub/base"
-import { flatten, sum } from "lodash"
+import { A, batched, interp, log, range, round, scan, shuffle, sum, } from "@rdub/base"
+import { flatten } from "lodash"
 import { ClassName } from "@rdub/base/classname"
 
 import seedrandom from 'seedrandom'
@@ -96,6 +96,10 @@ function Number({ label, min, state: [ val, set ] }: { label: ReactNode, min?: n
   </label>
 }
 
+function logFactorial(n: number) {
+  return sum(range(2, n).map(i => log(i)))
+}
+
 function App() {
   const [ n, setN ] = useState(100)
   const [ seed, setSeed ] = useState(0)
@@ -120,9 +124,21 @@ function App() {
   ]
   const rowH = barH + barsGap
   const H = groups.length * rowH - barsGap
+
+  const idealBits = useMemo(() => logFactorial(n), [n])
+  const shuffleChunkBits = useMemo(() => logFactorial(shuffleChunks.length), [ shuffleChunks.length ])
+  const ioBatchBits = useMemo(() => sum(ioBatches.map(ioBatch => logFactorial(ioBatch.length))), [ ioBatches ])
+  const actualBits = useMemo(() => shuffleChunkBits + ioBatchBits, [ shuffleChunkBits, ioBatchBits ])
+  function formatBits(bits: number) {
+    return round(bits)
+  }
+
   return (
     <>
       <div className="container">
+        <div>
+          <h1><A href={"https://github.com/single-cell-data/TileDB-SOMA-ML"}>TileDB-SOMA-ML</A> shuffle simulator</h1>
+        </div>
         <svg viewBox={`0 0 100 ${H}`}>{
           groups.map((groups, idx) => <Bars key={idx} groups={groups} y={idx * rowH} h={barH} />)
         }
@@ -134,6 +150,10 @@ function App() {
           <Number label={"IO batch"} min={1} state={[ ioBatchSize, setIoBatchSize ]} />
           <Number label={"GPU batch"} min={1} state={[ gpuBatchSize, setGpuBatchSize ]} />
           <input type={"button"} value={"Shuffle"} onClick={() => setRegenNonce(nonce => nonce + 1)} />
+        </div>
+        <div>
+          <p>Ideal shuffle entropy: {formatBits(idealBits)} bits</p>
+          <p>Actual: {formatBits(actualBits)} ({round(100 * actualBits / idealBits)}%; {formatBits(shuffleChunkBits)} from shuffling chunks, {formatBits(ioBatchBits)} from shuffling IO batches)</p>
         </div>
       </div>
     </>

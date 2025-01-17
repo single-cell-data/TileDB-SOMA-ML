@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@rdub/base':
-        specifier: 0.7.5
-        version: 0.7.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.7.6
+        version: 0.7.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       lodash:
         specifier: ^4.17.21
         version: 4.17.21
@@ -392,8 +392,8 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@rdub/base@0.7.5':
-    resolution: {integrity: sha512-STDOd9BsY92NjFRrkY8+2mu6PqNUNKIpMcFd95P96Y/iYlOcIwRXG/qv0/cvsydBfdMLc0LBugDhAqjS9xATPg==}
+  '@rdub/base@0.7.6':
+    resolution: {integrity: sha512-InH3M2++ECRE5ckooLmdInB81vDmmczwOP8gGIZhSVbgrpxVXNK+LVYdh1yvGbi1whWXBwIAlvOVitQ9/8BgVg==}
     peerDependencies:
       react: ^18
       react-dom: ^18
@@ -1579,7 +1579,7 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.18.0
 
-  '@rdub/base@0.7.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@rdub/base@0.7.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       node-fetch: 3.3.2
       react: 18.3.1

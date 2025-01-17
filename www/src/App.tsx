@@ -141,8 +141,8 @@ function Number({ label, min, state: [ val, set ] }: { label: ReactNode, min?: n
   </label>
 }
 
-function logFactorial(n: number) {
-  return sum(range(2, n).map(i => log(i)))
+function log2Factorial(n: number) {
+  return sum(range(2, n).map(i => log(i))) / log(2)
 }
 
 function App() {
@@ -173,9 +173,9 @@ function App() {
   const rowH = barH + barsGap
   const H = barGroups.length * rowH - barsGap
 
-  const idealBits = useMemo(() => logFactorial(n), [n])
-  const shuffleChunkBits = useMemo(() => logFactorial(shuffleChunks.length), [ shuffleChunks.length ])
-  const ioBatchBits = useMemo(() => sum(ioBatches.map(ioBatch => logFactorial(ioBatch.length))), [ ioBatches ])
+  const idealBits = useMemo(() => log2Factorial(n), [n])
+  const shuffleChunkBits = useMemo(() => log2Factorial(shuffleChunks.length), [ shuffleChunks.length ])
+  const ioBatchBits = useMemo(() => sum(ioBatches.map(ioBatch => log2Factorial(ioBatch.length))), [ ioBatches ])
   const actualBits = useMemo(() => shuffleChunkBits + ioBatchBits, [ shuffleChunkBits, ioBatchBits ])
   function formatBits(bits: number) {
     return round(bits)

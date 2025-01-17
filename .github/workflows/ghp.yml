@@ -1,9 +1,33 @@
-name: GitHub Pages publish
+name: Deploy to GitHub Pages
 on:
-  workflow_dispatch:  # Allows manual triggering
+  push:
+    branches: [ www ]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
 jobs:
-  placeholder:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Placeholder step
-        run: echo "This is a placeholder workflow file, the real action is on the www branch"
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - run: pnpm i
+        working-directory: www
+      - run: npm run build
+        working-directory: www
+      - uses: actions/configure-pages@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'www/dist'
+      - uses: actions/deploy-pages@v4
+        id: deployment

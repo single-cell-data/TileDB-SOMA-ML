@@ -5,11 +5,18 @@
 
 """An API to support machine learning applications built on SOMA."""
 
+from importlib.metadata import PackageNotFoundError, version
+
 from .dataloader import experiment_dataloader
 from .datapipe import ExperimentAxisQueryIterDataPipe
 from .dataset import ExperimentAxisQueryIterableDataset
 
-__version__ = "0.1.0-dev"
+try:
+    __version__ = version("tiledbsoma-ml")
+except PackageNotFoundError:
+    # package is not installed
+    pass
+
 
 __all__ = [
     "ExperimentAxisQueryIterDataPipe",

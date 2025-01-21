@@ -66,6 +66,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # for setuptools-scm
 
       - uses: actions/setup-python@v5
         with:
@@ -75,3 +77,13 @@ jobs:
         run: |
           pip install --upgrade build pip wheel setuptools setuptools-scm
           python -m build .
+
+      - name: Install (and test version string)
+        run: |
+          git tag -l
+          git describe --dirty --tags --long --match *[0-9]*
+          python -m setuptools_scm
+          pip install --prefer-binary dist/tiledbsoma_ml-*.whl
+          pip list | grep tiledbsoma-ml
+          # Change directory to avoid importing local source package
+          cd .. && python -c "import tiledbsoma_ml as soma_ml; print(soma_ml.__version__)"

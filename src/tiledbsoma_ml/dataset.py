@@ -171,6 +171,8 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
             seed:
                 The random seed used for shuffling. Defaults to ``None`` (no seed). This argument *MUST* be specified
                 when using |DistributedDataParallel| to ensure data partitions are disjoint across worker processes.
+            sample:
+                Optional: sample this fraction of obs rows (positive for training, negative for testing)
             return_sparse_X:
                 If ``True``, will return the ``X`` data as a |csr_matrix|. If ``False`` (the default), will return ``X``
                 data as a |ndarray|.

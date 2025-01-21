@@ -3,11 +3,13 @@
 #
 # Licensed under the MIT License.
 """Shuffle-chunk and partition (across GPU and DataLoader-worker processes) while reading from a SOMA |Experiment|."""
+from __future__ import annotations
 
 import logging
 from typing import (
     List,
     Optional,
+    Tuple,
 )
 
 import numpy as np
@@ -62,6 +64,23 @@ class QueryIDs:
             obs_joinids=obs_joinids,
             var_joinids=var_joinids,
         )
+
+    def split(self, *fracs: float, seed: int | None = None) -> Tuple["QueryIDs", ...]:
+        split_fracs = np.cumsum(fracs)
+        assert fracs and np.isclose(split_fracs[-1], 1.0), "Fractions must sum to 1"
+
+        obs_joinids = self.obs_joinids
+        n_obs = len(obs_joinids)
+
+        rng = np.random.default_rng(seed)
+        shuffled_joinids = rng.permutation(obs_joinids)
+
+        split_idxs = np.round(split_fracs * n_obs).astype(int)
+        splits = [
+            np.sort(split)
+            for split in np.array_split(shuffled_joinids, split_idxs[:-1])
+        ]
+        return tuple(evolve(self, obs_joinids=split) for split in splits)
 
     def partitioned(
         self,

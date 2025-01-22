@@ -55,7 +55,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
 
     1. Partitioning (|NDArrayJoinID|):
 
-        .. NOTE: for some reason, `$` math blocks only render if there is at least one `:math:` directive.
+        .. NOTE: for some reason, the Sphinx mathjax plugin only renders `$` blocks if at least one `:math:` directive is also present.
 
         a. GPU-partitioning: if this is one of :math:`N>1` GPU processes (see |get_distributed_world_rank|),
            |ED.obs_joinids| is partitioned so that the $N$ GPUs will each receive the same number of samples (meaning up

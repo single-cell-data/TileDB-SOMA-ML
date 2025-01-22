@@ -285,8 +285,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                     "(see https://github.com/pytorch/pytorch/issues/20248)"
                 )
 
-        world_size, rank = get_distributed_world_rank()
-        n_workers, worker_id = get_worker_world_rank()
+        rank, world_size = get_distributed_world_rank()
+        worker_id, n_workers = get_worker_world_rank()
         logger.debug(
             f"Iterator created {rank=}, {world_size=}, {worker_id=}, {n_workers=}, seed={self.seed}, epoch={self.epoch}"
         )
@@ -381,8 +381,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         Lifecycle:
             experimental
         """
-        world_size, rank = get_distributed_world_rank()
-        n_workers, worker_id = get_worker_world_rank()
+        rank, world_size = get_distributed_world_rank()
+        worker_id, n_workers = get_worker_world_rank()
         # Every "distributed" process must receive the same number of "obs" rows; the last ≤world_size may be dropped
         # (see _create_obs_joinids_partition).
         obs_per_proc = len(self.obs_joinids) // world_size

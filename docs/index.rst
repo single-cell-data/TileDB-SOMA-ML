@@ -63,6 +63,13 @@ Chunks
 ~~~~~~
 .. autoclass:: Chunks
 
+``io_batches``
+^^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.io_batches
+   :members:
+   :undoc-members:
+
 ``x_locator``
 ^^^^^^^^^^^^^
 

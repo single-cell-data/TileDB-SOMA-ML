@@ -17,6 +17,11 @@ from tiledbsoma._collection import Collection
 
 from tiledbsoma_ml import ExperimentDataset
 from tiledbsoma_ml.common import MiniBatch
+from tiledbsoma_ml.dataset import (
+    DEFAULT_IO_BATCH_SIZE,
+    DEFAULT_OBS_COLUMN_NAMES,
+    DEFAULT_SHUFFLE_CHUNK_SIZE,
+)
 
 from ._utils import (
     ExpectedBatch,
@@ -59,14 +64,14 @@ def soma_experiment(
 
 
 # Default-value fixtures, can be overridden on a per-test-case basis using ``parametrize`` / ``params`` / ``sweep``
-obs_column_names = default(("soma_joinid",))
+obs_column_names = default(DEFAULT_OBS_COLUMN_NAMES)
 obs_query = default(None)
 # Defaults to True, unless `seed=False` is set (a test-only convenience)
 shuffle = default(None)
 var_range = default(3)
 X_value_gen = default(pytorch_x_value_gen)
-shuffle_chunk_size = default(64)
-io_batch_size = default(2**16)
+shuffle_chunk_size = default(DEFAULT_SHUFFLE_CHUNK_SIZE)
+io_batch_size = default(DEFAULT_IO_BATCH_SIZE)
 batch_size = default(1)
 use_eager_fetch = default(True)
 return_sparse_X = default(False)

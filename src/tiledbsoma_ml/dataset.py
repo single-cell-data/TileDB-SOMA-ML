@@ -23,6 +23,10 @@ from tiledbsoma_ml.x_locator import XLocator
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")
 
+DEFAULT_OBS_COLUMN_NAMES = ("soma_joinid",)
+DEFAULT_SHUFFLE_CHUNK_SIZE = 64
+DEFAULT_IO_BATCH_SIZE = 2**16
+
 
 class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     r"""An |IterableDataset| implementation that reads from an |ExperimentAxisQuery|.
@@ -128,11 +132,11 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         x_locator: Optional[XLocator] = None,
         query_ids: Optional[QueryIDs] = None,
         layer_name: Optional[str] = None,
-        obs_column_names: Sequence[str] = ("soma_joinid",),
+        obs_column_names: Sequence[str] = DEFAULT_OBS_COLUMN_NAMES,
         batch_size: int = 1,
-        io_batch_size: int = 2**16,
+        io_batch_size: int = DEFAULT_IO_BATCH_SIZE,
         shuffle: bool = True,
-        shuffle_chunk_size: int = 64,
+        shuffle_chunk_size: int = DEFAULT_SHUFFLE_CHUNK_SIZE,
         seed: int | None = None,
         return_sparse_X: bool = False,
         use_eager_fetch: bool = True,

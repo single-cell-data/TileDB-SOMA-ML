@@ -20,7 +20,7 @@ from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_wo
 from tiledbsoma_ml.common import MiniBatch, NDArrayJoinId
 from tiledbsoma_ml.io_batches import IOBatches
 from tiledbsoma_ml.mini_batches import MiniBatches
-from tiledbsoma_ml.query_ids import Partition, QueryIDs
+from tiledbsoma_ml.query_ids import Partition, QueryIDs, SamplingMethod
 from tiledbsoma_ml.x_locator import XLocator
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")
@@ -278,9 +278,12 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         return self.query_ids.var_joinids
 
     def split(
-        self, *fracs: float, seed: Optional[int] = None
+        self,
+        *fracs: float,
+        seed: Optional[int] = None,
+        method: SamplingMethod = "stochastic_rounding",
     ) -> Tuple[ExperimentDataset, ...]:
-        split_query_ids = self.query_ids.split(*fracs, seed=seed)
+        split_query_ids = self.query_ids.split(*fracs, seed=seed, method=method)
         return tuple(evolve(self, query_ids=q) for q in split_query_ids)
 
     def _multiproc_check(self) -> None:

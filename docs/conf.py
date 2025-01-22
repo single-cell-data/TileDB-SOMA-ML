@@ -69,7 +69,9 @@ rst_prolog = """
 .. |QueryIDs| replace:: :class:`~tiledbsoma_ml.query_ids.QueryIDs`
 .. |Q.obs_joinids| replace:: :obj:`~tiledbsoma_ml.query_ids.QueryIDs.obs_joinids`
 .. |QueryIDs.shuffle_chunks| replace:: :meth:`QueryIDs.shuffle_chunks <tiledbsoma_ml.query_ids.QueryIDs.shuffle_chunks>`
+.. |QueryIDs.split| replace:: :meth:`QueryIDs.split <tiledbsoma_ml.query_ids.QueryIDs.split>`
 .. |Chunks| replace:: :class:`~tiledbsoma_ml.query_ids.Chunks`
+.. |SamplingMethod| replace:: :class:`~tiledbsoma_ml.query_ids.SamplingMethod`
 .. |IOBatch| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatch`
 .. |IOBatches| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatches`
 .. |CSR_IO_Buffer| replace:: :class:`~tiledbsoma_ml._csr.CSR_IO_Buffer`

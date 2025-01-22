@@ -8,7 +8,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from .dataloader import experiment_dataloader
 from .dataset import ExperimentDataset
-from .query_ids import Chunks, Partition, QueryIDs
+from .query_ids import Chunks, Partition, QueryIDs, SamplingMethod
 
 try:
     __version__ = version("tiledbsoma-ml")
@@ -23,4 +23,5 @@ __all__ = [
     "Chunks",
     "Partition",
     "QueryIDs",
+    "SamplingMethod",
 ]

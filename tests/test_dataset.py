@@ -176,7 +176,7 @@ def test_experiment_dataset_getitem_error(ds: ExperimentDataset):
 def test_experiment_dataset_empty_cols_error(soma_experiment: Experiment):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         with raises(ValueError):
-            ExperimentDataset(
+            ExperimentDataset.create(
                 query,
                 obs_column_names=(),
                 layer_name="raw",

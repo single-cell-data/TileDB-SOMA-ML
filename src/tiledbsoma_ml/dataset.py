@@ -6,11 +6,13 @@
 from __future__ import annotations
 
 import logging
-from math import ceil
-from typing import Iterator, Optional, Sequence, Tuple
+from typing import Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
+from attr import evolve
+from attrs import define, field
+from attrs.validators import gt
 from tiledbsoma import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
@@ -28,6 +30,7 @@ DEFAULT_SHUFFLE_CHUNK_SIZE = 64
 DEFAULT_IO_BATCH_SIZE = 2**16
 
 
+@define
 class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     r"""An |IterableDataset| implementation that reads from an |ExperimentAxisQuery|.
 
@@ -104,58 +107,57 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         experimental
     """
 
-    x_locator: XLocator
+    # Core data fields
+    x_locator: XLocator = field()
     """State required to open an ``X`` |SparseNDArray| (and associated ``obs`` |DataFrame|), within an |Experiment|."""
-    query_ids: QueryIDs
+    query_ids: QueryIDs = field()
     """``obs``/``var`` coordinates (from an |ExperimentAxisQuery|) to iterate over."""
-    obs_column_names: Sequence[str]
+    obs_column_names: List[str] = field(factory=lambda: [*DEFAULT_OBS_COLUMN_NAMES])
     """Names of ``obs`` columns to return."""
-    batch_size: int
+
+    # Configuration fields with defaults
+    batch_size: int = field(default=1, validator=gt(0))
     """Number of rows of ``X`` and ``obs`` data to yield in each |MiniBatch|."""
-    io_batch_size: int
+    io_batch_size: int = field(default=DEFAULT_IO_BATCH_SIZE, validator=gt(0))
     """Number of ``obs``/``X`` rows to fetch together, when reading from the provided |ExperimentAxisQuery|."""
-    shuffle: bool
+    shuffle: bool = field(default=True)
     """Whether to shuffle the ``obs`` and ``X`` data being returned."""
-    shuffle_chunk_size: int
+    shuffle_chunk_size: int = field(default=DEFAULT_SHUFFLE_CHUNK_SIZE, validator=gt(0))
     r"""Number of contiguous rows shuffled as an atomic unit (before later concatenation and shuffling within |IOBatch|\
     s)."""
-    seed: int
+    seed: Optional[int] = field(default=None)
     """Random seed used for shuffling."""
-    return_sparse_X: bool
+    return_sparse_X: bool = field(default=False)
     r"""When ``True``, return ``X`` data as a |csr_matrix| (by default, return |ndarray|\ s)."""
-    use_eager_fetch: bool
+    use_eager_fetch: bool = field(default=True)
     """Pre-fetch one "IO batch" and one "mini batch"."""
 
-    def __init__(
-        self,
-        query: Optional[ExperimentAxisQuery] = None,
-        x_locator: Optional[XLocator] = None,
-        query_ids: Optional[QueryIDs] = None,
-        layer_name: Optional[str] = None,
+    # Internal state
+    epoch: int = field(default=0, init=False)
+    rank: int = field(init=False)
+    world_size: int = field(init=False)
+
+    @classmethod
+    def create(
+        cls,
+        query: ExperimentAxisQuery,
+        layer_name: str,
         obs_column_names: Sequence[str] = DEFAULT_OBS_COLUMN_NAMES,
         batch_size: int = 1,
         io_batch_size: int = DEFAULT_IO_BATCH_SIZE,
         shuffle: bool = True,
         shuffle_chunk_size: int = DEFAULT_SHUFFLE_CHUNK_SIZE,
-        seed: int | None = None,
+        seed: Optional[int] = None,
         return_sparse_X: bool = False,
         use_eager_fetch: bool = True,
-    ):
+    ) -> "ExperimentDataset":
         r"""Construct a new |ExperimentDataset|.
 
         Args:
             query:
                 Optional |ExperimentAxisQuery|, defining data to iterate over.
-                {``query``,``layer_name``} xor {``x_locator``, ``query_ids``} must be provided.
-            x_locator:
-                Optional |XLocator|, state required to open ``X`` and ``obs`` from an |Experiment|.
-                {``query``,``layer_name``} xor {``x_locator``, ``query_ids``} must be provided.
-            query_ids:
-                Optional |QueryIDs|, defining data to iterate over.
-                {``query``,``layer_name``} xor {``x_locator``, ``query_ids``} must be provided.
             layer_name:
                 The name of the X layer to read.
-                {``query``,``layer_name``} xor {``x_locator``, ``query_ids``} must be provided.
             obs_column_names:
                 The names of the ``obs`` columns to return. At least one column name must be specified.
                 Default is ``('soma_joinid',)``.
@@ -209,52 +211,47 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             In addition, when using shuffling in a distributed configuration (e.g., ``DDP``), you must provide a seed,
             ensuring that the same shuffle is used across all replicas.
         """
-        super().__init__()
+        query_ids = QueryIDs.create(query=query)
+        x_locator = XLocator.create(
+            query.experiment,
+            measurement_name=query.measurement_name,
+            layer_name=layer_name,
+        )
+        return cls(
+            x_locator=x_locator,
+            query_ids=query_ids,
+            obs_column_names=list(obs_column_names),
+            batch_size=batch_size,
+            io_batch_size=io_batch_size,
+            shuffle=shuffle,
+            shuffle_chunk_size=shuffle_chunk_size,
+            seed=seed,
+            return_sparse_X=return_sparse_X,
+            use_eager_fetch=use_eager_fetch,
+        )
 
-        if query_ids:
-            if query or layer_name or not x_locator:
-                raise ValueError(
-                    "Provide {`query`,`layer_name`} xor {`x_locator`, `query_ids`}"
-                )
-            self.query_ids = query_ids
-        else:
-            if not query or not layer_name or x_locator:
-                raise ValueError(
-                    "Provide {`query`,`layer_name`} xor {`x_locator`, `query_ids`}"
-                )
-            self.query_ids = QueryIDs.create(query=query)
-            self.x_locator = XLocator.create(
-                query.experiment,
-                measurement_name=query.measurement_name,
-                layer_name=layer_name,
-            )
-
-        # Anything set in the instance needs to be pickle-able for multi-process DataLoaders
-        self.obs_column_names = list(obs_column_names)
-        if not self.obs_column_names:
+    def __attrs_post_init__(self) -> None:
+        """Validate configuration and initialize distributed state."""
+        obs_column_names = self.obs_column_names
+        if not obs_column_names:
             raise ValueError("Must specify at least one value in `obs_column_names`")
 
-        self.batch_size = batch_size
-        self.io_batch_size = io_batch_size
-        self.shuffle = shuffle
-        self.shuffle_chunk_size = shuffle_chunk_size
-        if shuffle:
+        if self.shuffle:
             # Verify `io_batch_size` is a multiple of `shuffle_chunk_size`
-            self.io_batch_size = (
-                ceil(io_batch_size / shuffle_chunk_size) * shuffle_chunk_size
-            )
-            if io_batch_size != self.io_batch_size:
+            if self.io_batch_size % self.shuffle_chunk_size:
                 raise ValueError(
-                    f"{io_batch_size=} is not a multiple of {shuffle_chunk_size=}"
+                    f"{self.io_batch_size=} is not a multiple of {self.shuffle_chunk_size=}"
                 )
 
-        self.seed = (
-            seed if seed is not None else np.random.default_rng().integers(0, 2**32 - 1)
-        )
-        self.return_sparse_X = return_sparse_X
-        self.use_eager_fetch = use_eager_fetch
-        self.epoch = 0
-        self.rank, self.world_size = get_distributed_world_rank()
+        if self.seed is None:
+            object.__setattr__(
+                self, "seed", np.random.default_rng().integers(0, 2**32 - 1)
+            )
+
+        # Set distributed state
+        rank, world_size = get_distributed_world_rank()
+        object.__setattr__(self, "rank", rank)
+        object.__setattr__(self, "world_size", world_size)
 
     @property
     def measurement_name(self) -> str:
@@ -279,6 +276,12 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     @property
     def var_joinids(self) -> NDArrayJoinId:
         return self.query_ids.var_joinids
+
+    def split(
+        self, *fracs: float, seed: Optional[int] = None
+    ) -> Tuple[ExperimentDataset, ...]:
+        split_query_ids = self.query_ids.split(*fracs, seed=seed)
+        return tuple(evolve(self, query_ids=q) for q in split_query_ids)
 
     def _multiproc_check(self) -> None:
         """Rule out config combinations that are invalid in multiprocess mode."""

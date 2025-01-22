@@ -117,7 +117,7 @@ def ds(
             measurement_name="RNA", obs_query=obs_query
         ) as query,
     ):
-        ds = ExperimentDataset(
+        ds = ExperimentDataset.create(
             query,
             layer_name="raw",
             obs_column_names=obs_column_names,

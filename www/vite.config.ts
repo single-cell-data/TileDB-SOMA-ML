@@ -6,8 +6,8 @@ const isCI = process.env['CI']
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/TileDB-SOMA-ML/',
+  base: '/TileDB-SOMA-ML/shuffle',
   build: {
-    outDir: isCI ? 'dist' : 'dist/TileDB-SOMA-ML',
+    outDir: isCI ? 'dist/shuffle' : 'dist/TileDB-SOMA-ML/shuffle',
   }
 })

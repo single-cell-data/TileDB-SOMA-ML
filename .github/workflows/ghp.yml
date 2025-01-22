@@ -18,13 +18,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.11.8
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            docs/requirements.txt
+      - name: Install tiledbsoma-ml
+        run: |
+          pip install --upgrade pip wheel setuptools
+          pip install .
+      - name: Build docs
+        working-directory: docs
+        run: |
+          pip install -r requirements.txt
+          make html
       - uses: pnpm/action-setup@v4
         with:
           version: 9
       - run: pnpm i
         working-directory: www
-      - run: npm run build
+      - run: npm run build  # $CI ⇒ dist/shuffle
         working-directory: www
+      - name: Copy RTD build into www/dist
+        run: mv docs/_build/html/* www/dist/
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -4,6 +4,12 @@ TileDB-SOMA-ML
 
 |TileDB-SOMA-ML| is a machine learning library for working with |SOMA| data formats.
 
+See `/shuffle <./shuffle>`_ for a visualization of the batching/shuffling algorithm:
+
+.. figure:: ./shuffle/shuffle.gif
+   :alt: Animation showing the stages of batching and shuffling TileDB-SOMA-ML performs
+   :target: ./shuffle
+
 .. contents:: Table of Contents
    :depth: 2
    :local:

@@ -10,7 +10,7 @@ from typing import Iterator, Sequence, Tuple
 from somacore import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
-from tiledbsoma_ml.pytorch import Batch, ExperimentAxisQueryIterable
+from tiledbsoma_ml.batch_iterable import Batch, BatchIterable
 
 
 class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore[misc]
@@ -143,7 +143,7 @@ class ExperimentAxisQueryIterableDataset(IterableDataset[Batch]):  # type:ignore
 
         """
         super().__init__()
-        self._exp_iter = ExperimentAxisQueryIterable(
+        self._exp_iter = BatchIterable(
             query=query,
             X_name=X_name,
             obs_column_names=obs_column_names,

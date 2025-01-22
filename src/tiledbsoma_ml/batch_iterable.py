@@ -56,7 +56,7 @@ returned as a :class:`scipy.sparse.csr_matrix`. If the ``batch_size`` is 1, the 
 will be returned with rank 1; in all other cases, objects are returned with rank 2."""
 
 
-class ExperimentAxisQueryIterable(Iterable[Batch]):
+class BatchIterable(Iterable[Batch]):
     """An :class:`Iterable` which reads ``X`` and ``obs`` data from a :class:`tiledbsoma.Experiment`, as
     selected by a user-specified :class:`tiledbsoma.ExperimentAxisQuery`. Each step of the iterator
     produces a batch containing equal-sized ``X`` and ``obs`` data, in the form of a :class:`numpy.ndarray` and

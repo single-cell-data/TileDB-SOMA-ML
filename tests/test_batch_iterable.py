@@ -23,7 +23,7 @@ from tests._utils import (
     pytorch_seq_x_value_gen,
     pytorch_x_value_gen,
 )
-from tiledbsoma_ml.pytorch import ExperimentAxisQueryIterable
+from tiledbsoma_ml.batch_iterable import BatchIterable
 
 
 @pytest.mark.parametrize(
@@ -60,7 +60,7 @@ def test_non_batched(
                 assert X_batch.todense().tolist() == [expected_X]
             else:
                 assert isinstance(X_batch, np.ndarray)
-                if PipeClass is ExperimentAxisQueryIterable:
+                if PipeClass is BatchIterable:
                     assert X_batch.shape == (1, 3)
                     assert X_batch.tolist() == [expected_X]
                 else:
@@ -409,7 +409,7 @@ def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
                 mock_dist_get_world_size.return_value = world_size
 
                 with soma_experiment.axis_query(measurement_name="RNA") as query:
-                    dp = ExperimentAxisQueryIterable(
+                    dp = BatchIterable(
                         query,
                         X_name="raw",
                         obs_column_names=["soma_joinid"],
@@ -439,7 +439,7 @@ def test__shuffle(PipeClass: PipeClassType, soma_experiment: Experiment) -> None
         )
 
         all_rows = list(iter(dp))
-        if PipeClass is ExperimentAxisQueryIterable:
+        if PipeClass is BatchIterable:
             assert all(np.squeeze(r[0], axis=0).shape == (1,) for r in all_rows)
         else:
             assert all(r[0].shape == (1,) for r in all_rows)
@@ -462,7 +462,7 @@ def test_experiment_axis_query_iterable_error_checks(
     soma_experiment: Experiment,
 ) -> None:
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        dp = ExperimentAxisQueryIterable(
+        dp = BatchIterable(
             query,
             X_name="raw",
             shuffle=True,
@@ -471,7 +471,7 @@ def test_experiment_axis_query_iterable_error_checks(
             dp[0]
 
         with pytest.raises(ValueError):
-            ExperimentAxisQueryIterable(
+            BatchIterable(
                 query,
                 obs_column_names=(),
                 X_name="raw",

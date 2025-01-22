@@ -11,7 +11,7 @@ from somacore import ExperimentAxisQuery
 from torch.utils.data.dataset import Dataset
 from torchdata.datapipes.iter import IterDataPipe
 
-from tiledbsoma_ml.pytorch import Batch, ExperimentAxisQueryIterable
+from tiledbsoma_ml.batch_iterable import Batch, BatchIterable
 
 
 class ExperimentAxisQueryIterDataPipe(
@@ -49,7 +49,7 @@ class ExperimentAxisQueryIterDataPipe(
             deprecated
         """
         super().__init__()
-        self._exp_iter = ExperimentAxisQueryIterable(
+        self._exp_iter = BatchIterable(
             query=query,
             X_name=X_name,
             obs_column_names=obs_column_names,

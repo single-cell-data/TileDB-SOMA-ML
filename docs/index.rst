@@ -57,6 +57,10 @@ Chunks
 ~~~~~~
 .. autoclass:: Chunks
 
+SamplingMethod
+~~~~~~~~~~~~~~
+.. autoclass:: SamplingMethod
+
 ``io_batches``
 ^^^^^^^^^^^^^^
 

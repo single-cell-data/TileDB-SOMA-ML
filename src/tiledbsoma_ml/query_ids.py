@@ -87,8 +87,8 @@ class QueryIDs:
             worker_id = partition.worker_id
             n_workers = partition.n_workers
         else:
-            world_size, rank = get_distributed_world_rank()
-            n_workers, worker_id = get_worker_world_rank()
+            rank, world_size = get_distributed_world_rank()
+            worker_id, n_workers = get_worker_world_rank()
 
         partition = Partition(
             rank=rank,

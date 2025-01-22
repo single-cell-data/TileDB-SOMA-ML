@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from typing import (
     List,
+    Literal,
     Optional,
     Tuple,
 )
@@ -27,6 +28,18 @@ logger = logging.getLogger("tiledbsoma_ml.query_ids")
 
 Chunks = List[NDArrayJoinId]
 r"""Return-type of |QueryIDs.shuffle_chunks|, |List| of |ndarray|\ s."""
+SamplingMethod = Literal["deterministic", "multinomial", "stochastic_rounding"]
+r"""Enum arg to |QueryIDs.split|:
+
+- ``"deterministic"``: number of each class returned will always be :math:`frac \times N`, rounded to nearest int, e.g.
+  ``n=12, fracs=[.7,.3]`` will always produce 8 and 4 elements, resp.
+- ``"multinomial"``: each element is assigned to a class independently; no guarantees are made about resulting class
+  sizes.
+- ``"stochastic_rounding"``: guarantee each class gets assigned at least :math:`\lfloor frac \times N \rfloor` elements.
+  The remainder are then distributed so that class-size expected-values match the provided ``fracs``.
+"""
+SamplingMethods = ["deterministic", "multinomial", "stochastic_rounding"]
+"""Possible values of |SamplingMethod|."""
 
 
 @define(frozen=True)
@@ -65,7 +78,18 @@ class QueryIDs:
             var_joinids=var_joinids,
         )
 
-    def split(self, *fracs: float, seed: int | None = None) -> Tuple["QueryIDs", ...]:
+    def split(
+        self,
+        *fracs: float,
+        seed: int | None = None,
+        method: SamplingMethod = "stochastic_rounding",
+    ) -> Tuple["QueryIDs", ...]:
+        """Split this |QueryIDs| into 1 or more |QueryIDs|, randomly sampled according ``fracs``.
+
+        - ``fracs`` must sum to $1$
+        - ``seed`` is optional
+        - ``method``: see |SamplingMethod| for details
+        """
         split_fracs = np.cumsum(fracs)
         assert fracs and np.isclose(split_fracs[-1], 1.0), "Fractions must sum to 1"
 
@@ -75,7 +99,28 @@ class QueryIDs:
         rng = np.random.default_rng(seed)
         shuffled_joinids = rng.permutation(obs_joinids)
 
-        split_idxs = np.round(split_fracs * n_obs).astype(int)
+        if method == "deterministic":
+            split_idxs = np.round(split_fracs * n_obs).astype(int)
+        elif method == "multinomial":
+            split_idxs = np.cumsum(rng.multinomial(n_obs, np.array(fracs)))
+        elif method == "stochastic_rounding":
+            fracs_arr = np.array(fracs) * n_obs
+            split_bases = fracs_arr.astype(int)
+            split_idxs = split_bases.cumsum()
+            remainder_fracs = fracs_arr - split_bases
+            n = len(fracs)
+            remainders = np.zeros(n, dtype=int)
+            total_remainders = round(np.sum(remainder_fracs))
+            while total_remainders > 0:
+                pvals = remainder_fracs / np.sum(remainder_fracs)
+                choice = rng.choice(n, p=pvals)
+                remainders[choice] += 1
+                remainder_fracs[choice] = 0
+                total_remainders -= 1
+            split_idxs += remainders.cumsum()
+        else:
+            raise ValueError(f"Unknown sampling method: {method}")
+
         splits = [
             np.sort(split)
             for split in np.array_split(shuffled_joinids, split_idxs[:-1])

@@ -70,3 +70,4 @@ lint.extend-select = ["I001"]  # unsorted-imports
 fix = true
 target-version = "py311"
 line-length = 120
+exclude = ["*.ipynb"]  # Changes cell IDs unnecessarily

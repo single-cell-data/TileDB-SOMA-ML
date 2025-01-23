@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, TypeVar
+from typing import Any, TypeVar, Type
 
 from torch.utils.data import DataLoader
 
@@ -16,8 +16,12 @@ from tiledbsoma_ml.dataset import ExperimentAxisQueryIterableDataset
 _T = TypeVar("_T")
 
 
+ExperimentAxisQueryIterableWrapperType = Type[ExperimentAxisQueryIterDataPipe] | Type[ExperimentAxisQueryIterableDataset]
+ExperimentAxisQueryIterableWrapper = ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset
+
+
 def experiment_dataloader(
-    ds: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    ds: ExperimentAxisQueryIterableWrapper,
     **dataloader_kwargs: Any,
 ) -> DataLoader:
     """Factory method for :class:`torch.utils.data.DataLoader`. This method can be used to safely instantiate a

@@ -112,3 +112,6 @@ class ExperimentAxisQueryIterDataPipe(
     @property
     def epoch(self) -> int:
         return self._exp_iter.epoch
+
+    def rewind(self) -> None:
+        self._exp_iter.epoch -= 1

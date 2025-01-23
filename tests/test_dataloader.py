@@ -11,6 +11,8 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pytest
+from numpy.testing import assert_array_equal
+from pandas._testing import assert_frame_equal
 from tiledbsoma import Experiment
 
 from tests._utils import IterableWrappers, IterableWrapperType, pytorch_x_value_gen
@@ -164,25 +166,45 @@ def test_experiment_dataloader__collate_fn(
 
 
 @pytest.mark.parametrize(
-    "obs_range,var_range,X_value_gen", [(10, 1, pytorch_x_value_gen)]
+    "obs_range,var_range,X_value_gen,seed", [(10, 1, pytorch_x_value_gen, 1234)]
 )
 def test__pytorch_splitting(
     soma_experiment: Experiment,
-) -> None:
+    seed: int,
+):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
         dp = ExperimentAxisQueryIterDataPipe(
             query,
             X_name="raw",
             obs_column_names=["label"],
+            seed=seed,
         )
+        batches1 = list(iter(dp))
+        dp.rewind()
+        batches2 = list(iter(dp))
+        dp.rewind()
+        obs1 = pd.concat([ obs for _, obs in batches1 ])
+        obs2 = pd.concat([ obs for _, obs in batches2 ])
+        assert_frame_equal(obs1, obs2)
+        X1 = np.concatenate([ X for X, _ in batches1 ])
+        X2 = np.concatenate([ X for X, _ in batches2 ])
+        assert_array_equal(X1, X2)
+
         # function not available for IterableDataset, yet....
         dp_train, dp_test = dp.random_split(
-            weights={"train": 0.7, "test": 0.3}, seed=1234
+            weights={"train": 0.7, "test": 0.3},
+            seed=seed,
         )
-        dl = experiment_dataloader(dp_train)
+        train_dl = experiment_dataloader(dp_train)
+        train_batches = list(iter(train_dl))
+        dp.rewind()
+        train_joinids = [ int(obs.loc[0, 'label']) for _, obs in train_batches ]
+        assert train_joinids == [9, 5, 6, 4, 7, 1, 3]
 
-        all_rows = list(iter(dl))
-        assert len(all_rows) == 7
+        test_dl = experiment_dataloader(dp_test)
+        test_batches = list(iter(test_dl))
+        test_joinids = [ int(obs.loc[0, 'label']) for _, obs in test_batches ]
+        assert test_joinids == [8, 0, 2]
 
 
 def test_experiment_dataloader__unsupported_params__fails() -> None:

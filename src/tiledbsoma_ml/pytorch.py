@@ -43,6 +43,13 @@ except ImportError:
     # somacore>=1.0.24 / tiledbsoma>=1.15
     from tiledbsoma._eager_iter import EagerIterator as _EagerIterator
 
+from somacore.query._eager_iter import EagerIterator as _EagerIterator
+from tiledbsoma_ml.utils import suppress_datapipes_deprecation_warning
+from typing_extensions import Self
+
+with suppress_datapipes_deprecation_warning():
+    from torchdata.datapipes.iter import IterDataPipe
+
 logger = logging.getLogger("tiledbsoma_ml.pytorch")
 
 NDArrayJoinId = npt.NDArray[np.int64]
@@ -433,7 +440,6 @@ class ExperimentAxisQueryIterable(Iterable[Batch]):
             # create the X read iterator first, as the eager iterator will begin
             # the read-ahead immediately. Then proceed to fetch obs DataFrame.
             # This matters most on latent backing stores, e.g., S3.
-            #
             X_tbl_iter: Iterator[pa.Table] = X.read(
                 coords=(obs_coords, self._var_joinids)
             ).tables()

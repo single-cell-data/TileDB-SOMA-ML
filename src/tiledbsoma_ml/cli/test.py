@@ -3,23 +3,27 @@ import torch
 from click import option, argument
 
 from . import tdbsml
-from .train import dataloader
 from .. import experiment_dataloader
-from ..model import LogisticRegression
 
 
-from .base import DEFAULT_CENSUS_VERSION, DEFAULT_BATCH_SIZE, DEFAULT_N_EPOCHS, DEFAULT_LEARNING_RATE, DEFAULT_IO_CHUNK_SIZE, DEFAULT_SHUFFLE_CHUNK_SIZE
+from .base import DEFAULT_CENSUS_VERSION, DEFAULT_BATCH_SIZE, DEFAULT_N_EPOCHS, DEFAULT_LEARNING_RATE, \
+    DEFAULT_IO_CHUNK_SIZE, DEFAULT_SHUFFLE_CHUNK_SIZE, iterdatapipe_opt, batch_size_opt, io_batch_size_opt, \
+    shuffle_chunk_size_opt, seed_opt, tissue_opt, verbose_opt, census_version_opt, num_workers_opt
+from ..census import census_dataloader
+from ..model.torch import LogisticRegression
 
 
 @tdbsml.command
-@option('-b', '--batch-size', type=int, default=DEFAULT_BATCH_SIZE)
-@option('-i', '--io-batch-size', type=int, default=DEFAULT_IO_CHUNK_SIZE)
+@batch_size_opt
+@io_batch_size_opt
 @option('-n', '--n-batches', type=int, default=1, help='Number of batches to test')
-@option('-s', '--shuffle-chunk-size', type=int, default=DEFAULT_SHUFFLE_CHUNK_SIZE)
-@option('-S', '--seed', type=int)
-@option('-t', '--tissue', help='"tissue_general" obs filter')
-@option('-v', '--census-version', default=DEFAULT_CENSUS_VERSION)
-@option('-w', '--num-workers', type=int, default=2)
+@iterdatapipe_opt
+@shuffle_chunk_size_opt
+@seed_opt
+@tissue_opt
+@verbose_opt
+@census_version_opt
+@num_workers_opt
 @argument('model_path')
 def test(
     batch_size: int,
@@ -28,11 +32,12 @@ def test(
     shuffle_chunk_size: int,
     seed: int | None,
     tissue: str,
+    verbose: bool,  # TODO
     census_version: str,
     num_workers: int | None,
     model_path: str,
 ):
-    ds, dl, cell_type_encoder = dataloader(
+    ds, dl, cell_type_encoder = census_dataloader(
         tissue=tissue,
         batch_size=batch_size,
         io_batch_size=io_batch_size,

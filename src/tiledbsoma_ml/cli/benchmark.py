@@ -1,17 +1,14 @@
 import json
 import shlex
-from functools import partial
 from os import makedirs
 from os.path import join
 from subprocess import check_call
-from sys import stderr
 from tempfile import TemporaryDirectory
 
 from click import argument, option
 
 from .main import tdbsml
-
-err = partial(print, file=stderr)
+from ..utils import err
 
 
 @tdbsml.command

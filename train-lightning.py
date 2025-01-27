@@ -1,0 +1,123 @@
+"""
+mamba create -n toymodel python=3.11
+mamba activate toymodel
+mamba install lightning pytorch torchvision torchaudio pytorch-cuda=12.4 'numpy<2.0' ipython  -c pytorch -c nvidia
+pip install scikit-learn tiledbsoma typed-argument-parser
+"""
+
+from __future__ import annotations
+
+import logging
+import sys
+import warnings
+from functools import partial
+from typing import Literal
+
+import pytorch_lightning as pl
+import torch
+from sklearn.preprocessing import LabelEncoder
+from tap import Tap
+
+import tiledbsoma as soma
+
+from tiledbsoma_ml import ExperimentDataset
+from tiledbsoma_ml.model.lightning import LogisticRegression
+
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+
+    import tiledbsoma_ml as soma_ml
+
+
+class Arguments(Tap):
+    n_workers: int = 0
+    accelerator: Literal["gpu", "cpu"] = "gpu"
+    max_epochs: int = 10
+    tissue: str = "tongue"
+    verbose: bool = False
+
+
+def setup_logging(worker_id: int | None = None, verbose: bool = True):
+    logging.basicConfig(
+        format="%(asctime)s %(process)-7s %(levelname)-8s %(message)s",
+        level=logging.DEBUG if verbose else logging.WARNING,
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    logging.captureWarnings(True)
+    logging.getLogger("numba").setLevel(logging.WARNING)
+    if worker_id is not None:
+        logging.debug(f"DataLoader worker {worker_id} started")
+
+
+def train(args):
+
+    torch.set_float32_matmul_precision("high")
+
+    if args.accelerator == "cpu":
+        warnings.filterwarnings(
+            "ignore", category=UserWarning, module="torch.cuda", lineno=654
+        )
+
+    CZI_Census_Homo_Sapiens_URL = (
+        "s3://tiledb-bruce/cell-census/2024-07-01/soma/census_data/homo_sapiens/"
+    )
+    experiment = soma.open(
+        CZI_Census_Homo_Sapiens_URL,
+        context=soma.SOMATileDBContext(tiledb_config={"vfs.s3.region": "us-west-2"}),
+    )
+    obs_value_filter = f"tissue_general == '{args.tissue}' and is_primary_data == True"
+    # obs_value_filter = "tissue_general == 'lung' and is_primary_data == True"
+
+    with experiment.axis_query(
+        measurement_name="RNA", obs_query=soma.AxisQuery(value_filter=obs_value_filter)
+    ) as query:
+        obs_df = query.obs(column_names=["cell_type"]).concat().to_pandas()
+        cell_type_encoder = LabelEncoder().fit(obs_df["cell_type"].unique())
+
+        dataset = ExperimentDataset.create(
+            query,
+            layer_name="raw",
+            obs_column_names=["soma_joinid", "cell_type"],
+            batch_size=128,
+            shuffle=True,
+        )
+
+    # train_datapipe, _test_datapipe = experiment_datapipe.random_split(
+    #     weights={"train": 0.8, "test": 0.2}, seed=1
+    # )
+    train_dataset = dataset
+    train_dataloader = soma_ml.experiment_dataloader(
+        train_dataset,
+        num_workers=args.n_workers,
+        persistent_workers=True,
+        worker_init_fn=partial(setup_logging, verbose=args.verbose),
+    )
+    # val_dataloader = soma_ml.experiment_dataloader(test_datapipe, num_workers=2)
+
+    # The size of the input dimension is the number of genes
+    input_dim = dataset.shape[1]
+
+    # The size of the output dimension is the number of distinct cell_type values
+    output_dim = len(cell_type_encoder.classes_)
+
+    # Initialize the PyTorch Lightning model
+    model = LogisticRegression(
+        input_dim, output_dim, cell_type_encoder=cell_type_encoder, dataset=train_dataset
+    )
+
+    # Define the PyTorch Lightning Trainer
+    trainer = pl.Trainer(
+        max_epochs=args.max_epochs,
+        accelerator=args.accelerator,
+        strategy="ddp",
+    )
+
+    # Train the model
+    trainer.fit(model, train_dataloaders=train_dataloader)
+
+
+if __name__ == "__main__":
+    args = Arguments().parse_args()
+    setup_logging(worker_id=None, verbose=args.verbose)
+    torch.multiprocessing.set_start_method("spawn", force=True)
+    sys.exit(train(args))

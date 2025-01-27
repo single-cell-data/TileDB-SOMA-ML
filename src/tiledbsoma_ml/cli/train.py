@@ -1,14 +1,22 @@
 from click import option
+from torch.ao.quantization.fx.utils import node_arg_is_bias
 
-from . import tdbsml
-from .base import DEFAULT_CENSUS_VERSION, DEFAULT_N_EPOCHS, DEFAULT_LEARNING_RATE, \
-    DEFAULT_SHUFFLE_CHUNK_SIZE, shuffle_chunk_size_opt, seed_opt, tissue_opt, verbose_opt, census_version_opt, \
+from . import sml
+from .base import (
+    DEFAULT_N_EPOCHS,
+    DEFAULT_LEARNING_RATE,
+    shuffle_chunk_size_opt,
+    seed_opt,
+    tissue_opt,
+    verbose_opt,
+    census_version_opt,
     num_workers_opt
-from .base import iterdatapipe_opt, batch_size_opt, io_batch_size_opt
+)
+from .base import batch_size_opt, io_batch_size_opt
 from ..train import lightning, torch
 
 
-@tdbsml.command
+@sml.command(no_args_is_help=True)
 @batch_size_opt
 @option('-g/-G', '--use-gpu/--no-use-gpu', default=None, help="Specify using GPU vs. CPU; default: infer from `torch.cuda.is_available()`")
 @io_batch_size_opt
@@ -18,7 +26,6 @@ from ..train import lightning, torch
 @option('-M', '--model-path', help='Load model from this path, and save it back to this path; equivalent to setting both `-I/--model-in-path` and `-O/--model-out-path` to this value')
 @option('-n', '--n-epochs', type=int, default=DEFAULT_N_EPOCHS, help=f"Number of epochs to train for (default: {DEFAULT_N_EPOCHS})")
 @option('-O', '--model-out-path', help='Save trained model to this path')
-@iterdatapipe_opt
 @shuffle_chunk_size_opt
 @seed_opt
 @tissue_opt

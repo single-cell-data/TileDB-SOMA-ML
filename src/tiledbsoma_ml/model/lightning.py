@@ -2,7 +2,7 @@ import pytorch_lightning as pl
 import torch
 from sklearn.preprocessing import LabelEncoder
 
-from tiledbsoma_ml.pytorch import ExperimentAxisQueryIterableWrapper
+from tiledbsoma_ml import ExperimentDataset
 
 
 class LogisticRegression(pl.LightningModule):
@@ -10,7 +10,7 @@ class LogisticRegression(pl.LightningModule):
         self,
         input_dim: int,
         output_dim: int,
-        datapipe: ExperimentAxisQueryIterableWrapper,
+        dataset: ExperimentDataset,
         cell_type_encoder: LabelEncoder,
         learning_rate: float = 1e-5,
     ):
@@ -20,7 +20,7 @@ class LogisticRegression(pl.LightningModule):
         self.learning_rate = learning_rate
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.epoch = 0
-        self.datapipe = datapipe
+        self.dataset = dataset
 
     def forward(self, x):
         outputs = torch.sigmoid(self.linear(x))
@@ -60,7 +60,7 @@ class LogisticRegression(pl.LightningModule):
         return optimizer
 
     def on_train_epoch_start(self):
-        self.datapipe.set_epoch(self.epoch)
+        self.dataset.set_epoch(self.epoch)
 
     def on_train_epoch_end(self):
         self.epoch += 1

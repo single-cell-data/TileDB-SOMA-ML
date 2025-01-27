@@ -7,11 +7,11 @@ from tempfile import TemporaryDirectory
 
 from click import argument, option
 
-from .main import tdbsml
+from .main import sml
 from ..utils import err
 
 
-@tdbsml.command
+@sml.command
 @option('-c', '--cpu', is_flag=True, help="Force CPU mode")
 @option('-l', '--use-lightning', is_flag=True, help="Use PyTorch Lightning for training")
 @option('-t', '--tissue', help='"tissue_general" filter to pass to obs_value_filter')

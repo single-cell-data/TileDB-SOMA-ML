@@ -2,22 +2,28 @@ import pandas as pd
 import torch
 from click import option, argument
 
-from . import tdbsml
+from . import sml
 from .. import experiment_dataloader
 
 
-from .base import DEFAULT_CENSUS_VERSION, DEFAULT_BATCH_SIZE, DEFAULT_N_EPOCHS, DEFAULT_LEARNING_RATE, \
-    DEFAULT_IO_CHUNK_SIZE, DEFAULT_SHUFFLE_CHUNK_SIZE, iterdatapipe_opt, batch_size_opt, io_batch_size_opt, \
-    shuffle_chunk_size_opt, seed_opt, tissue_opt, verbose_opt, census_version_opt, num_workers_opt
+from .base import (
+    batch_size_opt,
+    io_batch_size_opt,
+    shuffle_chunk_size_opt,
+    seed_opt,
+    tissue_opt,
+    verbose_opt,
+    census_version_opt,
+    num_workers_opt
+)
 from ..census import census_dataloader
 from ..model.torch import LogisticRegression
 
 
-@tdbsml.command
+@sml.command(no_args_is_help=True)
 @batch_size_opt
 @io_batch_size_opt
 @option('-n', '--n-batches', type=int, default=1, help='Number of batches to test')
-@iterdatapipe_opt
 @shuffle_chunk_size_opt
 @seed_opt
 @tissue_opt

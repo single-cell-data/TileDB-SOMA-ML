@@ -30,6 +30,7 @@ class Arguments(Tap):
     n_workers: int = 0
     accelerator: Literal["gpu", "cpu"] = "gpu"
     max_epochs: int = 10
+    tissue: str = "tongue"
     verbose: bool = False
 
 
@@ -115,7 +116,7 @@ def train(args):
         CZI_Census_Homo_Sapiens_URL,
         context=soma.SOMATileDBContext(tiledb_config={"vfs.s3.region": "us-west-2"}),
     )
-    obs_value_filter = "tissue_general == 'bone marrow' and is_primary_data == True"
+    obs_value_filter = f"tissue_general == '{args.tissue}' and is_primary_data == True"
     # obs_value_filter = "tissue_general == 'lung' and is_primary_data == True"
 
     with experiment.axis_query(

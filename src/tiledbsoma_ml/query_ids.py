@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 from typing import (
     List,
     Literal,
@@ -71,8 +72,14 @@ class QueryIDs:
     @classmethod
     def create(cls, query: ExperimentAxisQuery) -> "QueryIDs":
         """Initialize a |QueryIDs| object from an |ExperimentAxisQuery|."""
+        t0 = perf_counter()
+        print(f"Fetching obs_joinids: {t0}")
         obs_joinids = query.obs_joinids().to_numpy()
+        t1 = perf_counter()
+        print(f"Fetched obs_joinids, fetching var_joinids: {t1} ({t1-t0:.2f}s)")
         var_joinids = query.var_joinids().to_numpy()
+        t2 = perf_counter()
+        print(f"Fetched var_joinids, done: {t2} ({t2-t1:.2f}s)")
         return QueryIDs(
             obs_joinids=obs_joinids,
             var_joinids=var_joinids,

@@ -5,7 +5,7 @@
 
 import gc
 import logging
-import time
+from time import perf_counter
 from typing import Iterable, Iterator, Optional, Sequence, Tuple
 
 import attrs
@@ -15,6 +15,7 @@ import pyarrow as pa
 from tiledbsoma import DataFrame, IntIndexer, SparseNDArray
 
 from tiledbsoma_ml._csr import CSR_IO_Buffer
+from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
 from tiledbsoma_ml._utils import EagerIterator, batched
 from tiledbsoma_ml.common import NDArrayJoinId
 from tiledbsoma_ml.query_ids import Chunks
@@ -67,8 +68,12 @@ class IOBatches(Iterable[IOBatch]):
         var_joinids = np.array(tuple(self.var_joinids))
         var_indexer = IntIndexer(var_joinids, context=context)
 
-        for obs_coords in self.io_batch_ids:
-            st_time = time.perf_counter()
+        rank, _ = get_distributed_world_rank()
+        worker_id, _ = get_worker_world_rank()
+
+        for batch_idx, obs_coords in enumerate(self.io_batch_ids):
+            t0 = perf_counter()
+            print(f"GPU {rank} worker {worker_id} IO batch {batch_idx} begin: {t0}")
             obs_shuffled_coords = (
                 np.array(obs_coords)
                 if not self.shuffle
@@ -132,8 +137,7 @@ class IOBatches(Iterable[IOBatch]):
             del obs_indexer, obs_coords, obs_shuffled_coords, _io_buf_iter
             gc.collect()
 
-            tm = time.perf_counter() - st_time
-            logger.debug(
-                f"Retrieved SOMA IO batch, took {tm:.2f}sec, {X_io_batch.shape[0]/tm:0.1f} samples/sec"
-            )
+            t1 = perf_counter()
+            tm = t1 - t0
+            print(f"GPU {rank} worker {worker_id} IO batch {batch_idx} end: {t1} ({tm:.2f}s, {X_io_batch.shape[0]/tm:0.1f} samples/s)")
             yield X_io_batch, obs_io_batch

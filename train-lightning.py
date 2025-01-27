@@ -30,6 +30,7 @@ class Arguments(Tap):
     n_workers: int = 0
     accelerator: Literal["gpu", "cpu"] = "gpu"
     max_epochs: int = 10
+    io_batch_size: int = 2**16
     tissue: str = "tongue"
     verbose: bool = False
 
@@ -130,6 +131,7 @@ def train(args):
             X_name="raw",
             obs_column_names=["soma_joinid", "cell_type"],
             batch_size=128,
+            io_batch_size=args.io_batch_size,
             shuffle=True,
         )
 

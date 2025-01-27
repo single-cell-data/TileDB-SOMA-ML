@@ -12,7 +12,7 @@ import logging
 import math
 import os
 import sys
-import time
+from time import perf_counter
 from contextlib import contextmanager
 from itertools import islice
 from math import ceil
@@ -453,8 +453,12 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
         )
         var_indexer = soma.IntIndexer(self._var_joinids, context=X.context)
 
-        for obs_coords in obs_joinid_iter:
-            st_time = time.perf_counter()
+        rank, _ = _get_distributed_world_rank()
+        worker_id, _ = _get_worker_world_rank()
+
+        for batch_idx, obs_coords in enumerate(obs_joinid_iter):
+            t0 = perf_counter()
+            print(f"GPU {rank} worker {worker_id} IO batch {batch_idx} begin: {t0}")
             obs_shuffled_coords = (
                 obs_coords if not self.shuffle else shuffle_rng.permuted(obs_coords)
             )
@@ -512,10 +516,9 @@ class ExperimentAxisQueryIterable(Iterable[XObsDatum]):
             del obs_indexer, obs_coords, obs_shuffled_coords, _io_buf_iter
             gc.collect()
 
-            tm = time.perf_counter() - st_time
-            logger.debug(
-                f"Retrieved SOMA IO batch, took {tm:.2f}sec, {X_io_batch.shape[0]/tm:0.1f} samples/sec"
-            )
+            t1 = perf_counter()
+            tm = t1 - t0
+            print(f"GPU {rank} worker {worker_id} IO batch {batch_idx} end: {t1} ({tm:.2f}s, {X_io_batch.shape[0]/tm:0.1f} samples/s)")
             yield X_io_batch, obs_io_batch
 
     def _mini_batch_iter(

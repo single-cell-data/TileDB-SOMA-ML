@@ -19,7 +19,10 @@ from tiledbsoma import (
     ExperimentAxisQuery,
 )
 
-from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
+from tiledbsoma_ml._distributed import (
+    get_distributed_rank_and_world_size,
+    get_worker_id_and_num,
+)
 from tiledbsoma_ml._utils import batched, splits
 from tiledbsoma_ml.common import NDArrayJoinId
 
@@ -134,7 +137,7 @@ class QueryIDs:
         """Create a new |QueryIDs| with |Q.obs_joinids| corresponding to a given GPU/worker |Partition|.
 
         If ``None`` is provided, world size, rank, num workers, and worker ID will be inferred using helper functions
-        that read env vars (see |get_distributed_world_rank|, |get_worker_world_rank|).
+        that read env vars (see |get_distributed_rank_and_world_size|, |get_worker_id_and_num|).
 
         When ``WORLD_SIZE > 1``, each GPU will receive the same number of samples (meaning up to ``WORLD_SIZE-1``
         samples may be dropped).
@@ -151,8 +154,8 @@ class QueryIDs:
             worker_id = partition.worker_id
             n_workers = partition.n_workers
         else:
-            rank, world_size = get_distributed_world_rank()
-            worker_id, n_workers = get_worker_world_rank()
+            rank, world_size = get_distributed_rank_and_world_size()
+            worker_id, n_workers = get_worker_id_and_num()
             partition = Partition(
                 rank=rank,
                 world_size=world_size,

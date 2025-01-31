@@ -13,7 +13,7 @@ import torch
 logger = logging.getLogger("tiledbsoma_ml.pytorch")
 
 
-def get_distributed_world_rank() -> Tuple[int, int]:
+def get_distributed_rank_and_world_size() -> Tuple[int, int]:
     """Return tuple containing equivalent of |torch.distributed| rank and world size."""
     rank, world_size = 0, 1
     if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
@@ -34,7 +34,7 @@ def get_distributed_world_rank() -> Tuple[int, int]:
     return rank, world_size
 
 
-def get_worker_world_rank() -> Tuple[int, int]:
+def get_worker_id_and_num() -> Tuple[int, int]:
     """Return |DataLoader| ID, and the total number of |DataLoader| workers."""
     worker, num_workers = 0, 1
     if "WORKER" in os.environ and "NUM_WORKERS" in os.environ:

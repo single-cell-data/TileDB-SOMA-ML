@@ -16,11 +16,11 @@ from tiledbsoma_ml._eager_iter import EagerIterator
 from tiledbsoma_ml.common import MiniBatch
 from tiledbsoma_ml.io_batches import IOBatches
 
-logger = logging.getLogger("tiledbsoma_ml.mini_batches")
+logger = logging.getLogger("tiledbsoma_ml.mini_batch_iterable")
 
 
 @attrs.define(frozen=True)
-class MiniBatches(Iterable[MiniBatch]):
+class MiniBatchIterable(Iterable[MiniBatch]):
     """Convert (possibly shuffled) |IOBatches| into |MiniBatch|'s suitable for passing to PyTorch."""
 
     io_batches: IOBatches

@@ -36,12 +36,12 @@ def check(
     method: SamplingMethod,
     expected: str | List[List[int]],
 ):
-    """Verify :meth:`tiledbsoma_ml.QueryIDs.split`'s output matches ``expected``, given the other arguments."""
+    """Verify :meth:`tiledbsoma_ml.QueryIDs.random_split`'s output matches ``expected``, given the other arguments."""
     if isinstance(expected, str):
         with raises(AssertionError, match=expected):
-            query_ids.split(*fracs, seed=seed, method=method)
+            query_ids.random_split(*fracs, seed=seed, method=method)
     else:
-        splits = query_ids.split(*fracs, seed=seed, method=method)
+        splits = query_ids.random_split(*fracs, seed=seed, method=method)
         split_ids = [split.obs_joinids.tolist() for split in splits]
         assert split_ids == expected
 
@@ -57,7 +57,7 @@ def check_sizes(
 ):
     split_size_hist = {}
     for seed in seeds:
-        splits = query_ids.split(*fracs, seed=seed, method=method)
+        splits = query_ids.random_split(*fracs, seed=seed, method=method)
         sizes = tuple(len(split.obs_joinids) for split in splits)
         split_size_hist[sizes] = split_size_hist.get(sizes, 0) + 1
 

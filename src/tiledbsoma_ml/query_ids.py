@@ -32,7 +32,7 @@ logger = logging.getLogger("tiledbsoma_ml.query_ids")
 Chunks = List[NDArrayJoinId]
 r"""Return-type of |QueryIDs.shuffle_chunks|, |List| of |ndarray|\ s."""
 SamplingMethod = Literal["deterministic", "multinomial", "stochastic_rounding"]
-r"""Enum arg to |QueryIDs.split|:
+r"""Enum arg to |QueryIDs.random_split|:
 
 - ``"deterministic"``: number of each class returned will always be :math:`frac \times N`, rounded to nearest int, e.g.
   ``n=12, fracs=[.7,.3]`` will always produce 8 and 4 elements, resp.
@@ -81,7 +81,7 @@ class QueryIDs:
             var_joinids=var_joinids,
         )
 
-    def split(
+    def random_split(
         self,
         *fracs: float,
         seed: int | None = None,

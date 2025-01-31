@@ -287,13 +287,19 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     def layer_name(self) -> Optional[str]:
         return self.x_locator.layer_name
 
-    def split(
+    def random_split(
         self,
         *fracs: float,
         seed: Optional[int] = None,
         method: SamplingMethod = "stochastic_rounding",
     ) -> Tuple[ExperimentDataset, ...]:
-        split_query_ids = self.query_ids.split(*fracs, seed=seed, method=method)
+        r"""Split this |ExperimentDataset| into 1 or more |ExperimentDataset|\ 's, randomly sampled according ``fracs``.
+
+        - ``fracs`` must sum to $1$
+        - ``seed`` is optional
+        - ``method``: see |SamplingMethod| for details
+        """
+        split_query_ids = self.query_ids.random_split(*fracs, seed=seed, method=method)
         return tuple(evolve(self, query_ids=q) for q in split_query_ids)
 
     def _multiproc_check(self) -> None:

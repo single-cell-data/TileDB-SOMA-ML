@@ -55,8 +55,9 @@ rst_prolog = """
 .. |Iterable| replace:: :class:`~typing.Iterable`
 .. |Iterator| replace:: :class:`~typing.Iterator`
 .. |ExperimentDataset| replace:: :class:`~tiledbsoma_ml.dataset.ExperimentDataset`
+.. |__iter__| replace:: :obj:`__iter__ <.__iter__>`
 .. |XLocator| replace:: :class:`~tiledbsoma_ml.x_locator.XLocator`
-.. |ED.obs_joinids| replace:: :obj:`~tiledbsoma_ml.ExperimentDataset.obs_joinids`
+.. |obs_joinids| replace:: :obj:`~tiledbsoma_ml.ExperimentDataset.obs_joinids`
 .. |ExperimentDataset.__iter__| replace:: :obj:`ExperimentDataset.__iter__ <tiledbsoma_ml.ExperimentDataset.__iter__>`
 .. |batch_size| replace:: :attr:`batch_size <tiledbsoma_ml.ExperimentDataset.batch_size>`
 .. |io_batch_size| replace:: :attr:`io_batch_size <tiledbsoma_ml.ExperimentDataset.io_batch_size>`
@@ -64,10 +65,11 @@ rst_prolog = """
 .. |return_sparse_X| replace:: :attr:`return_sparse_X <tiledbsoma_ml.ExperimentDataset.return_sparse_X>`
 .. |experiment_dataloader| replace:: :obj:`~tiledbsoma_ml.experiment_dataloader`
 .. |MiniBatch| replace:: :class:`~tiledbsoma_ml.common.MiniBatch`
+.. |mini batches| replace:: :class:`"mini batches" <tiledbsoma_ml.common.MiniBatch>`
 .. |NDArrayJoinId| replace:: :class:`~tiledbsoma_ml.common.NDArrayJoinId`
 .. |Partition| replace:: :class:`~tiledbsoma_ml.query_ids.Partition`
 .. |QueryIDs| replace:: :class:`~tiledbsoma_ml.query_ids.QueryIDs`
-.. |Q.obs_joinids| replace:: :obj:`~tiledbsoma_ml.query_ids.QueryIDs.obs_joinids`
+.. |QueryIDs.obs_joinids| replace:: :obj:`~tiledbsoma_ml.query_ids.QueryIDs.obs_joinids`
 .. |QueryIDs.shuffle_chunks| replace:: :meth:`QueryIDs.shuffle_chunks <tiledbsoma_ml.query_ids.QueryIDs.shuffle_chunks>`
 .. |QueryIDs.split| replace:: :meth:`QueryIDs.split <tiledbsoma_ml.query_ids.QueryIDs.split>`
 .. |Chunks| replace:: :class:`~tiledbsoma_ml.query_ids.Chunks`

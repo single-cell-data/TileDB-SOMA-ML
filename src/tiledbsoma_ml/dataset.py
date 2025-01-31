@@ -60,26 +60,25 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     soma_joinid
     0     57905025
 
-    When :obj:`__iter__ <.__iter__>` is invoked, |ED.obs_joinids|  goes through several partitioning, shuffling, and
-    batching steps, ultimately yielding :class:`"mini batches" <tiledbsoma_ml.common.MiniBatch>` (tuples of matched
-    ``X`` and ``obs`` rows):
+    When |__iter__| is invoked, |obs_joinids| goes through several partitioning, shuffling, and batching steps,
+    ultimately yielding |mini batches| (tuples of matched ``X`` and ``obs`` rows):
 
     1. Partitioning (|NDArrayJoinID|):
 
         .. NOTE: for some reason, the Sphinx mathjax plugin only renders `$` blocks if at least one `:math:` directive is also present.
 
         a. GPU-partitioning: if this is one of :math:`N>1` GPU processes (see |get_distributed_rank_and_world_size|),
-           |ED.obs_joinids| is partitioned so that the $N$ GPUs will each receive the same number of samples (meaning up
-           to $N-1$ samples may be dropped). Then, only the partition corresponding to the current GPU is kept, The
-           resulting |ED.obs_joinids| is used in subsequent steps.
+           |obs_joinids| is partitioned so that the $N$ GPUs will each receive the same number of samples (meaning up to
+           $N-1$ samples may be dropped). Then, only the partition corresponding to the current GPU is kept, The
+           resulting |obs_joinids| is used in subsequent steps.
 
         b. |DataLoader|-worker partitioning: if this is one of $M>1$ |DataLoader|-worker processes (see
-           |get_worker_id_and_num|), |ED.obs_joinids| is further split $M$ ways, and only |ED.obs_joinids| corresponding
-           to the current process are kept.
+           |get_worker_id_and_num|), |obs_joinids| is further split $M$ ways, and only |obs_joinids| corresponding to
+           the current process are kept.
 
-    2. Shuffle-chunking (|List|\[|NDArrayJoinID|\]): if ``shuffle=True``, |ED.obs_joinids| are broken into "shuffle
+    2. Shuffle-chunking (|List|\[|NDArrayJoinID|\]): if ``shuffle=True``, |obs_joinids| are broken into "shuffle
        chunks". The chunks are then shuffled amongst themselves (but retain their chunk-internal order, at this stage).
-       If ``shuffle=False``, one "chunk" is emitted containing all |ED.obs_joinids|.
+       If ``shuffle=False``, one "chunk" is emitted containing all |obs_joinids|.
 
     3. IO-batching (|Iterable|\[|IOBatch|\]): shuffle-chunks are re-grouped into "IO batches" of size
        ``io_batch_size``. If ``shuffle=True``, each |IOBatch| is shuffled, then the corresponding ``X`` and ``obs`` rows

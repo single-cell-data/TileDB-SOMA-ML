@@ -139,11 +139,12 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     rank: int = field(init=False)
     world_size: int = field(init=False)
 
-    @classmethod
-    def create(
-        cls,
-        query: ExperimentAxisQuery,
-        layer_name: str,
+    def __init__(
+        self,
+        query: ExperimentAxisQuery | None = None,
+        layer_name: str | None = None,
+        x_locator: XLocator | None = None,
+        query_ids: QueryIDs | None = None,
         obs_column_names: Sequence[str] = DEFAULT_OBS_COLUMN_NAMES,
         batch_size: int = 1,
         io_batch_size: int = DEFAULT_IO_BATCH_SIZE,
@@ -152,14 +153,22 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         seed: Optional[int] = None,
         return_sparse_X: bool = False,
         use_eager_fetch: bool = True,
-    ) -> "ExperimentDataset":
+    ):
         r"""Construct a new |ExperimentDataset|.
 
         Args:
             query:
-                Optional |ExperimentAxisQuery|, defining data to iterate over.
+                |ExperimentAxisQuery| defining data to iterate over.
+                This constructor requires `{query,layer_name}` xor `{x_locator,query_ids}`.
             layer_name:
-                The name of the X layer to read.
+                ``X`` layer to read.
+                This constructor requires `{query,layer_name}` xor `{x_locator,query_ids}`.
+            x_locator:
+                |XLocator| pointing to an ``X`` array to read.
+                This constructor requires `{query,layer_name}` xor `{x_locator,query_ids}`.
+            query_ids:
+                |QueryIDs| containing ``obs`` and ``var`` joinids to read.
+                This constructor requires `{query,layer_name}` xor `{x_locator,query_ids}`.
             obs_column_names:
                 The names of the ``obs`` columns to return. At least one column name must be specified.
                 Default is ``('soma_joinid',)``.
@@ -213,13 +222,28 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             In addition, when using shuffling in a distributed configuration (e.g., ``DDP``), you must provide a seed,
             ensuring that the same shuffle is used across all replicas.
         """
-        query_ids = QueryIDs.create(query=query)
-        x_locator = XLocator.create(
-            query.experiment,
-            measurement_name=query.measurement_name,
-            layer_name=layer_name,
-        )
-        return cls(
+        if query and layer_name:
+            if x_locator or query_ids:
+                raise ValueError(
+                    "Expected `{query,layer_name}` xor `{x_locator,query_ids}`"
+                )
+            query_ids = QueryIDs.create(query=query)
+            x_locator = XLocator.create(
+                query.experiment,
+                measurement_name=query.measurement_name,
+                layer_name=layer_name,
+            )
+        elif x_locator and query_ids:
+            if query or layer_name:
+                raise ValueError(
+                    "Expected `{query,layer_name}` xor `{x_locator,query_ids}`"
+                )
+        else:
+            raise ValueError(
+                "Expected `{query,layer_name}` xor `{x_locator,query_ids}`"
+            )
+
+        self.__attrs_init__(
             x_locator=x_locator,
             query_ids=query_ids,
             obs_column_names=list(obs_column_names),

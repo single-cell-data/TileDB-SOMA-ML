@@ -16,7 +16,10 @@ from attrs.validators import gt
 from tiledbsoma import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
-from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
+from tiledbsoma_ml._distributed import (
+    get_distributed_rank_and_world_size,
+    get_worker_id_and_num,
+)
 from tiledbsoma_ml.common import MiniBatch, NDArrayJoinId
 from tiledbsoma_ml.io_batches import IOBatches
 from tiledbsoma_ml.mini_batches import MiniBatches
@@ -65,13 +68,13 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
 
         .. NOTE: for some reason, the Sphinx mathjax plugin only renders `$` blocks if at least one `:math:` directive is also present.
 
-        a. GPU-partitioning: if this is one of :math:`N>1` GPU processes (see |get_distributed_world_rank|),
+        a. GPU-partitioning: if this is one of :math:`N>1` GPU processes (see |get_distributed_rank_and_world_size|),
            |ED.obs_joinids| is partitioned so that the $N$ GPUs will each receive the same number of samples (meaning up
            to $N-1$ samples may be dropped). Then, only the partition corresponding to the current GPU is kept, The
            resulting |ED.obs_joinids| is used in subsequent steps.
 
         b. |DataLoader|-worker partitioning: if this is one of $M>1$ |DataLoader|-worker processes (see
-           |get_worker_world_rank|), |ED.obs_joinids| is further split $M$ ways, and only |ED.obs_joinids| corresponding
+           |get_worker_id_and_num|), |ED.obs_joinids| is further split $M$ ways, and only |ED.obs_joinids| corresponding
            to the current process are kept.
 
     2. Shuffle-chunking (|List|\[|NDArrayJoinID|\]): if ``shuffle=True``, |ED.obs_joinids| are broken into "shuffle
@@ -249,7 +252,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             )
 
         # Set distributed state
-        rank, world_size = get_distributed_world_rank()
+        rank, world_size = get_distributed_rank_and_world_size()
         object.__setattr__(self, "rank", rank)
         object.__setattr__(self, "world_size", world_size)
 
@@ -296,8 +299,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                     "(see https://github.com/pytorch/pytorch/issues/20248)"
                 )
 
-        rank, world_size = get_distributed_world_rank()
-        worker_id, n_workers = get_worker_world_rank()
+        rank, world_size = get_distributed_rank_and_world_size()
+        worker_id, n_workers = get_worker_id_and_num()
         logger.debug(
             f"Iterator created {rank=}, {world_size=}, {worker_id=}, {n_workers=}, seed={self.seed}, epoch={self.epoch}"
         )
@@ -323,7 +326,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         use_eager_fetch = self.use_eager_fetch
         seed = self.seed
 
-        worker_id, n_workers = get_worker_world_rank()
+        worker_id, n_workers = get_worker_id_and_num()
         partition = Partition(
             rank=self.rank,
             world_size=self.world_size,
@@ -399,8 +402,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         Lifecycle:
             experimental
         """
-        rank, world_size = get_distributed_world_rank()
-        worker_id, n_workers = get_worker_world_rank()
+        rank, world_size = get_distributed_rank_and_world_size()
+        worker_id, n_workers = get_worker_id_and_num()
         # Every "distributed" process must receive the same number of "obs" rows; the last ≤world_size may be dropped
         # (see _create_obs_joinids_partition).
         obs_per_proc = len(self.obs_joinids) // world_size

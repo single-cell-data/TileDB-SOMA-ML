@@ -75,8 +75,8 @@ rst_prolog = """
 .. |IOBatch| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatch`
 .. |IOBatches| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatches`
 .. |CSR_IO_Buffer| replace:: :class:`~tiledbsoma_ml._csr.CSR_IO_Buffer`
-.. |get_distributed_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_distributed_world_rank`
-.. |get_worker_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_worker_world_rank`
+.. |get_distributed_rank_and_world_size| replace:: :obj:`~tiledbsoma_ml._distributed.get_distributed_rank_and_world_size`
+.. |get_worker_id_and_num| replace:: :obj:`~tiledbsoma_ml._distributed.get_worker_id_and_num`
 .. |TileDB-SOMA-ML| replace:: TileDB-SOMA-ML_
 .. _TileDB-SOMA-ML: https://github.com/single-cell-data/TileDB-SOMA-ML
 .. |SOMA| replace:: SOMA_

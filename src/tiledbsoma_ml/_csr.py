@@ -2,7 +2,10 @@
 # Copyright (c) 2021-2024 TileDB, Inc.
 #
 # Licensed under the MIT License.
-"""CSR sparse matrix implementation, optimized for incrementally building from COO matrices."""
+"""CSR sparse matrix implementation, optimized for incrementally building from COO matrices.
+
+Private module.
+"""
 
 from math import ceil
 from typing import Any, List, Sequence, Tuple, Type

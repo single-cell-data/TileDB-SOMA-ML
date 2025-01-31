@@ -34,16 +34,6 @@ class CSR_IO_Buffer:
     Overall is significantly faster, and uses less memory, than the equivalent ``scipy.sparse`` operations.
     """
 
-    indptr: _CSRIdxArray
-    """CSR ``indptr`` array; ``indptr[i]`` is the index in ``indices``/``data`` where the nonzero elements for row ``i``
-    begin."""
-    indices: _CSRIdxArray
-    """CSR ``indices`` array; ``indices[i]`` is the column index of the ``i``-th nonzero element."""
-    data: NDArrayNumber
-    """CSR ``data`` array; ``data[i]`` is the value of the ``i``-th nonzero element."""
-    shape: Tuple[int, int]
-    """Shape of the CSR sparse matrix."""
-
     __slots__ = ("indptr", "indices", "data", "shape")
 
     def __init__(

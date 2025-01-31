@@ -31,16 +31,16 @@ from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
 from tiledbsoma_ml._experiment_locator import ExperimentLocator
 from tiledbsoma_ml._utils import EagerIterator, batched, splits
-from tiledbsoma_ml.common import Batch, NDArrayJoinId, NDArrayNumber
+from tiledbsoma_ml.common import MiniBatch, NDArrayJoinId, NDArrayNumber
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")
 
 
-class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
+class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     r"""An |IterableDataset| implementation that reads from an |ExperimentAxisQuery|.
 
-    Provides an |Iterator| over |Batch|\ s of ``obs`` and ``X`` data. Each |Batch| is a tuple containing an |ndarray|
-    and a |pd.DataFrame|.
+    Provides an |Iterator| over |MiniBatch|\ s of ``obs`` and ``X`` data. Each |MiniBatch| is a tuple containing an
+    |ndarray| and a |pd.DataFrame|.
 
     An |ExperimentDataset| can be passed to |experiment_dataloader| to enable multi-process reading/fetching.
 
@@ -63,8 +63,8 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     0     57905025
 
     When :obj:`__iter__ <.__iter__>` is invoked, ``obs_joinids``  goes through several partitioning, shuffling, and
-    batching steps, ultimately yielding :class:`GPU batches <tiledbsoma_ml.common.Batch>` (tuples of matched ``X`` and
-    ``obs`` rows):
+    batching steps, ultimately yielding :class:`"mini batches" <tiledbsoma_ml.common.MiniBatch>` (tuples of matched
+    ``X`` and ``obs`` rows):
 
     1. Partitioning (|NDArrayJoinID|):
 
@@ -87,7 +87,8 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
        IO-batch is shuffled, then the corresponding ``X`` and ``obs`` rows are fetched from the underlying
        ``Experiment``.
 
-    4. GPU-batching (|Iterable|\[|Batch|\]): IO-batch tuples are re-grouped into "GPU batches" of size |batch_size|.
+    4. Mini-batching (|Iterable|\[|MiniBatch|\]): IO-batch tuples are re-grouped into "mini batches" of size
+       |batch_size|.
 
     Shuffling support (in steps 2. and 3.) is enabled with the ``shuffle`` parameter, and should be used in lieu of
     |DataLoader|'s default shuffling functionality. Similarly, |batch_size| should be used instead of |DataLoader|'s
@@ -96,8 +97,8 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
 
     Describing the whole process another way, we read randomly selected groups of ``obs`` coordinates from across all
     |ExperimentAxisQuery| results, concatenate those into an I/O buffer, shuffle the buffer element-wise, fetch the full
-    row data (``X`` and ``obs``) for each coordinate, and send that on to PyTorch / the GPU, in batches. The randomness
-    of the shuffle is determined by:
+    row data (``X`` and ``obs``) for each coordinate, and send that on to PyTorch / the GPU, in mini-batches. The
+    randomness of the shuffle is determined by:
 
       - |shuffle_chunk_size|: controls the granularity of the global shuffle. ``shuffle_chunk_size=1`` corresponds to
         a full global shuffle, but decreases I/O performance. Larger values cause chunks of rows to be shuffled,
@@ -116,7 +117,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
     obs_column_names: Sequence[str]
     """Names of ``obs`` columns to return."""
     batch_size: int
-    """Number of rows of ``X`` and ``obs`` data to yield in each |Batch|."""
+    """Number of rows of ``X`` and ``obs`` data to yield in each |MiniBatch|."""
     io_batch_size: int
     """Number of ``obs``/``X`` rows to fetch together, when reading from the provided |ExperimentAxisQuery|."""
     shuffle: bool
@@ -154,7 +155,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
                 The names of the ``obs`` columns to return. At least one column name must be specified.
                 Default is ``('soma_joinid',)``.
             batch_size:
-                The number of rows of ``X`` and ``obs`` data to yield in each |Batch|. When |batch_size| is 1 (the
+                The number of rows of ``X`` and ``obs`` data to yield in each |MiniBatch|. When |batch_size| is 1 (the
                 default) and |return_sparse_X| is ``False`` (also default), the yielded |ndarray|\ s will have rank 1
                 (representing a single row); larger values of |batch_size| (or |return_sparse_X| is ``True``) will
                 result in arrays of rank 2 (multiple rows).
@@ -175,7 +176,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
                 Global-shuffle granularity; larger numbers correspond to less randomness, but greater read performance.
                 "Shuffle chunks" are contiguous rows in the underlying ``Experiment``, and are shuffled among themselves
                 before being combined into IO batches (which are internally shuffled, before fetching and finally
-                GPU-batching).
+                mini-batching).
                 If ``shuffle == False``, this parameter is ignored.
             seed:
                 The random seed used for shuffling. Defaults to ``None`` (no seed). This argument *MUST* be specified
@@ -251,7 +252,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         the number of processes, the number of joinids will be dropped (dropped ids can never exceed WORLD_SIZE-1).
 
         Abstractly, the steps taken:
-        1. Split the joinids into WORLD_SIZE sections (aka number of GPUS in DDP)
+        1. Split the joinids into WORLD_SIZE sections (aka number of GPUs in DDP)
         2. Trim the splits to be of equal length
         3. Chunk and optionally shuffle the chunks
         4. Partition by number of data loader workers (to not generate redundant batches
@@ -342,11 +343,11 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
 
         self._initialized = True
 
-    def __iter__(self) -> Iterator[Batch]:
-        r"""Emit |Batch|\ s (aligned ``X`` and ``obs`` rows).
+    def __iter__(self) -> Iterator[MiniBatch]:
+        r"""Emit |MiniBatch|\ s (aligned ``X`` and ``obs`` rows).
 
         Returns:
-            |Iterator|\[|Batch|\]
+            |Iterator|\[|MiniBatch|\]
 
         Lifecycle:
             experimental
@@ -449,7 +450,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         """
         self.epoch = epoch
 
-    def __getitem__(self, index: int) -> Batch:
+    def __getitem__(self, index: int) -> MiniBatch:
         raise NotImplementedError(
             "`Experiment` can only be iterated - does not support mapping"
         )
@@ -550,7 +551,7 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
         obs: DataFrame,
         X: SparseNDArray,
         obs_joinid_iter: Iterator[NDArrayJoinId],
-    ) -> Iterator[Batch]:
+    ) -> Iterator[MiniBatch]:
         """Break IO batches into shuffled mini-batch-sized chunks.
 
         Private method.

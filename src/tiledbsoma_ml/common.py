@@ -15,11 +15,11 @@ NDArrayNumber = npt.NDArray[np.number[Any]]
 NDArrayJoinId = npt.NDArray[np.int64]
 """|ndarray| of ``int64``s representing SOMA joinids."""
 XBatch = Union[NDArrayNumber, sparse.csr_matrix]
-Batch = Tuple[XBatch, pd.DataFrame]
+MiniBatch = Tuple[XBatch, pd.DataFrame]
 """Yielded by |ExperimentDataset|; pairs a slice of ``X`` rows with corresponding ``obs`` rows.
 
-When |return_sparse_X| is ``False`` (the default), a |Batch| is a tuple of |ndarray| and |pd.DataFrame| (for ``X`` and
-``obs``, respectively). If ``batch_size=1``, the |ndarray| will have rank 1 (representing a single row), otherwise it
-will have rank 2. If |return_sparse_X| is ``True``, the ``X`` slice is returned as a |csr_matrix| (which is always rank
-2).
+When |return_sparse_X| is ``False`` (the default), a |MiniBatch| is a tuple of |ndarray| and |pd.DataFrame| (for ``X``
+and ``obs``, respectively). If ``batch_size=1``, the |ndarray| will have rank 1 (representing a single row), otherwise
+it will have rank 2. If |return_sparse_X| is ``True``, the ``X`` slice is returned as a |csr_matrix| (which is always
+rank 2).
 """

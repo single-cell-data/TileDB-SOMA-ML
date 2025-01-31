@@ -149,7 +149,7 @@ function App() {
   const [ seed, setSeed ] = useSessionStorageState("seed", { defaultValue: 0 })
   const [ shuffleChunkSize, setShuffleChunkSize ] = useSessionStorageState("shuffleChunkSize", { defaultValue: 5 })
   const [ ioBatchSize, setIoBatchSize ] = useSessionStorageState("ioBatchSize", { defaultValue: 20 })
-  const [ gpuBatchSize, setGpuBatchSize ] = useSessionStorageState("gpuBatchSize", { defaultValue: 4 })
+  const [ miniBatchSize, setMiniBatchSize ] = useSessionStorageState("miniBatchSize", { defaultValue: 4 })
   const [ regenNonce, setRegenNonce ] = useState(0)
   const rng = useMemo(
     // Need a terminator after stringified number: https://github.com/davidbau/seedrandom/issues/48
@@ -162,12 +162,12 @@ function App() {
   const idxs = useMemo(() => range(n), [n])
   const shuffleChunks = useMemo(() => shuffle(batched(idxs, shuffleChunkSize), rng), [ idxs, shuffleChunkSize, rng ])
   const ioBatches = useMemo(() => batched(flatten(shuffleChunks), ioBatchSize).map(ioBatch => shuffle(ioBatch, rng)), [shuffleChunks, ioBatchSize, rng])
-  const gpuBatches = useMemo(() => batched(flatten(ioBatches), gpuBatchSize), [ioBatches, gpuBatchSize])
+  const miniBatches = useMemo(() => batched(flatten(ioBatches), miniBatchSize), [ioBatches, miniBatchSize])
   const barGroups: Pick<BarsProps, 'groups' | 'barTooltip' | 'groupTooltip'>[] = [
     { groups: [idxs], barTooltip: ({ i }) => <span>Row {i}</span> },
     { groups: shuffleChunks, groupTooltip: ({ idx, group }) => <span>Shuffle chunk {idx}: [{group[0]}, {group[group.length - 1] + 1})</span> },
     { groups: ioBatches, groupTooltip: ({ idx, group }) => <span>IO batch {idx}: {group.join(", ")}</span> },
-    { groups: gpuBatches, groupTooltip: ({ idx, group }) => <span>GPU batch {idx}: {group.join(", ")}</span> },
+    { groups: miniBatches, groupTooltip: ({ idx, group }) => <span>Mini-batch {idx}: {group.join(", ")}</span> },
   ]
   const rowH = barH + barsGap
   const H = barGroups.length * rowH - barsGap
@@ -197,7 +197,7 @@ function App() {
           <Number label={"Seed"} state={[ seed, setSeed ]} />
           <Number label={"Shuffle chunk"} min={1} state={[ shuffleChunkSize, setShuffleChunkSize ]} />
           <Number label={"IO batch"} min={1} state={[ ioBatchSize, setIoBatchSize ]} />
-          <Number label={"GPU batch"} min={1} state={[ gpuBatchSize, setGpuBatchSize ]} />
+          <Number label={"Mini-batch"} min={1} state={[ miniBatchSize, setMiniBatchSize ]} />
           <input type={"button"} value={"Shuffle"} onClick={() => setRegenNonce(nonce => nonce + 1)} />
         </div>
         <div>

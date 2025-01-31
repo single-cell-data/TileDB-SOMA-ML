@@ -61,7 +61,7 @@ rst_prolog = """
 .. |shuffle_chunk_size| replace:: :attr:`shuffle_chunk_size <tiledbsoma_ml.ExperimentDataset.shuffle_chunk_size>`
 .. |return_sparse_X| replace:: :attr:`return_sparse_X <tiledbsoma_ml.ExperimentDataset.return_sparse_X>`
 .. |experiment_dataloader| replace:: :obj:`~tiledbsoma_ml.experiment_dataloader`
-.. |Batch| replace:: :class:`~tiledbsoma_ml.common.Batch`
+.. |MiniBatch| replace:: :class:`~tiledbsoma_ml.common.MiniBatch`
 .. |NDArrayJoinId| replace:: :class:`~tiledbsoma_ml.common.NDArrayJoinId`
 .. |CSR_IO_Buffer| replace:: :class:`~tiledbsoma_ml._csr.CSR_IO_Buffer`
 .. |get_distributed_world_rank| replace:: :obj:`~tiledbsoma_ml._distributed.get_distributed_world_rank`

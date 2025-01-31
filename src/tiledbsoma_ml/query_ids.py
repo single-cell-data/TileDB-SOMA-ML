@@ -134,7 +134,7 @@ class QueryIDs:
         self,
         partition: Optional[Partition] = None,
     ) -> "QueryIDs":
-        """Create a new |QueryIDs| with |QueryIDs.obs_joinids| corresponding to a given GPU/worker |Partition|.
+        """Create a new |QueryIDs| with |obs_joinids| corresponding to a given GPU/worker |Partition|.
 
         If ``None`` is provided, world size, rank, num workers, and worker ID will be inferred using helper functions
         that read env vars (see |get_distributed_rank_and_world_size|, |get_worker_id_and_num|).
@@ -188,7 +188,7 @@ class QueryIDs:
         shuffle_chunk_size: int,
         seed: Optional[int] = None,
     ) -> Chunks:
-        """Divide |QueryIDs.obs_joinids| into chunks of size ``shuffle_chunk_size``, and shuffle them.
+        """Divide |obs_joinids| into chunks of size ``shuffle_chunk_size``, and shuffle them.
 
         Used as a compromise between a full random shuffle (optimal for training performance/convergence) and a
         sequential, un-shuffled traversal (optimal for I/O efficiency).

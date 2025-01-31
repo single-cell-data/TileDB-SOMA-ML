@@ -14,7 +14,10 @@ This is not a one-for-one migration of the contributed code. Substantial changes
 ### Added
 
 #### 2025-02
-- [#26]: rm `IterDataPipe`, consolidate into `ExperimentDataset`, add `docs`/`www` builds
+- [#26]:
+  - Remove `IterDataPipe`, consolidate into `ExperimentDataset`
+  - Add `docs`/`www` builds
+  - Rename `X_name` kwarg to `layer_name`
 
 #### 2024-12
 - [#23]: Split `{test_,}pytorch.py` into a few files

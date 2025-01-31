@@ -20,7 +20,7 @@ from tiledbsoma_ml._distributed import (
     get_distributed_rank_and_world_size,
     get_worker_id_and_num,
 )
-from tiledbsoma_ml.common import MiniBatch, NDArrayJoinId
+from tiledbsoma_ml.common import MiniBatch
 from tiledbsoma_ml.io_batches import IOBatches
 from tiledbsoma_ml.mini_batches import MiniBatches
 from tiledbsoma_ml.query_ids import Partition, QueryIDs, SamplingMethod
@@ -287,22 +287,6 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     def layer_name(self) -> Optional[str]:
         return self.x_locator.layer_name
 
-    @property
-    def obs_joinids(self) -> NDArrayJoinId:
-        """Return this |ExperimentDataset|'s obs coordinates (possibly partitioned for a GPU process / |DataLoader|
-        worker).
-
-        Returns
-        -------
-        |NDArrayJoinId|
-            A NumPy array of 64-bit integers containing the observation join IDs.
-        """
-        return self.query_ids.obs_joinids
-
-    @property
-    def var_joinids(self) -> NDArrayJoinId:
-        return self.query_ids.var_joinids
-
     def split(
         self,
         *fracs: float,
@@ -429,13 +413,13 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         worker_id, n_workers = get_worker_id_and_num()
         # Every "distributed" process must receive the same number of "obs" rows; the last ≤world_size may be dropped
         # (see _create_obs_joinids_partition).
-        obs_per_proc = len(self.obs_joinids) // world_size
+        obs_per_proc = len(self.query_ids.obs_joinids) // world_size
         obs_per_worker, obs_rem = divmod(obs_per_proc, n_workers)
         # obs rows assigned to this worker process
         n_worker_obs = obs_per_worker + bool(worker_id < obs_rem)
         n_batches, rem = divmod(n_worker_obs, self.batch_size)
         # (num batches this worker will produce, num features)
-        return n_batches + bool(rem), len(self.var_joinids)
+        return n_batches + bool(rem), len(self.query_ids.var_joinids)
 
     def set_epoch(self, epoch: int) -> None:
         """Set the epoch for this Data iterator.

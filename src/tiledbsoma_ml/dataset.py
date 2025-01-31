@@ -444,7 +444,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
 
         When :attr:`~tiledbsoma_ml.ExperimentDataset.shuffle` is ``True``, this will ensure that all replicas use a
         different random ordering for each epoch. Failure to call this method before each epoch will result in the same
-        data ordering.
+        data ordering across all epochs.
 
         This call must be made before the per-epoch iterator is created.
         """

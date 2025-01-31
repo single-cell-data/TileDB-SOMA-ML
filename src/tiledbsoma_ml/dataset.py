@@ -22,7 +22,7 @@ from tiledbsoma_ml._distributed import (
 )
 from tiledbsoma_ml.common import MiniBatch
 from tiledbsoma_ml.io_batches import IOBatches
-from tiledbsoma_ml.mini_batches import MiniBatches
+from tiledbsoma_ml.mini_batch_iterable import MiniBatchIterable
 from tiledbsoma_ml.query_ids import Partition, QueryIDs, SamplingMethod
 from tiledbsoma_ml.x_locator import XLocator
 
@@ -370,14 +370,14 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 use_eager_fetch=use_eager_fetch,
             )
 
-            mini_batches = MiniBatches(
+            mini_batch_iterable = MiniBatchIterable(
                 io_batches=io_batches,
                 batch_size=batch_size,
                 use_eager_fetch=use_eager_fetch,
                 return_sparse_X=self.return_sparse_X,
             )
 
-            for X_batch, obs_batch in mini_batches:
+            for X_batch, obs_batch in mini_batch_iterable:
                 if batch_size == 1:
                     # This is a no-op for `csr_matrix`s
                     yield X_batch[0], obs_batch

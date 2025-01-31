@@ -80,8 +80,8 @@ class ExperimentDataset(IterableDataset[Batch]):  # type: ignore[misc]
            to the current process are kept.
 
     2. Shuffle-chunking (|List|\[|NDArrayJoinID|\]): if ``shuffle=True``, ``obs_joinids`` are broken into "shuffle
-       chunks". The chunks are then shuffled amongst themselves (but retain their internal order, at this stage). If
-       ``shuffle=False``, one "chunk" is emitted containing all ``obs_joinids``.
+       chunks". The chunks are then shuffled amongst themselves (but retain their chunk-internal order, at this stage).
+       If ``shuffle=False``, one "chunk" is emitted containing all ``obs_joinids``.
 
     3. IO-batching: shuffle-chunks are re-grouped into "IO batches" of size |io_batch_size|. If ``shuffle=True``, each
        IO-batch is shuffled, then the corresponding ``X`` and ``obs`` rows are fetched from the underlying

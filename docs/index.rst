@@ -74,10 +74,10 @@ SamplingMethod
    :members:
    :undoc-members:
 
-``mini_batches``
-^^^^^^^^^^^^^^^^
+``mini_batch_iterable``
+^^^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: tiledbsoma_ml.mini_batches
+.. automodule:: tiledbsoma_ml.mini_batch_iterable
    :members:
    :undoc-members:
 

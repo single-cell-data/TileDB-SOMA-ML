@@ -333,12 +333,6 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         """
         self._multiproc_check()
 
-        io_batch_size = self.io_batch_size
-        shuffle = self.shuffle
-        batch_size = self.batch_size
-        use_eager_fetch = self.use_eager_fetch
-        seed = self.seed
-
         worker_id, n_workers = get_worker_id_and_num()
         partition = Partition(
             rank=self.rank,
@@ -347,10 +341,10 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             n_workers=n_workers,
         )
         query_ids = self.query_ids.partitioned(partition)
-        if shuffle:
+        if self.shuffle:
             chunks = query_ids.shuffle_chunks(
                 shuffle_chunk_size=self.shuffle_chunk_size,
-                seed=seed,
+                seed=self.seed,
             )
         else:
             # In no-shuffle mode, all the `obs_joinids` can be treated as one "shuffle chunk",
@@ -360,29 +354,22 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         with self.x_locator.open() as (X, obs):
             io_batches = IOBatches(
                 chunks=chunks,
-                io_batch_size=io_batch_size,
+                io_batch_size=self.io_batch_size,
                 obs=obs,
                 var_joinids=query_ids.var_joinids,
                 X=X,
                 obs_column_names=self.obs_column_names,
-                seed=seed,
-                shuffle=shuffle,
-                use_eager_fetch=use_eager_fetch,
+                seed=self.seed,
+                shuffle=self.shuffle,
+                use_eager_fetch=self.use_eager_fetch,
             )
 
-            mini_batch_iterable = MiniBatchIterable(
+            yield from MiniBatchIterable(
                 io_batches=io_batches,
-                batch_size=batch_size,
-                use_eager_fetch=use_eager_fetch,
+                batch_size=self.batch_size,
+                use_eager_fetch=self.use_eager_fetch,
                 return_sparse_X=self.return_sparse_X,
             )
-
-            for X_batch, obs_batch in mini_batch_iterable:
-                if batch_size == 1:
-                    # This is a no-op for `csr_matrix`s
-                    yield X_batch[0], obs_batch
-                else:
-                    yield X_batch, obs_batch
 
         self.epoch += 1
 

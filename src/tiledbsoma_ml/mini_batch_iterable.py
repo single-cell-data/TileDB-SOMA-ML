@@ -76,8 +76,9 @@ class MiniBatchIterable(Iterable[MiniBatch]):
                     )
                     iob_idx += to_take
 
-                assert result[0].shape[0] == result[1].shape[0]
-                if result[0].shape[0] == batch_size:
+                X, obs = result
+                assert X.shape[0] == obs.shape[0]
+                if X.shape[0] == batch_size:
                     yield result
                     result = None
         else:
@@ -86,5 +87,13 @@ class MiniBatchIterable(Iterable[MiniBatch]):
                 yield result
 
     def __iter__(self) -> Iterator[MiniBatch]:
-        it = self._iter()
+        it = map(self.maybe_squeeze, self._iter())
         return EagerIterator(it) if self.use_eager_fetch else it
+
+    def maybe_squeeze(self, mini_batch: MiniBatch) -> MiniBatch:
+        X, obs = mini_batch
+        if self.batch_size == 1:
+            # This is a no-op for `csr_matrix`s
+            return X[0], obs
+        else:
+            return mini_batch

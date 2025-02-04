@@ -20,13 +20,14 @@ from tiledbsoma_ml._utils import batched
 from tiledbsoma_ml.common import NDArrayJoinId
 from tiledbsoma_ml.query_ids import Chunks
 
-logger = logging.getLogger("tiledbsoma_ml.io_batches")
+logger = logging.getLogger("tiledbsoma_ml.io_batch_iterable")
 IOBatch = Tuple[CSR_IO_Buffer, pd.DataFrame]
-"""Tuple type emitted by |IOBatches|, containing ``X`` rows (as a |CSR_IO_Buffer|) and ``obs`` rows (|pd.DataFrame|)."""
+"""Tuple type emitted by |IOBatchIterable|, containing ``X`` rows (as a |CSR_IO_Buffer|) and ``obs`` rows
+(|pd.DataFrame|)."""
 
 
 @attrs.define(frozen=True)
-class IOBatches(Iterable[IOBatch]):
+class IOBatchIterable(Iterable[IOBatch]):
     """Given a list of ``obs_joinid`` |Chunks|, re-chunk them into (optionally shuffled) |IOBatch|'s".
 
     An |IOBatch| is a tuple consisting of a batch of rows from the ``X`` |SparseNDArray|, as well as the corresponding

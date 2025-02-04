@@ -73,8 +73,8 @@ rst_prolog = """
 .. |QueryIDs.random_split| replace:: :meth:`QueryIDs.random_split <tiledbsoma_ml.query_ids.QueryIDs.random_split>`
 .. |Chunks| replace:: :class:`~tiledbsoma_ml.query_ids.Chunks`
 .. |SamplingMethod| replace:: :class:`~tiledbsoma_ml.query_ids.SamplingMethod`
-.. |IOBatch| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatch`
-.. |IOBatches| replace:: :class:`~tiledbsoma_ml.io_batches.IOBatches`
+.. |IOBatch| replace:: :class:`~tiledbsoma_ml.io_batch_iterable.IOBatch`
+.. |IOBatchIterable| replace:: :class:`~tiledbsoma_ml.io_batch_iterable.IOBatchIterable`
 .. |CSR_IO_Buffer| replace:: :class:`~tiledbsoma_ml._csr.CSR_IO_Buffer`
 .. |get_distributed_rank_and_world_size| replace:: :obj:`~tiledbsoma_ml._distributed.get_distributed_rank_and_world_size`
 .. |get_worker_id_and_num| replace:: :obj:`~tiledbsoma_ml._distributed.get_worker_id_and_num`

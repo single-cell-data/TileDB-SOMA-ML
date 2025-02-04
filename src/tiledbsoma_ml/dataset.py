@@ -21,7 +21,7 @@ from tiledbsoma_ml._distributed import (
     get_worker_id_and_num,
 )
 from tiledbsoma_ml.common import MiniBatch
-from tiledbsoma_ml.io_batches import IOBatches
+from tiledbsoma_ml.io_batch_iterable import IOBatchIterable
 from tiledbsoma_ml.mini_batch_iterable import MiniBatchIterable
 from tiledbsoma_ml.query_ids import Partition, QueryIDs, SamplingMethod
 from tiledbsoma_ml.x_locator import XLocator
@@ -352,7 +352,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             chunks = [query_ids.obs_joinids]
 
         with self.x_locator.open() as (X, obs):
-            io_batches = IOBatches(
+            io_batch_iter = IOBatchIterable(
                 chunks=chunks,
                 io_batch_size=self.io_batch_size,
                 obs=obs,
@@ -365,7 +365,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             )
 
             yield from MiniBatchIterable(
-                io_batches=io_batches,
+                io_batch_iter=io_batch_iter,
                 batch_size=self.batch_size,
                 use_eager_fetch=self.use_eager_fetch,
                 return_sparse_X=self.return_sparse_X,

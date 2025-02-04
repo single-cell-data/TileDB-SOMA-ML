@@ -67,10 +67,10 @@ SamplingMethod
 ~~~~~~~~~~~~~~
 .. autoclass:: SamplingMethod
 
-``io_batches``
-^^^^^^^^^^^^^^
+``io_batch_iterable``
+^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: tiledbsoma_ml.io_batches
+.. automodule:: tiledbsoma_ml.io_batch_iterable
    :members:
    :undoc-members:
 

@@ -14,16 +14,16 @@ from scipy import sparse
 
 from tiledbsoma_ml._eager_iter import EagerIterator
 from tiledbsoma_ml.common import MiniBatch
-from tiledbsoma_ml.io_batches import IOBatches
+from tiledbsoma_ml.io_batch_iterable import IOBatchIterable
 
 logger = logging.getLogger("tiledbsoma_ml.mini_batch_iterable")
 
 
 @attrs.define(frozen=True)
 class MiniBatchIterable(Iterable[MiniBatch]):
-    """Convert (possibly shuffled) |IOBatches| into |MiniBatch|'s suitable for passing to PyTorch."""
+    """Convert (possibly shuffled) |IOBatchIterable| into |MiniBatch|'s suitable for passing to PyTorch."""
 
-    io_batches: IOBatches
+    io_batch_iter: IOBatchIterable
     batch_size: int
     use_eager_fetch: bool = True
     return_sparse_X: bool = False
@@ -31,7 +31,7 @@ class MiniBatchIterable(Iterable[MiniBatch]):
     def _iter(self) -> Iterator[MiniBatch]:
         batch_size = self.batch_size
         result: MiniBatch | None = None
-        for X_io_batch, obs_io_batch in self.io_batches:
+        for X_io_batch, obs_io_batch in self.io_batch_iter:
             assert X_io_batch.shape[0] == obs_io_batch.shape[0]
             iob_idx = 0  # current offset into io batch
             iob_len = X_io_batch.shape[0]

@@ -20,10 +20,6 @@ from tiledbsoma import (
     ExperimentAxisQuery,
 )
 
-from tiledbsoma_ml._distributed import (
-    get_distributed_rank_and_world_size,
-    get_worker_id_and_num,
-)
 from tiledbsoma_ml._utils import batched, splits
 from tiledbsoma_ml.common import NDArrayJoinId
 
@@ -133,7 +129,7 @@ class QueryIDs:
 
     def partitioned(
         self,
-        partition: Optional[Partition] = None,
+        partition: Partition,
     ) -> "QueryIDs":
         """Create a new |QueryIDs| with |obs_joinids| corresponding to a given GPU/worker |Partition|.
 
@@ -149,20 +145,10 @@ class QueryIDs:
             )
 
         obs_joinids = self.obs_joinids
-        if partition:
-            rank = partition.rank
-            world_size = partition.world_size
-            worker_id = partition.worker_id
-            n_workers = partition.n_workers
-        else:
-            rank, world_size = get_distributed_rank_and_world_size()
-            worker_id, n_workers = get_worker_id_and_num()
-            partition = Partition(
-                rank=rank,
-                world_size=world_size,
-                worker_id=worker_id,
-                n_workers=n_workers,
-            )
+        rank = partition.rank
+        world_size = partition.world_size
+        worker_id = partition.worker_id
+        n_workers = partition.n_workers
 
         gpu_splits = splits(len(obs_joinids), world_size)
         gpu_split = obs_joinids[gpu_splits[rank] : gpu_splits[rank + 1]]

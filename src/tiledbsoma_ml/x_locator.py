@@ -30,6 +30,10 @@ class XLocator:
         measurement_name: str,
         layer_name: str,
     ) -> "XLocator":
+        """Initialize an |XLocator| object from an |Experiment|, ``measurement_name``, and ``layer_name``.
+
+        The arguments provide sufficient info to identify a specific ``X`` "layer" in the provided |Experiment|.
+        """
         return XLocator(
             uri=experiment.uri,
             measurement_name=measurement_name,

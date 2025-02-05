@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import typing
 from typing import (
     List,
     Literal,
@@ -41,7 +42,7 @@ r"""Enum arg to |QueryIDs.random_split|:
 - ``"stochastic_rounding"``: guarantee each class gets assigned at least :math:`\lfloor frac \times N \rfloor` elements.
   The remainder are then distributed so that class-size expected-values match the provided ``fracs``.
 """
-SamplingMethods = ["deterministic", "multinomial", "stochastic_rounding"]
+SamplingMethods = typing.get_args(SamplingMethod)
 """Possible values of |SamplingMethod|."""
 
 

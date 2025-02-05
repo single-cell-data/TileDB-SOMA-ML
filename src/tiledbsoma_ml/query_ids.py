@@ -180,7 +180,7 @@ class QueryIDs:
         Used as a compromise between a full random shuffle (optimal for training performance/convergence) and a
         sequential, un-shuffled traversal (optimal for I/O efficiency).
         """
-        shuffle_chunks: List[NDArrayJoinId] = [
+        shuffle_chunks: Chunks = [
             np.array(chunk) for chunk in batched(self.obs_joinids, shuffle_chunk_size)
         ]
         shuffle_rng = np.random.default_rng(seed)

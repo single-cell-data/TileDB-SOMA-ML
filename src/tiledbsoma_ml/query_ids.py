@@ -16,9 +16,7 @@ from typing import (
 
 import numpy as np
 from attrs import define, evolve
-from tiledbsoma import (
-    ExperimentAxisQuery,
-)
+from tiledbsoma import ExperimentAxisQuery
 
 from tiledbsoma_ml._utils import batched, splits
 from tiledbsoma_ml.common import NDArrayJoinId

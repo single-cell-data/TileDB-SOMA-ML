@@ -15,13 +15,13 @@ import pytest
 from _pytest.fixtures import FixtureFunction
 from pandas._testing import assert_frame_equal
 from pytest import fixture
-from scipy.sparse import coo_matrix, csr_matrix, spmatrix
+from scipy.sparse import coo_matrix, csr_matrix
 from tiledbsoma._collection import CollectionBase
 from torch.utils.data._utils.worker import WorkerInfo
 
 from tiledbsoma_ml.common import MiniBatch, NDArrayJoinId
 
-XValueGen = Callable[[range, range], spmatrix]
+XValueGen = Callable[[range, range], coo_matrix]
 ExpectedBatch = Tuple[List[List[int]], pd.DataFrame]
 
 

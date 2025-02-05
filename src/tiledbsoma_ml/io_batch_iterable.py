@@ -54,8 +54,8 @@ class IOBatchIterable(Iterable[IOBatch]):
 
     def __iter__(self) -> Iterator[IOBatch]:
         """Emit |IOBatch|'s."""
-        # Create RNG - does not need to be identical across processes, but use the seed anyway
-        # for reproducibility.
+        # Because obs/var IDs have been partitioned/split/shuffled upstream of this class, this RNG does not need to be
+        # identical across sub-processes, but seeding is supported anyway, for testing/reproducibility.
         shuffle_rng = np.random.default_rng(self.seed)
         X = self.X
         context = X.context

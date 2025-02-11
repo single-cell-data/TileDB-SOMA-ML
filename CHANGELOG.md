@@ -15,7 +15,7 @@ This is not a one-for-one migration of the contributed code. Substantial changes
 
 #### 2025-02
 - [#26]:
-  - Remove `IterDataPipe`, consolidate into `ExperimentDataset`
+  - Removed `ExperimentAxisQueryIterDataPipe`, renamed `ExperimentAxisQueryIterableDataset` to `ExperimentDataset`
   - Add `docs`/`www` builds
   - Rename `X_name` kwarg to `layer_name`
 

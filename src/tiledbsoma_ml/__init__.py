@@ -6,6 +6,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
+from .common import MiniBatch, NDArrayJoinId, NDArrayNumber, XBatch
 from .dataloader import experiment_dataloader
 from .dataset import ExperimentDataset
 
@@ -19,4 +20,9 @@ except PackageNotFoundError:
 __all__ = [
     "ExperimentDataset",
     "experiment_dataloader",
+    # Type aliases, from `.common`
+    "MiniBatch",
+    "NDArrayJoinId",
+    "NDArrayNumber",
+    "XBatch",
 ]

@@ -6,7 +6,7 @@
 import pytest
 
 
-def test_batched() -> None:
+def test_batched():
     from tiledbsoma_ml._utils import batched
 
     assert list(batched(range(6), 1)) == list((i,) for i in range(6))
@@ -24,7 +24,7 @@ def test_batched() -> None:
         list(batched([2, 3], -1))
 
 
-def test_splits() -> None:
+def test_splits():
     from tiledbsoma_ml._utils import splits
 
     assert splits(10, 1).tolist() == [0, 10]

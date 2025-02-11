@@ -40,6 +40,53 @@ Batching and Data Management
    :members:
    :undoc-members:
 
+``query_ids``
+^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.query_ids
+
+QueryIDs
+~~~~~~~~
+.. autoclass:: QueryIDs
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
+Partition
+~~~~~~~~~
+.. autoclass:: Partition
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
+Chunks
+~~~~~~
+.. autoclass:: Chunks
+
+SamplingMethod
+~~~~~~~~~~~~~~
+.. autoclass:: SamplingMethod
+
+``io_batch_iterable``
+^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.io_batch_iterable
+   :members:
+   :undoc-members:
+
+``mini_batch_iterable``
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.mini_batch_iterable
+   :members:
+   :undoc-members:
+
+``x_locator``
+^^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.x_locator
+   :members:
+
 ``_distributed``
 ^^^^^^^^^^^^^^^^
 

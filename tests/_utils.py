@@ -4,39 +4,17 @@
 # Licensed under the MIT License.
 
 from functools import partial
-from typing import Callable, Type, Union
+from typing import Callable
 
 import numpy as np
 import pyarrow as pa
+import pytest
 from scipy.sparse import coo_matrix, spmatrix
 from tiledbsoma._collection import CollectionBase
 
-from tiledbsoma_ml import (
-    ExperimentAxisQueryIterableDataset,
-    ExperimentAxisQueryIterDataPipe,
-)
-from tiledbsoma_ml.pytorch import ExperimentAxisQueryIterable
-
 assert_array_equal = partial(np.testing.assert_array_equal, strict=True)
+parametrize = pytest.mark.parametrize
 
-# These control which classes are tested (for most, but not all tests).
-# Centralized to allow easy add/delete of specific test parameters.
-IterableWrapperType = Union[
-    Type[ExperimentAxisQueryIterDataPipe],
-    Type[ExperimentAxisQueryIterableDataset],
-]
-IterableWrappers = (
-    ExperimentAxisQueryIterDataPipe,
-    ExperimentAxisQueryIterableDataset,
-)
-PipeClassType = Union[
-    Type[ExperimentAxisQueryIterable],
-    IterableWrapperType,
-]
-PipeClasses = (
-    ExperimentAxisQueryIterable,
-    *IterableWrappers,
-)
 XValueGen = Callable[[range, range], spmatrix]
 
 
@@ -52,8 +30,10 @@ def pytorch_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
 
 
 def pytorch_seq_x_value_gen(obs_range: range, var_range: range) -> spmatrix:
-    """A sparse matrix where the values of each col are the obs_range values. Useful for checking the
-    X values are being returned in the correct order."""
+    """A sparse matrix where the values of each col are the obs_range values.
+
+    Useful for checking the X values are being returned in the correct order.
+    """
     data = np.vstack([list(obs_range)] * len(var_range)).flatten()
     rows = np.vstack([list(obs_range)] * len(var_range)).flatten()
     cols = np.column_stack([list(var_range)] * len(obs_range)).flatten()

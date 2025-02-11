@@ -8,6 +8,7 @@ on:
       - README.md
       - "scripts/**"
       - "notebooks/**"
+      - "www/**"
   push:
     branches: [main]
     paths-ignore:
@@ -15,6 +16,7 @@ on:
       - README.md
       - "scripts/**"
       - "notebooks/**"
+      - "www/**"
   workflow_dispatch:
 
 jobs:

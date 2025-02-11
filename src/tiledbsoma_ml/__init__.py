@@ -2,14 +2,13 @@
 # Copyright (c) 2021-2024 TileDB, Inc.
 #
 # Licensed under the MIT License.
-
 """An API to support machine learning applications built on SOMA."""
 
 from importlib.metadata import PackageNotFoundError, version
 
+from .common import MiniBatch, NDArrayJoinId, NDArrayNumber, XBatch
 from .dataloader import experiment_dataloader
-from .datapipe import ExperimentAxisQueryIterDataPipe
-from .dataset import ExperimentAxisQueryIterableDataset
+from .dataset import ExperimentDataset
 
 try:
     __version__ = version("tiledbsoma-ml")
@@ -19,7 +18,11 @@ except PackageNotFoundError:
 
 
 __all__ = [
-    "ExperimentAxisQueryIterDataPipe",
-    "ExperimentAxisQueryIterableDataset",
+    "ExperimentDataset",
     "experiment_dataloader",
+    # Type aliases, from `.common`
+    "MiniBatch",
+    "NDArrayJoinId",
+    "NDArrayNumber",
+    "XBatch",
 ]

@@ -2,6 +2,10 @@
 # Copyright (c) 2021-2024 TileDB, Inc.
 #
 # Licensed under the MIT License.
+"""CSR sparse matrix implementation, optimized for incrementally building from COO matrices.
+
+Private module.
+"""
 
 from math import ceil
 from typing import Any, List, Sequence, Tuple, Type
@@ -12,7 +16,7 @@ import numpy.typing as npt
 from scipy import sparse
 from typing_extensions import Self
 
-from tiledbsoma_ml._utils import NDArrayNumber
+from tiledbsoma_ml.common import NDArrayNumber
 
 _CSRIdxArray = npt.NDArray[np.unsignedinteger[Any]]
 
@@ -21,11 +25,11 @@ class CSR_IO_Buffer:
     """Implement a minimal CSR matrix with specific optimizations for use in this package.
 
     Operations supported are:
-    * Incrementally build a CSR from COO, allowing overlapped I/O and CSR conversion for I/O batches,
-      and a final "merge" step which combines the result.
-    * Zero intermediate copy conversion of an arbitrary row slice to dense (i.e., mini-batch extraction).
-    * Parallel processing, where possible (construction, merge, etc.).
-    * Minimize memory use for index arrays.
+      - Incrementally build a CSR from COO, allowing overlapped I/O and CSR conversion for I/O batches, and a final
+        "merge" step which combines the result.
+      - Zero intermediate copy conversion of an arbitrary row slice to dense (i.e., mini-batch extraction).
+      - Parallel processing, where possible (construction, merge, etc.).
+      - Minimize memory use for index arrays.
 
     Overall is significantly faster, and uses less memory, than the equivalent ``scipy.sparse`` operations.
     """
@@ -45,16 +49,16 @@ class CSR_IO_Buffer:
         assert shape[1] <= np.iinfo(indices.dtype).max
         assert indptr[-1] == len(data) and indptr[0] == 0
 
-        self.shape = shape
         self.indptr = indptr
         self.indices = indices
         self.data = data
+        self.shape = shape
 
     @staticmethod
     def from_ijd(
         i: _CSRIdxArray, j: _CSRIdxArray, d: NDArrayNumber, shape: Tuple[int, int]
     ) -> "CSR_IO_Buffer":
-        """Factory from COO"""
+        """Build a |CSR_IO_Buffer| from a COO sparse matrix representation."""
         nnz = len(d)
         indptr: _CSRIdxArray = np.zeros((shape[0] + 1), dtype=smallest_uint_dtype(nnz))
         indices: _CSRIdxArray = np.empty((nnz,), dtype=smallest_uint_dtype(shape[1]))
@@ -66,23 +70,29 @@ class CSR_IO_Buffer:
     def from_pjd(
         p: _CSRIdxArray, j: _CSRIdxArray, d: NDArrayNumber, shape: Tuple[int, int]
     ) -> "CSR_IO_Buffer":
-        """Factory from CSR"""
+        """Build a |CSR_IO_Buffer| from a SCR sparse matrix representation."""
         return CSR_IO_Buffer(p, j, d, shape)
 
     @property
     def nnz(self) -> int:
+        """Number of nonzero elements."""
         return len(self.indices)
 
     @property
     def nbytes(self) -> int:
+        """Total bytes used by ``indptr``, ``indices``, and ``data`` arrays."""
         return int(self.indptr.nbytes + self.indices.nbytes + self.data.nbytes)
 
     @property
     def dtype(self) -> npt.DTypeLike:
+        """Underlying Numpy dtype."""
         return self.data.dtype
 
     def slice_tonumpy(self, row_index: slice) -> NDArrayNumber:
-        """Extract slice as a dense ndarray. Does not assume any particular ordering of minor axis."""
+        """Extract slice as a dense ndarray.
+
+        Does not assume any particular ordering of minor axis.
+        """
         assert isinstance(row_index, slice)
         assert row_index.step in (1, None)
         row_idx_start, row_idx_end, _ = row_index.indices(self.indptr.shape[0] - 1)
@@ -95,8 +105,11 @@ class CSR_IO_Buffer:
         return out
 
     def slice_toscipy(self, row_index: slice) -> sparse.csr_matrix:
-        """Extract slice as a ``sparse.csr_matrix``. Does not assume any particular ordering of
-        minor axis, but will return a canonically ordered scipy sparse object."""
+        """Extract slice as a ``sparse.csr_matrix``.
+
+        Does not assume any particular ordering of minor axis, but will return a canonically ordered scipy sparse
+        object.
+        """
         assert isinstance(row_index, slice)
         assert row_index.step in (1, None)
         row_idx_start, row_idx_end, _ = row_index.indices(self.indptr.shape[0] - 1)
@@ -112,6 +125,7 @@ class CSR_IO_Buffer:
 
     @staticmethod
     def merge(mtxs: Sequence["CSR_IO_Buffer"]) -> "CSR_IO_Buffer":
+        r"""Merge |CSR_IO_Buffer|\ s."""
         assert len(mtxs) > 0
         nnz = sum(m.nnz for m in mtxs)
         shape = mtxs[0].shape
@@ -135,12 +149,13 @@ class CSR_IO_Buffer:
         return CSR_IO_Buffer.from_pjd(indptr, indices, data, shape)
 
     def sort_indices(self) -> Self:
-        """Sort indices, IN PLACE."""
+        """Sort indices (in place)."""
         _csr_sort_indices(self.indptr, self.indices, self.data)
         return self
 
 
 def smallest_uint_dtype(max_val: int) -> Type[np.unsignedinteger[Any]]:
+    """Return the smallest unsigned-int dtype that can contain ``max_val``."""
     dts: List[Type[np.unsignedinteger[Any]]] = [np.uint16, np.uint32]
     for dt in dts:
         if max_val <= np.iinfo(dt).max:
@@ -149,7 +164,7 @@ def smallest_uint_dtype(max_val: int) -> Type[np.unsignedinteger[Any]]:
         return np.uint64
 
 
-@numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
+@numba.njit(nogil=True, parallel=True)  # type: ignore[misc]
 def _csr_merge_inner(
     As: Tuple[Tuple[_CSRIdxArray, _CSRIdxArray, NDArrayNumber], ...],  # P,J,D
     Bp: _CSRIdxArray,
@@ -166,7 +181,7 @@ def _csr_merge_inner(
         offsets[:-1] += n_elmts
 
 
-@numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
+@numba.njit(nogil=True, parallel=True)  # type: ignore[misc]
 def _csr_to_dense_inner(
     row_idx_start: int,
     n_rows: int,
@@ -180,7 +195,7 @@ def _csr_to_dense_inner(
             out[i - row_idx_start, indices[j]] = data[j]
 
 
-@numba.njit(nogil=True, parallel=True, inline="always")  # type:ignore[misc]
+@numba.njit(nogil=True, parallel=True, inline="always")  # type: ignore[misc]
 def _count_rows(n_rows: int, Ai: NDArrayNumber, Bp: NDArrayNumber) -> NDArrayNumber:
     """Private: parallel row count."""
     nnz = len(Ai)
@@ -203,7 +218,7 @@ def _count_rows(n_rows: int, Ai: NDArrayNumber, Bp: NDArrayNumber) -> NDArrayNum
     return Bp
 
 
-@numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
+@numba.njit(nogil=True, parallel=True)  # type: ignore[misc]
 def _coo_to_csr_inner(
     n_rows: int,
     Ai: _CSRIdxArray,
@@ -260,9 +275,9 @@ def _coo_to_csr_inner(
         prev_ptr = tmp
 
 
-@numba.njit(nogil=True, parallel=True)  # type:ignore[misc]
+@numba.njit(nogil=True, parallel=True)  # type: ignore[misc]
 def _csr_sort_indices(Bp: _CSRIdxArray, Bj: _CSRIdxArray, Bd: NDArrayNumber) -> None:
-    """In-place sort of minor axis indices"""
+    """In-place sort of minor axis indices."""
     n_rows = len(Bp) - 1
     for r in numba.prange(n_rows):
         row_start = Bp[r]

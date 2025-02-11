@@ -10,38 +10,34 @@ from typing import Any, TypeVar
 from torch.utils.data import DataLoader
 
 from tiledbsoma_ml._distributed import init_multiprocessing
-from tiledbsoma_ml.datapipe import ExperimentAxisQueryIterDataPipe
-from tiledbsoma_ml.dataset import ExperimentAxisQueryIterableDataset
+from tiledbsoma_ml.dataset import ExperimentDataset
 
 _T = TypeVar("_T")
 
 
 def experiment_dataloader(
-    ds: ExperimentAxisQueryIterDataPipe | ExperimentAxisQueryIterableDataset,
+    ds: ExperimentDataset,
     **dataloader_kwargs: Any,
 ) -> DataLoader:
-    """Factory method for :class:`torch.utils.data.DataLoader`. This method can be used to safely instantiate a
-    :class:`torch.utils.data.DataLoader` that works with :class:`tiledbsoma_ml.ExperimentAxisQueryIterableDataset`
-    or :class:`tiledbsoma_ml.ExperimentAxisQueryIterDataPipe`.
+    """|DataLoader| factory method for safely wrapping an |ExperimentDataset|.
 
-    Several :class:`torch.utils.data.DataLoader` constructor parameters are not applicable, or are non-performant,
-    when using loaders from this module, including ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``.
-    Specifying any of these parameters will result in an error.
+    Several |DataLoader| constructor parameters are not applicable, or are non-performant when using loaders from this
+    module, including ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``. Specifying any of these
+    parameters will result in an error.
 
-    Refer to ``https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader`` for more information on
-    :class:`torch.utils.data.DataLoader` parameters.
+    Refer to `the DataLoader docs <https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader>`_ for more
+    information on |DataLoader| parameters, and |ExperimentDataset| for info on corresponding parameters.
 
     Args:
         ds:
-            A :class:`torch.utils.data.IterableDataset` or a :class:`torchdata.datapipes.iter.IterDataPipe`. May
-            include chained data pipes.
+            A |IterableDataset|. May include chained data pipes.
         **dataloader_kwargs:
-            Additional keyword arguments to pass to the :class:`torch.utils.data.DataLoader` constructor,
+            Additional keyword arguments to pass to the |DataLoader| constructor,
             except for ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``, which are not
             supported when using data loaders in this module.
 
     Returns:
-        A :class:`torch.utils.data.DataLoader`.
+        |DataLoader|
 
     Raises:
         ValueError: if any of the ``shuffle``, ``batch_size``, ``sampler``, or ``batch_sampler`` params
@@ -76,7 +72,7 @@ def experiment_dataloader(
 
 
 def _collate_noop(datum: _T) -> _T:
-    """Noop collation for use with a dataloader instance.
+    """Noop collation used by |experiment_dataloader|.
 
     Private.
     """

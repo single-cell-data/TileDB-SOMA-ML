@@ -29,8 +29,9 @@ from torch.utils.data import IterableDataset
 
 from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._distributed import get_distributed_world_rank, get_worker_world_rank
+from tiledbsoma_ml._eager_iter import EagerIterator
 from tiledbsoma_ml._experiment_locator import ExperimentLocator
-from tiledbsoma_ml._utils import EagerIterator, batched, splits
+from tiledbsoma_ml._utils import batched, splits
 from tiledbsoma_ml.common import MiniBatch, NDArrayJoinId, NDArrayNumber
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")
@@ -516,7 +517,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 gc.collect(generation=0)
                 return m
 
-            _io_buf_iter = (
+            _io_buf_iter: Iterator[CSR_IO_Buffer] = (
                 make_io_buffer(X_tbl, obs_coords, self._var_joinids, obs_indexer)
                 for X_tbl in X_tbl_iter
             )

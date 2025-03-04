@@ -16,14 +16,14 @@ from attrs.validators import gt
 from tiledbsoma import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
+from tiledbsoma_ml._common import MiniBatch
 from tiledbsoma_ml._distributed import (
     get_distributed_rank_and_world_size,
     get_worker_id_and_num,
 )
-from tiledbsoma_ml.common import MiniBatch
-from tiledbsoma_ml.io_batch_iterable import IOBatchIterable
-from tiledbsoma_ml.mini_batch_iterable import MiniBatchIterable
-from tiledbsoma_ml.query_ids import Partition, QueryIDs, SamplingMethod
+from tiledbsoma_ml._io_batch_iterable import IOBatchIterable
+from tiledbsoma_ml._mini_batch_iterable import MiniBatchIterable
+from tiledbsoma_ml._query_ids import Partition, QueryIDs, SamplingMethod
 from tiledbsoma_ml.x_locator import XLocator
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")

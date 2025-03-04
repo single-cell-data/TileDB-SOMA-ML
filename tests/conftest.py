@@ -16,7 +16,7 @@ from tiledbsoma import Experiment, Measurement
 from tiledbsoma._collection import Collection
 
 from tiledbsoma_ml import ExperimentDataset
-from tiledbsoma_ml.common import MiniBatch
+from tiledbsoma_ml._common import MiniBatch
 from tiledbsoma_ml.dataset import (
     DEFAULT_IO_BATCH_SIZE,
     DEFAULT_OBS_COLUMN_NAMES,

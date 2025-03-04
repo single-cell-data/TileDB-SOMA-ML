@@ -15,7 +15,7 @@ from tests._utils import (
     param,
     parametrize,
 )
-from tiledbsoma_ml.common import MiniBatch
+from tiledbsoma_ml._common import MiniBatch
 from tiledbsoma_ml.dataloader import experiment_dataloader
 from tiledbsoma_ml.dataset import ExperimentDataset
 

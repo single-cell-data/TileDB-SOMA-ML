@@ -14,13 +14,13 @@ import pandas as pd
 import pyarrow as pa
 from tiledbsoma import DataFrame, IntIndexer, SparseNDArray
 
+from tiledbsoma_ml._common import NDArrayJoinId
 from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._eager_iter import EagerIterator
+from tiledbsoma_ml._query_ids import Chunks
 from tiledbsoma_ml._utils import batched
-from tiledbsoma_ml.common import NDArrayJoinId
-from tiledbsoma_ml.query_ids import Chunks
 
-logger = logging.getLogger("tiledbsoma_ml.io_batch_iterable")
+logger = logging.getLogger("tiledbsoma_ml._io_batch_iterable")
 IOBatch = Tuple[CSR_IO_Buffer, pd.DataFrame]
 """Tuple type emitted by |IOBatchIterable|, containing ``X`` rows (as a |CSR_IO_Buffer|) and ``obs`` rows
 (|pd.DataFrame|)."""

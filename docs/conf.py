@@ -63,18 +63,18 @@ rst_prolog = """
 .. |shuffle_chunk_size| replace:: :attr:`shuffle_chunk_size <tiledbsoma_ml.ExperimentDataset.shuffle_chunk_size>`
 .. |return_sparse_X| replace:: :attr:`return_sparse_X <tiledbsoma_ml.ExperimentDataset.return_sparse_X>`
 .. |experiment_dataloader| replace:: :obj:`~tiledbsoma_ml.experiment_dataloader`
-.. |MiniBatch| replace:: :class:`~tiledbsoma_ml.common.MiniBatch`
-.. |mini batches| replace:: :class:`"mini batches" <tiledbsoma_ml.common.MiniBatch>`
-.. |NDArrayJoinId| replace:: :class:`~tiledbsoma_ml.common.NDArrayJoinId`
-.. |Partition| replace:: :class:`~tiledbsoma_ml.query_ids.Partition`
-.. |QueryIDs| replace:: :class:`~tiledbsoma_ml.query_ids.QueryIDs`
-.. |obs_joinids| replace:: :obj:`~tiledbsoma_ml.query_ids.QueryIDs.obs_joinids`
-.. |QueryIDs.shuffle_chunks| replace:: :meth:`QueryIDs.shuffle_chunks <tiledbsoma_ml.query_ids.QueryIDs.shuffle_chunks>`
-.. |QueryIDs.random_split| replace:: :meth:`QueryIDs.random_split <tiledbsoma_ml.query_ids.QueryIDs.random_split>`
-.. |Chunks| replace:: :class:`~tiledbsoma_ml.query_ids.Chunks`
-.. |SamplingMethod| replace:: :class:`~tiledbsoma_ml.query_ids.SamplingMethod`
-.. |IOBatch| replace:: :class:`~tiledbsoma_ml.io_batch_iterable.IOBatch`
-.. |IOBatchIterable| replace:: :class:`~tiledbsoma_ml.io_batch_iterable.IOBatchIterable`
+.. |MiniBatch| replace:: :class:`~tiledbsoma_ml._common.MiniBatch`
+.. |mini batches| replace:: :class:`"mini batches" <tiledbsoma_ml._common.MiniBatch>`
+.. |NDArrayJoinId| replace:: :class:`~tiledbsoma_ml._common.NDArrayJoinId`
+.. |Partition| replace:: :class:`~tiledbsoma_ml._query_ids.Partition`
+.. |QueryIDs| replace:: :class:`~tiledbsoma_ml._query_ids.QueryIDs`
+.. |obs_joinids| replace:: :obj:`~tiledbsoma_ml._query_ids.QueryIDs.obs_joinids`
+.. |QueryIDs.shuffle_chunks| replace:: :meth:`QueryIDs.shuffle_chunks <tiledbsoma_ml._query_ids.QueryIDs.shuffle_chunks>`
+.. |QueryIDs.random_split| replace:: :meth:`QueryIDs.random_split <tiledbsoma_ml._query_ids.QueryIDs.random_split>`
+.. |Chunks| replace:: :class:`~tiledbsoma_ml._query_ids.Chunks`
+.. |SamplingMethod| replace:: :class:`~tiledbsoma_ml._query_ids.SamplingMethod`
+.. |IOBatch| replace:: :class:`~tiledbsoma_ml._io_batch_iterable.IOBatch`
+.. |IOBatchIterable| replace:: :class:`~tiledbsoma_ml._io_batch_iterable.IOBatchIterable`
 .. |CSR_IO_Buffer| replace:: :class:`~tiledbsoma_ml._csr.CSR_IO_Buffer`
 .. |get_distributed_rank_and_world_size| replace:: :obj:`~tiledbsoma_ml._distributed.get_distributed_rank_and_world_size`
 .. |get_worker_id_and_num| replace:: :obj:`~tiledbsoma_ml._distributed.get_worker_id_and_num`

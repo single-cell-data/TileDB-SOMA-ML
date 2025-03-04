@@ -12,11 +12,11 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 
+from tiledbsoma_ml._common import MiniBatch
 from tiledbsoma_ml._eager_iter import EagerIterator
-from tiledbsoma_ml.common import MiniBatch
-from tiledbsoma_ml.io_batch_iterable import IOBatchIterable
+from tiledbsoma_ml._io_batch_iterable import IOBatchIterable
 
-logger = logging.getLogger("tiledbsoma_ml.mini_batch_iterable")
+logger = logging.getLogger("tiledbsoma_ml._mini_batch_iterable")
 
 
 @attrs.define(frozen=True)

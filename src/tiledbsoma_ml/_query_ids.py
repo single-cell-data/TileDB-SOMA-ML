@@ -18,10 +18,10 @@ import numpy as np
 from attrs import define, evolve
 from tiledbsoma import ExperimentAxisQuery
 
+from tiledbsoma_ml._common import NDArrayJoinId
 from tiledbsoma_ml._utils import batched, splits
-from tiledbsoma_ml.common import NDArrayJoinId
 
-logger = logging.getLogger("tiledbsoma_ml.query_ids")
+logger = logging.getLogger("tiledbsoma_ml._query_ids")
 
 
 Chunks = List[NDArrayJoinId]

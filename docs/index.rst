@@ -33,17 +33,17 @@ Module Contents
 Batching and Data Management
 ----------------------------
 
-``common``
-^^^^^^^^^^
+``_common``
+^^^^^^^^^^^
 
-.. automodule:: tiledbsoma_ml.common
+.. automodule:: tiledbsoma_ml._common
    :members:
    :undoc-members:
 
-``query_ids``
-^^^^^^^^^^^^^
+``_query_ids``
+^^^^^^^^^^^^^^
 
-.. automodule:: tiledbsoma_ml.query_ids
+.. automodule:: tiledbsoma_ml._query_ids
 
 QueryIDs
 ~~~~~~~~
@@ -67,17 +67,17 @@ SamplingMethod
 ~~~~~~~~~~~~~~
 .. autoclass:: SamplingMethod
 
-``io_batch_iterable``
-^^^^^^^^^^^^^^^^^^^^^
+``_io_batch_iterable``
+^^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: tiledbsoma_ml.io_batch_iterable
+.. automodule:: tiledbsoma_ml._io_batch_iterable
    :members:
    :undoc-members:
 
-``mini_batch_iterable``
-^^^^^^^^^^^^^^^^^^^^^^^
+``_mini_batch_iterable``
+^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: tiledbsoma_ml.mini_batch_iterable
+.. automodule:: tiledbsoma_ml._mini_batch_iterable
    :members:
    :undoc-members:
 

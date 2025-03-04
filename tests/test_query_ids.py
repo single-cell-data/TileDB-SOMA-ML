@@ -11,7 +11,7 @@ from numpy.testing import assert_array_almost_equal
 from pytest import fixture, raises
 
 from tests._utils import default, param, parametrize, sweep
-from tiledbsoma_ml.query_ids import QueryIDs, SamplingMethod, SamplingMethods
+from tiledbsoma_ml._query_ids import QueryIDs, SamplingMethod, SamplingMethods
 
 seed = default(None)
 method = default("stochastic_rounding")

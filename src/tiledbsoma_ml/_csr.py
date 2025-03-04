@@ -16,7 +16,7 @@ import numpy.typing as npt
 from scipy import sparse
 from typing_extensions import Self
 
-from tiledbsoma_ml.common import NDArrayNumber
+from tiledbsoma_ml._common import NDArrayNumber
 
 _CSRIdxArray = npt.NDArray[np.unsignedinteger[Any]]
 

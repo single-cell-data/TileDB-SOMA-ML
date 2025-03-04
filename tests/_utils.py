@@ -19,7 +19,7 @@ from scipy.sparse import coo_matrix, csr_matrix
 from tiledbsoma._collection import CollectionBase
 from torch.utils.data._utils.worker import WorkerInfo
 
-from tiledbsoma_ml.common import MiniBatch, NDArrayJoinId
+from tiledbsoma_ml._common import MiniBatch, NDArrayJoinId
 
 XValueGen = Callable[[range, range], coo_matrix]
 ExpectedBatch = Tuple[List[List[int]], pd.DataFrame]

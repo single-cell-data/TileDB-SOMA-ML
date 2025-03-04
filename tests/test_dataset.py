@@ -18,7 +18,7 @@ from tests._utils import (
     sweep,
 )
 from tiledbsoma_ml import ExperimentDataset
-from tiledbsoma_ml.common import MiniBatch
+from tiledbsoma_ml._common import MiniBatch
 
 
 @fixture

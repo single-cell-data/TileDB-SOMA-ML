@@ -110,10 +110,10 @@ def sweep(**kwargs):
 def coords_to_float(r: int, c: int) -> float:
     """Encode a (row,col) position as a float.
 
-    ``r`` is placed to the left of the decimal, while ``c`` is placed to the right with its digits reversed (otherwise
-    ``(10,10)`` and ``(10,1)`` would collide).
+    ``r`` is placed to the left of the decimal, while ``c`` is placed to the right, shifted 4 places.
     """
-    return float(f"{r}.{str(c)[::-1]}")
+    assert c < 1e4
+    return r + c * 1e-4
 
 
 def pytorch_x_value_gen(obs_range: range, var_range: range) -> coo_matrix:
@@ -126,11 +126,11 @@ def pytorch_x_value_gen(obs_range: range, var_range: range) -> coo_matrix:
     assert_array_equal(
         pytorch_x_value_gen(range(5), range(5)),
         [
-            [ 0 , 0.1 , 0   , 0.3 , 0   ],
-            [ 1 , 0   , 1.2 , 0   , 1.4 ],
-            [ 0 , 2.1 , 0   , 2.3 , 0   ],
-            [ 3 , 0   , 3.2 , 0   , 3.4 ],
-            [ 0 , 4.1 , 0   , 4.3 , 0   ],
+            [ 0 , 0.0001 , 0   ,    0.0003 , 0      ],
+            [ 1 , 0      , 1.0002 , 0      , 1.0004 ],
+            [ 0 , 2.0001 , 0   ,    2.0003 , 0      ],
+            [ 3 , 0      , 3.0002 , 0      , 3.0004 ],
+            [ 0 , 4.0001 , 0   ,    4.0003 , 0      ],
         ]
     )
     ```

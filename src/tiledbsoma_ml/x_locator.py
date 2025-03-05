@@ -2,9 +2,10 @@
 # Copyright (c) 2021-2024 TileDB, Inc.
 #
 # Licensed under the MIT License.
+from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Dict, Generator, Tuple, Union
+from typing import Dict, Generator, Tuple
 
 import attrs
 from tiledbsoma import DataFrame, Experiment, SOMATileDBContext, SparseNDArray
@@ -21,7 +22,7 @@ class XLocator:
     measurement_name: str
     layer_name: str
     tiledb_timestamp_ms: int
-    tiledb_config: Dict[str, Union[str, float]]
+    tiledb_config: Dict[str, str | float]
 
     @classmethod
     def create(

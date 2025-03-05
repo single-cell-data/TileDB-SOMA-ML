@@ -1,5 +1,4 @@
-# Copyright (c) 2021-2024 The Chan Zuckerberg Initiative Foundation
-# Copyright (c) 2021-2024 TileDB, Inc.
+# Copyright (c) TileDB, Inc. and The Chan Zuckerberg Initiative Foundation
 #
 # Licensed under the MIT License.
 """CSR sparse matrix implementation, optimized for incrementally building from COO matrices.
@@ -16,7 +15,7 @@ import numpy.typing as npt
 from scipy import sparse
 from typing_extensions import Self
 
-from tiledbsoma_ml.common import NDArrayNumber
+from tiledbsoma_ml._common import NDArrayNumber
 
 _CSRIdxArray = npt.NDArray[np.unsignedinteger[Any]]
 

@@ -1,446 +1,182 @@
-# Copyright (c) 2021-2024 The Chan Zuckerberg Initiative Foundation
-# Copyright (c) 2021-2024 TileDB, Inc.
+# Copyright (c) TileDB, Inc. and The Chan Zuckerberg Initiative Foundation
 #
 # Licensed under the MIT License.
-
 from __future__ import annotations
 
-from unittest.mock import patch
+from typing import Iterator, List
 
 import numpy as np
-import pandas as pd
-import pytest
-import tiledbsoma as soma
-from pandas._testing import assert_frame_equal
-from scipy import sparse
+from pytest import fixture, raises
+from somacore import AxisQuery
 from tiledbsoma import Experiment
-from torch.utils.data._utils.worker import WorkerInfo
 
 from tests._utils import (
     assert_array_equal,
+    param,
     parametrize,
-    pytorch_seq_x_value_gen,
-    pytorch_x_value_gen,
+    sweep,
 )
 from tiledbsoma_ml import ExperimentDataset
+from tiledbsoma_ml._common import MiniBatch
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
-@parametrize("return_sparse_X", [True, False])
-@parametrize("use_eager_fetch", [True, False])
-def test_non_batched(
-    soma_experiment: Experiment,
-    return_sparse_X: bool,
-    use_eager_fetch: bool,
-) -> None:
-    """Check batches of size 1 (the default)"""
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            shuffle=False,
-            return_sparse_X=return_sparse_X,
-            use_eager_fetch=use_eager_fetch,
-        )
-        assert ds.shape == (6, 3)
-        batch_iter = iter(ds)
-        for idx, (X_batch, obs_batch) in enumerate(batch_iter):
-            expected_X = [0, 1, 0] if idx % 2 == 0 else [1, 0, 1]
-            if return_sparse_X:
-                assert isinstance(X_batch, sparse.csr_matrix)
-                # Sparse batches are always 2D
-                assert X_batch.shape == (1, 3)
-                assert X_batch.todense().tolist() == [expected_X]
-            else:
-                assert isinstance(X_batch, np.ndarray)
-                # Dense single-row batches are "squeezed" down to 1-D
-                assert X_batch.shape == (3,)
-                assert X_batch.tolist() == expected_X
-
-            assert_frame_equal(obs_batch, pd.DataFrame({"label": [str(idx)]}))
+@fixture
+def batch_iter(ds: ExperimentDataset) -> Iterator[MiniBatch]:
+    """Iterator over an |ExperimentDataset|'s |MiniBatch|'s."""
+    return iter(ds)
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
-@parametrize("return_sparse_X", [True, False])
-@parametrize("use_eager_fetch", [True, False])
-def test_uneven_soma_and_result_batches(
-    soma_experiment: Experiment,
-    return_sparse_X: bool,
-    use_eager_fetch: bool,
-) -> None:
-    """Check that batches are correctly created when they require fetching multiple chunks."""
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            shuffle=False,
-            batch_size=3,
-            io_batch_size=2,
-            return_sparse_X=return_sparse_X,
-            use_eager_fetch=use_eager_fetch,
-        )
-        assert ds.shape == (2, 3)
-        batch_iter = iter(ds)
-
-        X_batch, obs_batch = next(batch_iter)
-        assert X_batch.shape == (3, 3)
-        if return_sparse_X:
-            assert isinstance(X_batch, sparse.csr_matrix)
-            X_batch = X_batch.todense()
-        else:
-            assert isinstance(X_batch, np.ndarray)
-        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
-
-        X_batch, obs_batch = next(batch_iter)
-        assert X_batch.shape == (3, 3)
-        if return_sparse_X:
-            assert isinstance(X_batch, sparse.csr_matrix)
-            X_batch = X_batch.todense()
-        else:
-            assert isinstance(X_batch, np.ndarray)
-        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0], [1, 0, 1]]
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
+@fixture
+def batches(batch_iter: Iterator[MiniBatch]) -> List[MiniBatch]:
+    """List of an |ExperimentDataset|'s |MiniBatch|'s."""
+    return list(batch_iter)
 
 
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
-@parametrize("return_sparse_X", [True, False])
-@parametrize("use_eager_fetch", [True, False])
-def test_batching__all_batches_full_size(
-    soma_experiment: Experiment,
-    return_sparse_X: bool,
-    use_eager_fetch: bool,
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            shuffle=False,
-            return_sparse_X=return_sparse_X,
-            use_eager_fetch=use_eager_fetch,
-        )
-        batch_iter = iter(ds)
-        assert ds.shape == (2, 3)
-
-        X_batch, obs_batch = next(batch_iter)
-        if return_sparse_X:
-            assert isinstance(X_batch, sparse.csr_matrix)
-            X_batch = X_batch.todense()
-        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
-
-        X_batch, obs_batch = next(batch_iter)
-        if return_sparse_X:
-            assert isinstance(X_batch, sparse.csr_matrix)
-            X_batch = X_batch.todense()
-        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0], [1, 0, 1]]
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4", "5"]}))
-
-        with pytest.raises(StopIteration):
-            next(batch_iter)
-
-
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(range(100_000_000, 100_000_003), 3, pytorch_x_value_gen)],
-)
-@parametrize("use_eager_fetch", [True, False])
-def test_soma_joinids(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["soma_joinid", "label"],
-            batch_size=3,
-            shuffle=False,
-            use_eager_fetch=use_eager_fetch,
-        )
-        assert ds.shape == (1, 3)
-
-        soma_joinids = np.concatenate(
-            [batch[1]["soma_joinid"].to_numpy() for batch in ds]
-        )
-        assert_array_equal(soma_joinids, np.arange(100_000_000, 100_000_003))
-
-
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(5, 3, pytorch_x_value_gen)],
-)
-@parametrize("return_sparse_X", [True, False])
-@parametrize("use_eager_fetch", [True, False])
-def test_batching__partial_final_batch_size(
-    soma_experiment: Experiment,
-    return_sparse_X: bool,
-    use_eager_fetch: bool,
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            shuffle=False,
-            return_sparse_X=return_sparse_X,
-            use_eager_fetch=use_eager_fetch,
-        )
-        assert ds.shape == (2, 3)
-        batch_iter = iter(ds)
-
-        next(batch_iter)
-        X_batch, obs_batch = next(batch_iter)
-        if return_sparse_X:
-            assert isinstance(X_batch, sparse.csr_matrix)
-            X_batch = X_batch.todense()
-        assert X_batch.tolist() == [[1, 0, 1], [0, 1, 0]]
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["3", "4"]}))
-
-        with pytest.raises(StopIteration):
-            next(batch_iter)
-
-
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(3, 3, pytorch_x_value_gen)],
-)
-@parametrize("use_eager_fetch", [True, False])
-def test_batching__exactly_one_batch(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            shuffle=False,
-            use_eager_fetch=use_eager_fetch,
-        )
-        assert ds.shape == (1, 3)
-        batch_iter = iter(ds)
-        X_batch, obs_batch = next(batch_iter)
-        assert X_batch.tolist() == [[0, 1, 0], [1, 0, 1], [0, 1, 0]]
-        assert_frame_equal(obs_batch, pd.DataFrame({"label": ["0", "1", "2"]}))
-
-        with pytest.raises(StopIteration):
-            next(batch_iter)
-
-
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen)],
-)
-@parametrize("use_eager_fetch", [True, False])
-def test_batching__empty_query_result(
-    soma_experiment: Experiment,
-    use_eager_fetch: bool,
-) -> None:
-    with soma_experiment.axis_query(
-        measurement_name="RNA", obs_query=soma.AxisQuery(coords=([],))
-    ) as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            use_eager_fetch=use_eager_fetch,
-        )
-        assert ds.shape == (0, 3)
-        batch_iter = iter(ds)
-
-        with pytest.raises(StopIteration):
-            next(batch_iter)
-
-
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(10, 1, pytorch_x_value_gen)],
-)
-@parametrize("use_eager_fetch", [True, False])
-def test_batching__partial_soma_batches_are_concatenated(
-    soma_experiment: Experiment, use_eager_fetch: bool
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            obs_column_names=["label"],
-            batch_size=3,
-            # Set SOMA batch read size such that PyTorch batches will span the tail and head of two SOMA batches
-            io_batch_size=4,
-            shuffle_chunk_size=4,
-            use_eager_fetch=use_eager_fetch,
-        )
-        batches = list(ds)
-        assert [len(batch[0]) for batch in batches] == [3, 3, 3, 1]
-
-
-@parametrize(
-    "obs_range,var_range,X_value_gen",
-    [(6, 3, pytorch_x_value_gen), (7, 3, pytorch_x_value_gen)],
-)
-@parametrize(
-    "world_size,rank",
-    [(3, 0), (3, 1), (3, 2), (2, 0), (2, 1)],
-)
-def test_distributed__returns_data_partition_for_rank(
-    soma_experiment: Experiment,
-    obs_range: int,
-    world_size: int,
-    rank: int,
-) -> None:
-    """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode, using mocks
-    to avoid having to do real PyTorch distributed setup."""
-
-    with (
-        patch("torch.distributed.is_initialized") as mock_dist_is_initialized,
-        patch("torch.distributed.get_rank") as mock_dist_get_rank,
-        patch("torch.distributed.get_world_size") as mock_dist_get_world_size,
-    ):
-        mock_dist_is_initialized.return_value = True
-        mock_dist_get_rank.return_value = rank
-        mock_dist_get_world_size.return_value = world_size
-
-        with soma_experiment.axis_query(measurement_name="RNA") as query:
-            ds = ExperimentDataset(
-                query,
-                layer_name="raw",
-                obs_column_names=["soma_joinid"],
-                io_batch_size=2,
-                shuffle=False,
-            )
-            batches = list(iter(ds))
-            soma_joinids = np.concatenate(
-                [batch[1]["soma_joinid"].to_numpy() for batch in batches]
-            )
-
-            expected_joinids = np.array_split(np.arange(obs_range), world_size)[rank][
-                0 : obs_range // world_size
-            ].tolist()
-            assert sorted(soma_joinids) == expected_joinids
-
-
+# Turn off formatting from this point on; many test-case "expected" values are aligned across lines deliberately, in
+# ways black/ruff would clobber.
 # fmt: off
-@parametrize(
-    "obs_range,var_range,X_value_gen,world_size,num_workers,splits",
-    [
-        (12, 3, pytorch_x_value_gen, 3, 2, [[0, 2, 4], [4,  6,  8], [ 8, 10, 12]]),
-        (13, 3, pytorch_x_value_gen, 3, 2, [[0, 2, 4], [5,  7,  9], [ 9, 11, 13]]),
-        (15, 3, pytorch_x_value_gen, 3, 2, [[0, 4, 5], [5,  9, 10], [10, 14, 15]]),
-        (16, 3, pytorch_x_value_gen, 3, 2, [[0, 4, 5], [6, 10, 11], [11, 15, 16]]),
-        (18, 3, pytorch_x_value_gen, 3, 2, [[0, 4, 6], [6, 10, 12], [12, 16, 18]]),
-        (19, 3, pytorch_x_value_gen, 3, 2, [[0, 4, 6], [7, 11, 13], [13, 17, 19]]),
-        (20, 3, pytorch_x_value_gen, 3, 2, [[0, 4, 6], [7, 11, 13], [14, 18, 20]]),
-        (21, 3, pytorch_x_value_gen, 3, 2, [[0, 4, 7], [7, 11, 14], [14, 18, 21]]),
-        (25, 3, pytorch_x_value_gen, 3, 2, [[0, 4, 8], [9, 13, 17], [17, 21, 25]]),
-        (27, 3, pytorch_x_value_gen, 3, 2, [[0, 6, 9], [9, 15, 18], [18, 24, 27]]),
-    ],
+
+
+@sweep(io_batch_size=[ 2, 6, 10 ])
+@param(obs_range=10, shuffle=False, batch_size=3, expected=[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]])
+def test_io_batch_sizes_unshuffled(check):
+    """When ``shuffle=False``, ``io_batch_size`` doesn't affect the emitted batches."""
+    pass
+
+
+@param(obs_range=10, shuffle_chunk_size=2, io_batch_size=2, batch_size=3)
+@parametrize("seed,expected", [
+    # `shuffle_chunk_size=2, io_batch_size=2` means consecutive integers come in pairs (even across `batch_size=3` divisions)
+    #      |     |       |      |      |
+    (111, [[2, 3, 1], [0, 9, 8], [5, 4, 6], [7]]),
+    (222, [[0, 1, 7], [6, 3, 2], [8, 9, 4], [5]]),
+])
+def test_obs10_shuf2_io2_batch3(check):
+    pass
+
+
+@param(obs_range=30, shuffle_chunk_size=3, io_batch_size=6, batch_size=4)
+@parametrize("seed,expected", [
+    # Batches are size 4, but every 6 consecutive idxs are an "IO batch" consisting of two "shuffled chunks" of size 3:
+    #      |                         |                          |                          |                          |
+    (111, [[26,  4,  3, 25], [ 5, 24,  1,  2], [ 0, 29, 27, 28], [17, 22, 15, 21], [23, 16, 14, 18], [20, 12, 13, 19], [ 8,  6,  9, 11], [ 7, 10]]),
+    (222, [[25, 26, 27, 24], [28, 29, 17, 15], [21, 23, 22, 16], [ 0, 14,  1,  2], [12, 13, 10,  5], [11,  3,  9,  4], [ 7, 19,  6, 18], [20,  8]]),
+])
+def test_obs30_shuf3_io6_batch4(check):
+    pass
+
+
+@param(obs_range=10, shuffle_chunk_size=2, io_batch_size=4, batch_size=1)
+@parametrize("seed,expected", [
+    # Each IO batch (4 elems) consists of two shuffle chunks (2 elems each), shuffled:
+    #      |                  |                   |
+    (111, [[3], [2], [0], [1], [5], [4], [9], [8], [7], [6]]),
+    (444, [[7], [6], [8], [9], [1], [5], [4], [0], [3], [2]]),
+])
+def test_obs10_shuf2_io4_batch1(check):
+    pass
+
+
+@param(obs_range=3, shuffle_chunk_size=3, io_batch_size=3, batch_size=3)
+@parametrize("seed,expected", [
+    (False, [[0, 1, 2]]),
+    (  111, [[1, 0, 2]]),
+])
+def test_obs3_shuf3_io3_batch3(check):
+    """Emit exactly one batch."""
+    pass
+
+
+@param(
+    obs_range=range(100_000_000, 100_000_003),
+    shuffle=False,
+    batch_size=3,
+    expected=[[0, 1, 2]]
 )
-# fmt: on
-def test_distributed_and_multiprocessing__returns_data_partition_for_rank(
-    soma_experiment: Experiment,
-    world_size: int,
-    num_workers: int,
-    splits: list[list[int]],
-) -> None:
-    """Tests pytorch._partition_obs_joinids() behavior in a simulated PyTorch distributed processing mode and DataLoader
-    multiprocessing mode, using mocks to avoid having to do distributed pytorch setup or real DataLoader
-    multiprocessing."""
-
-    for rank in range(world_size):
-        proc_splits = splits[rank]
-        for worker_id in range(num_workers):
-            expected_joinids = list(
-                range(proc_splits[worker_id], proc_splits[worker_id + 1])
-            )
-            with (
-                patch("torch.utils.data.get_worker_info") as mock_get_worker_info,
-                patch("torch.distributed.is_initialized") as mock_dist_is_initialized,
-                patch("torch.distributed.get_rank") as mock_dist_get_rank,
-                patch("torch.distributed.get_world_size") as mock_dist_get_world_size,
-            ):
-                mock_get_worker_info.return_value = WorkerInfo(
-                    id=worker_id, num_workers=num_workers, seed=1234
-                )
-                mock_dist_is_initialized.return_value = True
-                mock_dist_get_rank.return_value = rank
-                mock_dist_get_world_size.return_value = world_size
-
-                with soma_experiment.axis_query(measurement_name="RNA") as query:
-                    ds = ExperimentDataset(
-                        query,
-                        layer_name="raw",
-                        obs_column_names=["soma_joinid"],
-                        io_batch_size=2,
-                        shuffle=False,
-                    )
-
-                    batches = list(iter(ds))
-
-                    soma_joinids = np.concatenate(
-                        [batch[1]["soma_joinid"].to_numpy() for batch in batches]
-                    ).tolist()
-
-                    assert soma_joinids == expected_joinids
+@sweep(use_eager_fetch=[True, False])
+def test_large_obs_ids(batches: List[MiniBatch], check):
+    soma_joinids = np.concatenate([obs["soma_joinid"].to_numpy() for X, obs in batches])
+    assert_array_equal(soma_joinids, np.arange(100_000_000, 100_000_003))
 
 
-@parametrize("obs_range,var_range,X_value_gen", [(16, 1, pytorch_seq_x_value_gen)])
-def test__shuffle(soma_experiment: Experiment) -> None:
+@param(obs_range=6, obs_query=AxisQuery(coords=([],)), batch_size=3)
+@sweep(use_eager_fetch=[True, False])
+def test_batching__empty_query_result(ds: ExperimentDataset, batch_iter: Iterator[MiniBatch]):
+    with raises(StopIteration):
+        next(batch_iter)
+    assert ds.shape == (0, 3)
+
+
+@param(obs_range=40, world_size=2, num_workers=2, shuffle_chunk_size=2, io_batch_size=4, batch_size=3)
+@parametrize("seed,rank,worker_id,expected", [
+    (False, 0, 0, [[ 0,  1,  2], [ 3,  4,  5], [ 6,  7,  8], [ 9]]),
+    (False, 0, 1, [[10, 11, 12], [13, 14, 15], [16, 17, 18], [19]]),
+    (False, 1, 0, [[20, 21, 22], [23, 24, 25], [26, 27, 28], [29]]),
+    (False, 1, 1, [[30, 31, 32], [33, 34, 35], [36, 37, 38], [39]]),
+    (  111, 0, 0, [[ 3,  2,  0], [ 1,  5,  4], [ 9,  8,  7], [ 6]]),
+    (  111, 0, 1, [[13, 12, 10], [11, 15, 14], [19, 18, 17], [16]]),
+    (  111, 1, 0, [[23, 22, 20], [21, 25, 24], [29, 28, 27], [26]]),
+    (  111, 1, 1, [[33, 32, 30], [31, 35, 34], [39, 38, 37], [36]]),
+])
+def test_gpu_worker_partitioning__even(check):
+    """40 rows / 2 GPUs / [2 workers per GPU] = 10 rows per worker.
+
+    Those 10 are then shuffled in chunks of 2, concatenated/shuffled/fetched in IO batches of 4, and re-batched for GPU
+    in 3's.
+
+    Note that each worker's row idxs are a constant offset of the others'; the same shuffle-seed is used on each
+    worker's row-idx range.
+    """
+    pass
+
+
+@param(obs_range=41, world_size=2, num_workers=2, shuffle_chunk_size=2, io_batch_size=4, batch_size=3)
+@parametrize("seed,rank,worker_id,expected", [
+    (False, 0, 0, [[ 0,  1,  2], [ 3,  4,  5], [ 6,  7,  8], [ 9]]),
+    (False, 0, 1, [[10, 11, 12], [13, 14, 15], [16, 17, 18], [19]]),
+    (False, 1, 0, [[21, 22, 23], [24, 25, 26], [27, 28, 29], [30]]),  # 1 element dropped before 2nd GPU's range begins
+    (False, 1, 1, [[31, 32, 33], [34, 35, 36], [37, 38, 39], [40]]),
+    (  111, 0, 0, [[ 3,  2,  0], [ 1,  5,  4], [ 9,  8,  7], [ 6]]),
+    (  111, 0, 1, [[13, 12, 10], [11, 15, 14], [19, 18, 17], [16]]),
+    (  111, 1, 0, [[24, 23, 21], [22, 26, 25], [30, 29, 28], [27]]),  # 1 element dropped before 2nd GPU's range begins
+    (  111, 1, 1, [[34, 33, 31], [32, 36, 35], [40, 39, 38], [37]]),
+])
+def test_gpu_worker_partitioning__drop1(check):
+    """Same as above, but with 41 obs_joinids, 1 gets dropped (index 20), so that each GPU is assigned 20 rows."""
+    pass
+
+
+@param(obs_range=42, world_size=2, num_workers=2, shuffle_chunk_size=2, io_batch_size=4, batch_size=3)
+@parametrize("seed,rank,worker_id,expected", [
+    (False, 0, 0, [[ 0,  1,  2], [ 3,  4,  5], [ 6,  7,  8], [ 9, 10]]),
+    (False, 0, 1, [[11, 12, 13], [14, 15, 16], [17, 18, 19], [20,   ]]),
+    (False, 1, 0, [[21, 22, 23], [24, 25, 26], [27, 28, 29], [30, 31]]),
+    (False, 1, 1, [[32, 33, 34], [35, 36, 37], [38, 39, 40], [41,   ]]),
+    (  111, 0, 0, [[ 2, 10,  3], [ 0,  4,  9], [ 8,  1,  6], [ 5,  7]]),
+    (  111, 0, 1, [[14, 13, 11], [12, 16, 15], [20, 19, 18], [17,   ]]),
+    (  111, 1, 0, [[23, 31, 24], [21, 25, 30], [29, 22, 27], [26, 28]]),
+    (  111, 1, 1, [[35, 34, 32], [33, 37, 36], [41, 40, 39], [38,   ]]),
+])
+def test_gpu_worker_partitioning__uneven_workers(check):
+    """21 rows and 2 workers for each of 2 GPUs, workers get 11 and 10 rows, resp.
+
+    Shuffled in chunks of 2, fetched in IO batches of 4, finally re-batched in 3's for GPUs.
+    """
+    pass
+
+
+@param(obs_range=6)
+def test_experiment_dataset_getitem_error(ds: ExperimentDataset):
+    with raises(NotImplementedError):
+        ds[0]
+
+
+@param(obs_range=6)
+def test_experiment_dataset_empty_cols_error(soma_experiment: Experiment):
     with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            shuffle=True,
-        )
-
-        batches = list(iter(ds))
-        assert all(X.shape == (1,) for X, _ in batches)
-        soma_joinids = [obs["soma_joinid"].iloc[0] for _, obs in batches]
-        X_values = [X[0].item() for X, _ in batches]
-
-        # same elements
-        assert set(soma_joinids) == set(range(16))
-        # not ordered! (...with a `1/16!` probability of being ordered)
-        assert soma_joinids != list(range(16))
-        # randomizes X in same order as obs
-        # note: X values were explicitly set to match obs_joinids to allow for this simple assertion
-        assert X_values == soma_joinids
-
-
-@parametrize("obs_range,var_range,X_value_gen", [(6, 3, pytorch_x_value_gen)])
-def test_experiment_axis_query_iterable_error_checks(
-    soma_experiment: Experiment,
-) -> None:
-    with soma_experiment.axis_query(measurement_name="RNA") as query:
-        ds = ExperimentDataset(
-            query,
-            layer_name="raw",
-            shuffle=True,
-        )
-        with pytest.raises(NotImplementedError):
-            ds[0]
-
-        with pytest.raises(ValueError):
+        with raises(ValueError):
             ExperimentDataset(
                 query,
                 obs_column_names=(),
                 layer_name="raw",
-                shuffle=True,
             )

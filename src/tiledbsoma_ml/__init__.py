@@ -1,12 +1,11 @@
-# Copyright (c) 2021-2024 The Chan Zuckerberg Initiative Foundation
-# Copyright (c) 2021-2024 TileDB, Inc.
+# Copyright (c) TileDB, Inc. and The Chan Zuckerberg Initiative Foundation
 #
 # Licensed under the MIT License.
 """An API to support machine learning applications built on SOMA."""
 
 from importlib.metadata import PackageNotFoundError, version
 
-from .common import MiniBatch, NDArrayJoinId, NDArrayNumber, XBatch
+from ._query_ids import SamplingMethod
 from .dataloader import experiment_dataloader
 from .dataset import ExperimentDataset
 
@@ -20,9 +19,5 @@ except PackageNotFoundError:
 __all__ = [
     "ExperimentDataset",
     "experiment_dataloader",
-    # Type aliases, from `.common`
-    "MiniBatch",
-    "NDArrayJoinId",
-    "NDArrayNumber",
-    "XBatch",
+    "SamplingMethod",
 ]

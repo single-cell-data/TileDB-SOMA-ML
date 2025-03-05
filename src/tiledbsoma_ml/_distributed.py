@@ -1,5 +1,4 @@
-# Copyright (c) 2021-2024 The Chan Zuckerberg Initiative Foundation
-# Copyright (c) 2021-2024 TileDB, Inc.
+# Copyright (c) TileDB, Inc. and The Chan Zuckerberg Initiative Foundation
 #
 # Licensed under the MIT License.
 """Utilities for multiprocess training: determine GPU "rank" / "world_size" and DataLoader worker ID / count."""
@@ -13,39 +12,39 @@ import torch
 logger = logging.getLogger("tiledbsoma_ml.pytorch")
 
 
-def get_distributed_world_rank() -> Tuple[int, int]:
-    """Return tuple containing equivalent of |torch.distributed| world size and rank."""
-    world_size, rank = 1, 0
+def get_distributed_rank_and_world_size() -> Tuple[int, int]:
+    """Return tuple containing equivalent of |torch.distributed| rank and world size."""
+    rank, world_size = 0, 1
     if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-        world_size = int(os.environ["WORLD_SIZE"])
         rank = int(os.environ["RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
     elif "LOCAL_RANK" in os.environ and "WORLD_SIZE" in os.environ:
         # Lightning doesn't use RANK! LOCAL_RANK is only for the local node. There
         # is a NODE_RANK for the node's rank, but no way to tell the local node's
         # world. So computing a global rank is impossible(?).  Using LOCAL_RANK as a
         # proxy, which works fine on a single-CPU box. TODO: could throw/error
         # if NODE_RANK != 0.
-        world_size = int(os.environ["WORLD_SIZE"])
         rank = int(os.environ["LOCAL_RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
     elif torch.distributed.is_initialized():
         world_size = torch.distributed.get_world_size()
         rank = torch.distributed.get_rank()
 
-    return world_size, rank
+    return rank, world_size
 
 
-def get_worker_world_rank() -> Tuple[int, int]:
-    """Return number of DataLoader workers and our worker ID."""
-    num_workers, worker = 1, 0
+def get_worker_id_and_num() -> Tuple[int, int]:
+    """Return |DataLoader| ID, and the total number of |DataLoader| workers."""
+    worker, num_workers = 0, 1
     if "WORKER" in os.environ and "NUM_WORKERS" in os.environ:
-        num_workers = int(os.environ["NUM_WORKERS"])
         worker = int(os.environ["WORKER"])
+        num_workers = int(os.environ["NUM_WORKERS"])
     else:
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is not None:
-            num_workers = worker_info.num_workers
             worker = worker_info.id
-    return num_workers, worker
+            num_workers = worker_info.num_workers
+    return worker, num_workers
 
 
 def init_multiprocessing() -> None:

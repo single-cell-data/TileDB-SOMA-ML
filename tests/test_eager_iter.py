@@ -1,3 +1,6 @@
+# Copyright (c) TileDB, Inc. and The Chan Zuckerberg Initiative Foundation
+#
+# Licensed under the MIT License.
 import threading
 import unittest
 from concurrent import futures

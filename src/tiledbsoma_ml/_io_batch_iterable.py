@@ -65,7 +65,7 @@ class IOBatchIterable(Iterable[IOBatch]):
             else ["soma_joinid", *self.obs_column_names]
         )
         # NOTE: `.astype("int64")` works around the `np.int64` singleton failing reference-equality after cross-process
-        # serde.
+        # SerDes.
         var_joinids = self.var_joinids.astype("int64")
         var_indexer = IntIndexer(var_joinids, context=context)
 

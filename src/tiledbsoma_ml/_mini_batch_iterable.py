@@ -6,30 +6,32 @@ from __future__ import annotations
 import logging
 from typing import Iterable, Iterator
 
-import attrs
 import numpy as np
 import pandas as pd
+from attrs import define
 from scipy import sparse
 
-from tiledbsoma_ml._common import MiniBatch
+from tiledbsoma_ml._common import MiniBatch, XBatch, XObsTensors
 from tiledbsoma_ml._eager_iter import EagerIterator
 from tiledbsoma_ml._io_batch_iterable import IOBatchIterable
+from tiledbsoma_ml.encoders import Encoder
 
 logger = logging.getLogger("tiledbsoma_ml._mini_batch_iterable")
 
 
-@attrs.define(frozen=True)
+@define(frozen=True)
 class MiniBatchIterable(Iterable[MiniBatch]):
-    """Convert (possibly shuffled) |IOBatchIterable| into |MiniBatch|'s suitable for passing to PyTorch."""
+    """From a (possibly shuffled) |IOBatchIterable|, emit |MiniBatch|'s for consumption by PyTorch."""
 
     io_batch_iter: IOBatchIterable
     batch_size: int
+    encoders: list[Encoder] | None = None
     use_eager_fetch: bool = True
     return_sparse_X: bool = False
 
-    def _iter(self) -> Iterator[MiniBatch]:
+    def mini_batches(self) -> Iterator[MiniBatch]:
         batch_size = self.batch_size
-        result: MiniBatch | None = None
+        result: tuple[XBatch, pd.DataFrame] | None = None
         for X_io_batch, obs_io_batch in self.io_batch_iter:
             assert X_io_batch.shape[0] == obs_io_batch.shape[0]
             iob_idx = 0  # current offset into io batch
@@ -77,22 +79,24 @@ class MiniBatchIterable(Iterable[MiniBatch]):
 
                 X, obs = result
                 assert X.shape[0] == obs.shape[0]
+
                 if X.shape[0] == batch_size:
-                    yield result
+                    yield MiniBatch(
+                        X=X, obs=obs, batch_size=self.batch_size, encoders=self.encoders
+                    )
                     result = None
         else:
             # yield the remnant, if any
             if result is not None:
-                yield result
+                X, obs = result
+                assert X.shape[0] == obs.shape[0]
+                yield MiniBatch(
+                    X=X, obs=obs, batch_size=self.batch_size, encoders=self.encoders
+                )
 
     def __iter__(self) -> Iterator[MiniBatch]:
-        it = map(self.maybe_squeeze, self._iter())
+        it = self.mini_batches()
         return EagerIterator(it) if self.use_eager_fetch else it
 
-    def maybe_squeeze(self, mini_batch: MiniBatch) -> MiniBatch:
-        X, obs = mini_batch
-        if self.batch_size == 1:
-            # This is a no-op for `csr_matrix`s
-            return X[0], obs
-        else:
-            return mini_batch
+    def tensors(self) -> Iterator[XObsTensors]:
+        return map(lambda b: b.tensors, iter(self))

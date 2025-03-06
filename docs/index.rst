@@ -40,6 +40,14 @@ Batching and Data Management
    :members:
    :undoc-members:
 
+``encoders``
+^^^^^^^^^^^^
+
+.. automodule:: tiledbsoma_ml.encoders
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
 ``_query_ids``
 ^^^^^^^^^^^^^^
 

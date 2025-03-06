@@ -23,7 +23,7 @@ from tiledbsoma_ml._common import MiniBatch
 @fixture
 def batch_iter(ds: ExperimentDataset) -> Iterator[MiniBatch]:
     """Iterator over an |ExperimentDataset|'s |MiniBatch|'s."""
-    return iter(ds)
+    return ds.mini_batches()
 
 
 @fixture
@@ -95,7 +95,11 @@ def test_obs3_shuf3_io3_batch3(check):
 )
 @sweep(use_eager_fetch=[True, False])
 def test_large_obs_ids(batches: List[MiniBatch], check):
-    soma_joinids = np.concatenate([obs["soma_joinid"].to_numpy() for X, obs in batches])
+    soma_joinids = np.concatenate([
+        obs["soma_joinid"].to_numpy()
+        for batch in batches
+        for _, obs in [batch.tpl]
+    ])
     assert_array_equal(soma_joinids, np.arange(100_000_000, 100_000_003))
 
 

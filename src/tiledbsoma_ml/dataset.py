@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterator, List, Optional, Sequence, Tuple
+from contextlib import contextmanager
+from typing import Iterator, Optional, Sequence
 
 import numpy as np
 import torch
@@ -15,7 +16,7 @@ from attrs.validators import gt
 from tiledbsoma import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
-from tiledbsoma_ml._common import MiniBatch
+from tiledbsoma_ml._common import MiniBatch, XObsTensors
 from tiledbsoma_ml._distributed import (
     get_distributed_rank_and_world_size,
     get_worker_id_and_num,
@@ -23,6 +24,7 @@ from tiledbsoma_ml._distributed import (
 from tiledbsoma_ml._io_batch_iterable import IOBatchIterable
 from tiledbsoma_ml._mini_batch_iterable import MiniBatchIterable
 from tiledbsoma_ml._query_ids import Partition, QueryIDs, SamplingMethod
+from tiledbsoma_ml.encoders import Encoder
 from tiledbsoma_ml.x_locator import XLocator
 
 logger = logging.getLogger("tiledbsoma_ml.dataset")
@@ -32,7 +34,7 @@ DEFAULT_SHUFFLE_CHUNK_SIZE = 64
 DEFAULT_IO_BATCH_SIZE = 2**16
 
 
-@define
+@define(init=False)
 class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     r"""An |IterableDataset| implementation that reads from an |ExperimentAxisQuery|.
 
@@ -113,9 +115,10 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     """State required to open an ``X`` |SparseNDArray| (and associated ``obs`` |DataFrame|), within an |Experiment|."""
     query_ids: QueryIDs = field()
     """``obs``/``var`` coordinates (from an |ExperimentAxisQuery|) to iterate over."""
-    obs_column_names: List[str] = field(factory=lambda: [*DEFAULT_OBS_COLUMN_NAMES])
-    """Names of ``obs`` columns to return."""
-
+    obs_column_names: list[str] = field(factory=lambda: [*DEFAULT_OBS_COLUMN_NAMES])
+    """Names of ``obs`` columns to return (derived from ``encoders``, if provided)."""
+    encoders: list[Encoder] | None = None
+    r"""|Encoder|\ s for ``obs`` columns (exclusive with ``obs_column_names``)."""
     # Configuration fields with defaults
     batch_size: int = field(default=1, validator=gt(0))
     """Number of rows of ``X`` and ``obs`` data to yield in each |MiniBatch|."""
@@ -144,7 +147,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         layer_name: str | None = None,
         x_locator: XLocator | None = None,
         query_ids: QueryIDs | None = None,
-        obs_column_names: Sequence[str] = DEFAULT_OBS_COLUMN_NAMES,
+        obs_column_names: Sequence[str] | None = None,
+        encoders: Sequence[Encoder] | None = None,
         batch_size: int = 1,
         io_batch_size: int = DEFAULT_IO_BATCH_SIZE,
         shuffle: bool = True,
@@ -242,10 +246,25 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 "Expected `{query,layer_name}` xor `{x_locator,query_ids}`"
             )
 
+        if encoders is None:
+            obs_column_names = list(
+                DEFAULT_OBS_COLUMN_NAMES
+                if obs_column_names is None
+                else obs_column_names
+            )
+        else:
+            encoders = list(encoders)
+            enc_names = [enc.name for enc in encoders]
+            if obs_column_names is None:
+                obs_column_names = enc_names
+            elif obs_column_names != enc_names:
+                raise ValueError(f"{obs_column_names=} != {encoders=}")
+
         self.__attrs_init__(
             x_locator=x_locator,
             query_ids=query_ids,
             obs_column_names=list(obs_column_names),
+            encoders=encoders,
             batch_size=batch_size,
             io_batch_size=io_batch_size,
             shuffle=shuffle,
@@ -291,7 +310,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         *fracs: float,
         seed: Optional[int] = None,
         method: SamplingMethod = "stochastic_rounding",
-    ) -> Tuple[ExperimentDataset, ...]:
+    ) -> tuple[ExperimentDataset, ...]:
         r"""Split this |ExperimentDataset| into 1 or more |ExperimentDataset|\ 's, randomly sampled according ``fracs``.
 
         - ``fracs`` must sum to $1$
@@ -321,15 +340,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 "Experiment requires an explicit `seed` when shuffle is used in a multi-process configuration."
             )
 
-    def __iter__(self) -> Iterator[MiniBatch]:
-        r"""Emit |MiniBatch|\ s (aligned ``X`` and ``obs`` rows).
-
-        Returns:
-            |Iterator|\[|MiniBatch|\]
-
-        Lifecycle:
-            experimental
-        """
+    @contextmanager
+    def mini_batch_iterable(self) -> Iterator[MiniBatchIterable]:
         self._multiproc_check()
 
         worker_id, n_workers = get_worker_id_and_num()
@@ -363,14 +375,31 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 use_eager_fetch=self.use_eager_fetch,
             )
 
-            yield from MiniBatchIterable(
+            yield MiniBatchIterable(
                 io_batch_iter=io_batch_iter,
                 batch_size=self.batch_size,
+                encoders=self.encoders,
                 use_eager_fetch=self.use_eager_fetch,
                 return_sparse_X=self.return_sparse_X,
             )
 
         self.epoch += 1
+
+    def __iter__(self) -> Iterator[XObsTensors]:
+        r"""Emit |MiniBatch|\ s (aligned ``X`` and ``obs`` rows).
+
+        Returns:
+            |Iterator|\[|MiniBatch|\]
+
+        Lifecycle:
+            experimental
+        """
+        with self.mini_batch_iterable() as mini_batch_iter:
+            yield from mini_batch_iter.tensors()
+
+    def mini_batches(self) -> Iterator[MiniBatch]:
+        with self.mini_batch_iterable() as mini_batch_iter:
+            yield from mini_batch_iter.mini_batches()
 
     def __len__(self) -> int:
         """Return the number of batches this iterable will produce. If run in the context of |torch.distributed| or as a
@@ -389,7 +418,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         return self.shape[0]
 
     @property
-    def shape(self) -> Tuple[int, int]:
+    def shape(self) -> tuple[int, int]:
         """Return the number of batches and features that will be yielded from this |Experiment|.
 
         If used in multiprocessing mode (i.e. |DataLoader| instantiated with num_workers > 0), the number of batches

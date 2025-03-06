@@ -35,6 +35,7 @@ intersphinx_mapping = {
     "tiledbsoma": ("https://tiledbsoma.readthedocs.io/en/stable/", None),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "sklearn": ("https://scikit-learn.org/stable/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
 }
 
@@ -55,6 +56,7 @@ rst_prolog = """
 .. |Iterable| replace:: :class:`~typing.Iterable`
 .. |Iterator| replace:: :class:`~typing.Iterator`
 .. |ExperimentDataset| replace:: :class:`~tiledbsoma_ml.dataset.ExperimentDataset`
+.. |Encoder| replace:: :class:`~tiledbsoma_ml.encoders.Encoder`
 .. |__iter__| replace:: :obj:`__iter__ <.__iter__>`
 .. |XLocator| replace:: :class:`~tiledbsoma_ml.x_locator.XLocator`
 .. |ExperimentDataset.__iter__| replace:: :obj:`ExperimentDataset.__iter__ <tiledbsoma_ml.ExperimentDataset.__iter__>`
@@ -88,6 +90,7 @@ rst_prolog = """
 .. |Measurement| replace:: :class:`~tiledbsoma.Measurement`
 .. |SparseNDArray| replace:: :class:`~tiledbsoma.SparseNDArray`
 .. |torch.distributed| replace:: :mod:`torch.distributed`
+.. |torch.Tensor| replace:: :class:`~torch.Tensor`
 .. |DataLoader| replace:: :class:`~torch.utils.data.DataLoader`
 .. |IterableDataset| replace:: :class:`~torch.utils.data.IterableDataset`
 .. |DistributedDataParallel| replace:: :class:`~torch.nn.parallel.DistributedDataParallel`

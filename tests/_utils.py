@@ -229,7 +229,9 @@ def assert_batches_equal(
 ):
     try:
         assert len(batches) == len(expected_batches)
-        for (a_X, a_obs), (e_X, e_obs) in zip(batches, expected_batches):
+        for (a_X, a_obs), (e_X, e_obs) in zip(
+            map(lambda b: b.tpl, batches), expected_batches
+        ):
             if return_sparse_X:
                 assert isinstance(a_X, csr_matrix)
                 a_X = a_X.toarray()
@@ -254,6 +256,7 @@ def batch_idxs_str(batches: List[MiniBatch]) -> str:
                     obs.soma_joinid.astype(str) if "soma_joinid" in obs else obs.label
                 ).tolist()
             )
-            for _, obs in batches
+            for batch in batches
+            for _, obs in [batch.tpl]
         ]
     )

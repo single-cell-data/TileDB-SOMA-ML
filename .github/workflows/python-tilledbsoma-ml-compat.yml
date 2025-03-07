@@ -9,6 +9,8 @@ on:
       - "scripts/**"
       - "notebooks/**"
       - "www/**"
+      - ".github/**"
+      - "!.github/workflows/python-tiledbsoma-ml.yml"
   push:
     branches: [main]
     paths-ignore:
@@ -17,6 +19,8 @@ on:
       - "scripts/**"
       - "notebooks/**"
       - "www/**"
+      - ".github/**"
+      - "!.github/workflows/python-tiledbsoma-ml.yml"
   workflow_dispatch:
 
 jobs:

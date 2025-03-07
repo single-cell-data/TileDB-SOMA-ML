@@ -1,35 +1,63 @@
-name: Release
+# New release tags trigger this workflow to publish to test.pypi.org.
+# If that looks good, a `workflow_dispatch` can be used to publish to pypi.org (with `prod-pypi` set to 'true').
+name: Publish to PyPI
 on:
+  push:
+    tags:
+      - 'v[0-9]+*'
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'The tag version to release (e.g., v1.0.0)'
-        required: true
-        default: 'v0.1.0alpha'
-      environment:
-        description: 'PyPI environment to release to (test or production)'
-        required: true
-        default: 'test'
-
+      prod-pypi:
+        type: boolean
+        description: 'Publish to pypi.org (default: test.pypi.org)'
+      ref:
+        description: 'Git ref to checkout, build, and publish'
+      verbose:
+        type: boolean
+        description: 'Enable debug output from pypa/gh-action-pypi-publish'
 jobs:
-  pypi-publish:
-    name: upload release to PyPI
+  build:
+    name: Build package
     runs-on: ubuntu-latest
-    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref || '' }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.11'
+      - name: Build package
+        run: |
+          pip install build
+          python -m build
+          ls -l dist
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+          retention-days: 1
+  publish:
+    name: Upload release to ${{ inputs.prod-pypi != true && 'test ' || '' }}PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://${{ inputs.prod-pypi != true && 'test.' || '' }}pypi.org/p/tiledbsoma_ml  # Displayed in GHA UI
     permissions:
       id-token: write
     steps:
-      - name: Setup Python
-        uses: actions/setup-python@v5
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Build package
-        run: pip install build && python -m build && ls -l dist
-      - name: Publish package distributions to Test PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        continue-on-error: true
+      - name: Print inputs
+        run: |
+          echo "Inputs: ${{ toJSON(github.event.inputs) }}"
+      - name: Download distributions
+        uses: actions/download-artifact@v4
         with:
-          repository_url: https://test.pypi.org/legacy/
-      - name: Publish package distributions to PyPI
-        if: "!github.event.release.prerelease"
+          name: python-package-distributions
+          path: dist/
+      - name: Publish package distributions to ${{ inputs.prod-pypi != true && 'test ' || '' }}PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: ${{ inputs.prod-pypi != true && 'https://test.pypi.org/legacy/' || '' }}
+          verbose: ${{ inputs.verbose }}

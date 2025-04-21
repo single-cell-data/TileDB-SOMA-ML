@@ -45,6 +45,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.scripts]
+tdbsml = "tiledbsoma_ml.cli.main:tdbsml"
+
 [project.urls]
 Repository = "https://github.com/TileDB-Inc/TileDB-SOMA-ML.git"
 Issues = "https://github.com/TileDB-Inc/TileDB-SOMA-ML/issues"
@@ -70,4 +73,3 @@ lint.extend-select = ["I001"]  # unsorted-imports
 fix = true
 target-version = "py311"
 line-length = 120
-exclude = ["*.ipynb"]  # Changes cell IDs unnecessarily

@@ -1,11 +1,15 @@
 import os
+import typing
+from typing import Literal
 
+import scvi.model
 import tiledbsoma as soma
 import torch
-from click import option
+from click import option, Choice
 from sklearn.preprocessing import LabelEncoder
 
 from tiledbsoma_ml import ExperimentDataset, experiment_dataloader
+from tiledbsoma_ml.model.lrls import LRLS
 from . import tdbsml
 
 import torch.distributed as dist
@@ -13,7 +17,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from ..model import LogisticRegression
 from .base import DEFAULT_CENSUS_VERSION, DEFAULT_BATCH_SIZE, DEFAULT_N_EPOCHS, DEFAULT_LEARNING_RATE, \
-    DEFAULT_IO_CHUNK_SIZE, DEFAULT_SHUFFLE_CHUNK_SIZE
+    DEFAULT_IO_BATCH_SIZE, DEFAULT_SHUFFLE_CHUNK_SIZE
 
 
 def train_epoch(model, train_dataloader, loss_fn, optimizer, device, cell_type_encoder):
@@ -85,12 +89,17 @@ def dataloader(
     return ds, dl, cell_type_encoder
 
 
+ModelType = Literal['lr', 'lrls', 'scvi']
+ModelTypes = typing.get_args(ModelType)
+
+
 @tdbsml.command
 @option('-b', '--batch-size', default=DEFAULT_BATCH_SIZE, help=f"Mini-batch size (default: {DEFAULT_BATCH_SIZE})")
-@option('-i', '--io-batch-size', default=DEFAULT_IO_CHUNK_SIZE, help=f"IO batch size (default: {DEFAULT_IO_CHUNK_SIZE})")
+@option('-i', '--io-batch-size', default=DEFAULT_IO_BATCH_SIZE, help=f"IO batch size (default: {DEFAULT_IO_BATCH_SIZE})")
 @option('-I', '--model-in-path', help='Load initial model from this path')
 @option('-l', '--learning-rate', type=float, default=DEFAULT_LEARNING_RATE, help=f"Learning rate (default: {DEFAULT_LEARNING_RATE})")
 @option('-m', '--model-path', help='Load model from this path, and save it back to this path; equivalent to setting both `-I/--model-in-path` and `-O/--model-out-path` to this value')
+@option('-M', '--model-type', type=Choice(ModelTypes), default='lr', help=f'Model-type to train: {",".join(ModelTypes)} (default: lr)')
 @option('-n', '--n-epochs', default=DEFAULT_N_EPOCHS, help=f'Train for this many epochs (default: {DEFAULT_N_EPOCHS})')
 @option('-O', '--model-out-path', help='Save trained model to this path')
 @option('-s', '--shuffle-chunk-size', default=DEFAULT_SHUFFLE_CHUNK_SIZE, help=f"Shuffle-chunk size (default: {DEFAULT_SHUFFLE_CHUNK_SIZE})")
@@ -105,6 +114,7 @@ def train(
     model_in_path: str | None,
     learning_rate: float,
     model_path: str | None,
+    model_type: ModelType,
     n_epochs: int,
     model_out_path: str | None,
     shuffle_chunk_size: int,
@@ -138,7 +148,21 @@ def train(
     # The size of the output dimension is the number of distinct cell_type values
     output_dim = len(cell_type_encoder.classes_)
 
-    model = LogisticRegression(input_dim, output_dim).to(device)
+    if model_type == 'lr':
+        model = LogisticRegression(input_dim, output_dim)
+    elif model_type == 'lrls':
+        model = LRLS(input_dim, output_dim)
+    elif model_type == 'scvi':
+        model = scvi.model.SCVI(
+            n_layers=1,
+            n_latent=50,
+            gene_likelihood="nb",
+            encode_covariates=False,
+        )
+    else:
+        raise ValueError(f"Unrecognized {model_type=}")
+
+    model = model.to(device)
     model_in_path = model_in_path or model_path
     if model_in_path is not None:
         model.load_state_dict(torch.load(model_in_path))

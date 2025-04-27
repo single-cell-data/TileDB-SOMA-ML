@@ -47,8 +47,7 @@ tdbsml train --help
 
 ### Example invocation
 ```bash
-python -m torch.distributed.launch \
-  --nproc_per_node=4 \
+torchrun \
   -m tiledbsoma_ml.cli.train \
   --tissue "lung" \
   --n-epochs 10 \

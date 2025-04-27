@@ -8,12 +8,12 @@ from .. import experiment_dataloader
 from ..model import LogisticRegression
 
 
-from .base import DEFAULT_CENSUS_VERSION, DEFAULT_BATCH_SIZE, DEFAULT_N_EPOCHS, DEFAULT_LEARNING_RATE, DEFAULT_IO_CHUNK_SIZE, DEFAULT_SHUFFLE_CHUNK_SIZE
+from .base import DEFAULT_CENSUS_VERSION, DEFAULT_BATCH_SIZE, DEFAULT_N_EPOCHS, DEFAULT_LEARNING_RATE, DEFAULT_IO_BATCH_SIZE, DEFAULT_SHUFFLE_CHUNK_SIZE
 
 
 @tdbsml.command
 @option('-b', '--batch-size', type=int, default=DEFAULT_BATCH_SIZE)
-@option('-i', '--io-batch-size', type=int, default=DEFAULT_IO_CHUNK_SIZE)
+@option('-i', '--io-batch-size', type=int, default=DEFAULT_IO_BATCH_SIZE)
 @option('-n', '--n-batches', type=int, default=1, help='Number of batches to test')
 @option('-s', '--shuffle-chunk-size', type=int, default=DEFAULT_SHUFFLE_CHUNK_SIZE)
 @option('-S', '--seed', type=int)

@@ -11,7 +11,7 @@ import torch
 from functools import lru_cache
 import numba
 from typing import Any, Sequence, Dict
-from pytorch_lightning import LightningDataModule
+from lightning import LightningDataModule
 from torch.utils.data import DataLoader
 from sklearn.preprocessing import LabelEncoder
 

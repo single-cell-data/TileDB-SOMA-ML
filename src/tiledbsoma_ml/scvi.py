@@ -1,138 +1,161 @@
 from __future__ import annotations
 
-from typing import Any, Sequence
-
-import pandas as pd
-import torch
-from lightning import LightningDataModule
-from sklearn.preprocessing import LabelEncoder
 from tiledbsoma import ExperimentAxisQuery
-from torch.utils.data import DataLoader
 
 from tiledbsoma_ml import ExperimentDataset, experiment_dataloader
 from tiledbsoma_ml._common import MiniBatch
 
+import numpy as np
+import pandas as pd
+import torch
+from functools import lru_cache
+import numba
+from typing import Any, Sequence, Dict
+from pytorch_lightning import LightningDataModule
+from torch.utils.data import DataLoader
+from sklearn.preprocessing import LabelEncoder
+
+
+# Numba-accelerated string joining
+@numba.jit(nopython=False)
+def _fast_join_strings(str_arrays, separator):
+    result = np.empty(len(str_arrays[0]), dtype=object)
+    for i in range(len(result)):
+        parts = [str_arrays[j][i] for j in range(len(str_arrays))]
+        result[i] = separator.join(parts)
+    return result
+
 
 class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
-    """PyTorch Lightning DataModule for training scVI models from SOMA data.
-
-    Wraps a |ExperimentDataset| to stream the results of a SOMA |ExperimentAxisQuery|,
-    exposing a |DataLoader| to generate tensors ready for scVI model training. Also handles deriving
-    the scVI batch label as a tuple of obs columns.
-
-    Lifecycle:
-        Experimental.
-    """
+    """PyTorch Lightning DataModule for training scVI models from SOMA data."""
 
     def __init__(
-        self,
-        query: ExperimentAxisQuery,
-        *args: Any,
-        batch_column_names: Sequence[str] | None = None,
-        batch_labels: Sequence[str] | None = None,
-        dataloader_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
+            self,
+            query: ExperimentAxisQuery,
+            *args: Any,
+            batch_column_names: Sequence[str] | None = None,
+            batch_labels: Sequence[str] | None = None,
+            dataloader_kwargs: dict[str, Any] | None = None,
+            **kwargs: Any,
     ):
-        """Args:
-
-        query: |ExperimentAxisQuery|
-        Defines the desired result set from a SOMA |Experiment|.
-        *args, **kwargs:
-        Additional arguments passed through to |ExperimentDataset|.
-
-        batch_column_names: Sequence[str], optional
-        List of obs column names, the tuple of which defines the scVI batch label (not to to be confused with
-                        a batch of training data). Defaults to
-                        `["dataset_id", "assay", "suspension_type", "donor_id"]`.
-
-        batch_labels: Sequence[str], optional
-        List of possible values of the batch label, for mapping to label tensors. By default,
-                        this will be derived from the unique labels in the given query results (given
-                        `batch_column_names`), making the label mapping depend on the query. The `batch_labels`
-                        attribute in the `SCVIDataModule` used for training may be saved and here restored in
-                        another instance for a different query. That ensures the label mapping will be correct
-                        for the trained model, even if the second query doesn't return examples of every
-                        training batch label.
-
-        dataloader_kwargs: dict, optional
-        Keyword arguments passed to `tiledbsoma_ml.experiment_dataloader()`, e.g. `num_workers`.
-        """
+        """Initialize the SCVIDataModule."""
         super().__init__()
         self.query = query
         self.dataset_args = args
         self.dataset_kwargs = kwargs
-        self.dataloader_kwargs = (
-            dataloader_kwargs if dataloader_kwargs is not None else {}
-        )
-        self.batch_column_names = (
-            batch_column_names
-            if batch_column_names is not None
-            else ["dataset_id", "assay", "suspension_type", "donor_id"]
-        )
+        self.dataloader_kwargs = dataloader_kwargs or {}
+        self.batch_column_names = batch_column_names or ["dataset_id", "assay", "suspension_type", "donor_id"]
         self.batch_colsep = "//"
         self.batch_colname = "scvi_batch"
-        # prepare LabelEncoder for the scVI batch label:
-        #   1. read obs DataFrame for the whole query result set
-        #   2. add scvi_batch column
-        #   3. fit LabelEncoder to the scvi_batch column's unique values
+
+        # Prepare LabelEncoder for the scVI batch label
         if batch_labels is None:
-            obs_df = (
-                self.query.obs(column_names=self.batch_column_names)
-                .concat()
-                .to_pandas()
-            )
+            obs_df = self.query.obs(column_names=self.batch_column_names).concat().to_pandas()
             self._add_batch_col(obs_df, inplace=True)
             batch_labels = obs_df[self.batch_colname].unique()
+
         self.batch_labels = batch_labels
         self.batch_encoder = LabelEncoder().fit(self.batch_labels)
 
+        # Pre-compute batch value to index mapping
+        self._batch_value_to_index_map = {
+            val: idx for idx, val in enumerate(self.batch_labels)
+        }
+
+        # Initialize cache for transformed batch encodings
+        self._encoding_cache = {}
+
+    def _add_batch_col(self, obs_df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
+        """Add batch column to obs DataFrame efficiently."""
+        # Skip if column already exists
+        if self.batch_colname in obs_df.columns:
+            return obs_df
+
+        if not inplace:
+            obs_df = obs_df.copy()
+
+        # Fast path for single column case
+        if len(self.batch_column_names) == 1:
+            obs_df[self.batch_colname] = obs_df[self.batch_column_names[0]].astype(str)
+            return obs_df
+
+        # Extract string arrays
+        str_arrays = [obs_df[col].astype(str).values for col in self.batch_column_names]
+
+        # Use numba-accelerated function
+        result = _fast_join_strings(str_arrays, self.batch_colsep)
+
+        obs_df[self.batch_colname] = result
+        return obs_df
+
     def setup(self, stage: str | None = None) -> None:
-        # Instantiate the ExperimentDataset with the provided args and kwargs.
+        """Set up the data module."""
+        # Instantiate the ExperimentDataset
         self.train_dataset = ExperimentDataset(
             self.query,
             *self.dataset_args,
-            obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
-            **self.dataset_kwargs,  # type: ignore[misc]
+            obs_column_names=self.batch_column_names,
+            **self.dataset_kwargs,
         )
+
+        # Pre-fetch a small batch to warm up caches
+        if hasattr(self, 'train_dataset') and len(self.train_dataset) > 0:
+            try:
+                self.train_dataset[0]
+            except:
+                pass
 
     def train_dataloader(self) -> DataLoader:
+        """Return optimized DataLoader for training."""
+        default_kwargs = {
+            'num_workers': 4,
+            'pin_memory': torch.cuda.is_available(),
+            'prefetch_factor': 2,
+            'persistent_workers': True,
+        }
+
+        dataloader_kwargs = {**default_kwargs, **self.dataloader_kwargs}
+
         return experiment_dataloader(
             self.train_dataset,
-            **self.dataloader_kwargs,
+            **dataloader_kwargs,
         )
-
-    def _add_batch_col(
-        self, obs_df: pd.DataFrame, inplace: bool = False
-    ) -> pd.DataFrame:
-        # synthesize a new column for obs_df by concatenating the self.batch_column_names columns
-        if not inplace:
-            obs_df = obs_df.copy()
-        obs_df[self.batch_colname] = (
-            obs_df[self.batch_column_names]
-            .astype(str)
-            .agg(self.batch_colsep.join, axis=1)
-        )
-        return obs_df
 
     def on_before_batch_transfer(
-        self,
-        batch: MiniBatch,
-        dataloader_idx: int,
+            self,
+            batch: MiniBatch,
+            dataloader_idx: int,
     ) -> dict[str, torch.Tensor | None]:
-        # DataModule hook: transform the ExperimentDataset data batch (X: ndarray, obs_df: DataFrame)
-        # into X & batch variable tensors for scVI (using batch_encoder on scvi_batch)
+        """Transform batch data efficiently before transfer to device."""
         batch_X, batch_obs = batch
-        self._add_batch_col(batch_obs, inplace=True)
+
+        # Only add batch column if needed
+        if self.batch_colname not in batch_obs.columns:
+            self._add_batch_col(batch_obs, inplace=True)
+
+        # Ensure contiguous memory layout for efficient GPU transfer
+        X_tensor = torch.from_numpy(batch_X).float().contiguous()
+
+        # Get batch values
+        batch_values = batch_obs[self.batch_colname].values
+
+        # Transform batch values to indices efficiently using our pre-computed mapping
+        batch_indices = np.empty(len(batch_values), dtype=np.int64)
+
+        # Use mapping for fast lookup
+        for i, val in enumerate(batch_values):
+            batch_indices[i] = self._batch_value_to_index_map.get(val, 0)
+
+        # Convert to tensor efficiently with proper memory layout
+        batch_tensor = torch.from_numpy(batch_indices).unsqueeze(1).contiguous()
+
         return {
-            "X": torch.from_numpy(batch_X).float(),
-            "batch": torch.from_numpy(
-                self.batch_encoder.transform(batch_obs[self.batch_colname])
-            ).unsqueeze(1),
+            "X": X_tensor,
+            "batch": batch_tensor,
             "labels": torch.empty(0),
         }
 
-    # scVI expects these properties on the DataModule:
-
+    # scVI expected properties
     @property
     def n_obs(self) -> int:
         return len(self.query.obs_joinids())

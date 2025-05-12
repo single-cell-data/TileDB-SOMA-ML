@@ -17,7 +17,6 @@ from sklearn.preprocessing import LabelEncoder
 
 
 # Numba-accelerated string joining
-@numba.jit(nopython=False)
 def _fast_join_strings(str_arrays, separator):
     result = np.empty(len(str_arrays[0]), dtype=object)
     for i in range(len(result)):
@@ -40,6 +39,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
     ):
         """Initialize the SCVIDataModule."""
         super().__init__()
+        self.train_dataset = None
         self.query = query
         self.dataset_args = args
         self.dataset_kwargs = kwargs
@@ -94,16 +94,16 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         self.train_dataset = ExperimentDataset(
             self.query,
             *self.dataset_args,
-            obs_column_names=self.batch_column_names,
-            **self.dataset_kwargs,
+            obs_column_names=self.batch_column_names, # type: ignore[arg-type]
+            **self.dataset_kwargs, # type: ignore[misc]
         )
 
-        # Pre-fetch a small batch to warm up caches
-        if hasattr(self, 'train_dataset') and len(self.train_dataset) > 0:
-            try:
-                self.train_dataset[0]
-            except:
-                pass
+        # # Pre-fetch a small batch to warm up caches
+        # if hasattr(self, 'train_dataset') and len(self.train_dataset) > 0:
+        #     try:
+        #         self.train_dataset[0]
+        #     except:
+        #         pass
 
     def train_dataloader(self) -> DataLoader:
         """Return optimized DataLoader for training."""

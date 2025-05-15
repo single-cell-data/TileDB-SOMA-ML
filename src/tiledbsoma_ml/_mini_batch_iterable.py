@@ -13,6 +13,7 @@ from scipy import sparse
 
 from tiledbsoma_ml._common import MiniBatch
 from tiledbsoma_ml._eager_iter import EagerIterator
+from tiledbsoma_ml._multi_prefetch_iter import MultiPrefetchIterator
 from tiledbsoma_ml._io_batch_iterable import IOBatchIterable
 
 logger = logging.getLogger("tiledbsoma_ml._mini_batch_iterable")
@@ -24,7 +25,7 @@ class MiniBatchIterable(Iterable[MiniBatch]):
 
     io_batch_iter: IOBatchIterable
     batch_size: int
-    use_eager_fetch: bool = True
+    use_eager_fetch: int = 1
     return_sparse_X: bool = False
 
     def _iter(self) -> Iterator[MiniBatch]:
@@ -87,7 +88,7 @@ class MiniBatchIterable(Iterable[MiniBatch]):
 
     def __iter__(self) -> Iterator[MiniBatch]:
         it = map(self.maybe_squeeze, self._iter())
-        return EagerIterator(it) if self.use_eager_fetch else it
+        return MultiPrefetchIterator(EagerIterator(it), prefetch=self.use_eager_fetch) if self.use_eager_fetch else it
 
     def maybe_squeeze(self, mini_batch: MiniBatch) -> MiniBatch:
         X, obs = mini_batch

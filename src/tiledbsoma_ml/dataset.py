@@ -130,7 +130,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     """Random seed used for shuffling."""
     return_sparse_X: bool = field(default=False)
     r"""When ``True``, return ``X`` data as a |csr_matrix| (by default, return |ndarray|\ s)."""
-    use_eager_fetch: bool = field(default=True)
+    use_eager_fetch: int = field(default=1)
     """Pre-fetch one "IO batch" and one "mini batch"."""
 
     # Internal state
@@ -151,7 +151,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         shuffle_chunk_size: int = DEFAULT_SHUFFLE_CHUNK_SIZE,
         seed: Optional[int] = None,
         return_sparse_X: bool = False,
-        use_eager_fetch: bool = True,
+        use_eager_fetch: int = 1,
     ):
         r"""Construct a new |ExperimentDataset|.
 

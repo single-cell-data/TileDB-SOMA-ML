@@ -16,6 +16,7 @@ from tiledbsoma import DataFrame, IntIndexer, SparseNDArray
 from tiledbsoma_ml._common import NDArrayJoinId
 from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._eager_iter import EagerIterator
+from tiledbsoma_ml._multi_prefetch_iter import MultiPrefetchIterator
 from tiledbsoma_ml._query_ids import Chunks
 from tiledbsoma_ml._utils import batched
 
@@ -41,7 +42,7 @@ class IOBatchIterable(Iterable[IOBatch]):
     obs_column_names: Sequence[str] = ("soma_joinid",)
     seed: Optional[int] = None
     shuffle: bool = True
-    use_eager_fetch: bool = True
+    use_eager_fetch: int = 1
 
     @property
     def io_batch_ids(self) -> Iterable[Tuple[int, ...]]:
@@ -114,7 +115,7 @@ class IOBatchIterable(Iterable[IOBatch]):
                 for X_tbl in X_tbl_iter
             )
             if self.use_eager_fetch:
-                _io_buf_iter = EagerIterator(_io_buf_iter, pool=X.context.threadpool)
+                _io_buf_iter = MultiPrefetchIterator(EagerIterator(_io_buf_iter, pool=X.context.threadpool), prefetch=self.use_eager_fetch, pool=X.context.threadpool)
 
             # Now that X read is potentially in progress (in eager mode), go fetch obs data
             # fmt: off

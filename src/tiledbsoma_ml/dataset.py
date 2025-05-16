@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from functools import cached_property
 import logging
 from typing import Iterator, List, Optional, Sequence, Tuple
 
@@ -321,15 +322,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 "Experiment requires an explicit `seed` when shuffle is used in a multi-process configuration."
             )
 
-    def __iter__(self) -> Iterator[MiniBatch]:
-        r"""Emit |MiniBatch|\ s (aligned ``X`` and ``obs`` rows).
-
-        Returns:
-            |Iterator|\[|MiniBatch|\]
-
-        Lifecycle:
-            experimental
-        """
+    @cached_property
+    def partitioned_query_ids(self) -> QueryIDs:
         self._multiproc_check()
 
         worker_id, n_workers = get_worker_id_and_num()
@@ -339,7 +333,11 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             worker_id=worker_id,
             n_workers=n_workers,
         )
-        query_ids = self.query_ids.partitioned(partition)
+        return self.query_ids.partitioned(partition)
+
+    @cached_property
+    def shuffle_chunks(self) -> Chunks:
+        query_ids = self.partitioned_query_ids
         if self.shuffle:
             chunks = query_ids.shuffle_chunks(
                 shuffle_chunk_size=self.shuffle_chunk_size,
@@ -349,6 +347,20 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             # In no-shuffle mode, all the `obs_joinids` can be treated as one "shuffle chunk",
             # which IO-batches will stride over.
             chunks = [query_ids.obs_joinids]
+
+        return chunks
+
+    def __iter__(self) -> Iterator[MiniBatch]:
+        r"""Emit |MiniBatch|\ s (aligned ``X`` and ``obs`` rows).
+
+        Returns:
+            |Iterator|\[|MiniBatch|\]
+
+        Lifecycle:
+            experimental
+        """
+        query_ids = self.partitioned_query_ids
+        chunks = self.shuffle_chunks
 
         with self.x_locator.open() as (X, obs):
             io_batch_iter = IOBatchIterable(

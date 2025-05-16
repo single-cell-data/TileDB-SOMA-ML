@@ -1,0 +1,4 @@
+cellxgene-census
+scikit-learn
+scikit-misc
+scvi-tools

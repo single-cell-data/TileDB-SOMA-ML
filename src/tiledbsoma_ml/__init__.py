@@ -8,6 +8,7 @@ from importlib.metadata import PackageNotFoundError, version
 from ._query_ids import SamplingMethod
 from .dataloader import experiment_dataloader
 from .dataset import ExperimentDataset
+from .scvi import SCVIDataModule
 
 try:
     __version__ = version("tiledbsoma-ml")
@@ -20,4 +21,5 @@ __all__ = [
     "ExperimentDataset",
     "experiment_dataloader",
     "SamplingMethod",
+    "SCVIDataModule",
 ]

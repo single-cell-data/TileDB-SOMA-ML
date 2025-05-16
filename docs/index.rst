@@ -30,6 +30,11 @@ Module Contents
 
 .. autofunction:: tiledbsoma_ml.experiment_dataloader
 
+``scvi``
+^^^^^^^^
+
+.. autofunction:: tiledbsoma_ml.SCVIDataModule
+
 Batching and Data Management
 ----------------------------
 

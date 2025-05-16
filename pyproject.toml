@@ -9,6 +9,7 @@ dependencies = [
     "attrs>=22.2",
     "tiledbsoma>=1.9.0",
     "torch>=2.0",
+    "lightning",
     "numpy",
     "numba",
     "pandas",

@@ -18,18 +18,41 @@ from sklearn.preprocessing import LabelEncoder
 import os
 
 
-# Numba-accelerated string joining
-# def _fast_join_strings(str_arrays, separator):
-#     result = np.empty(len(str_arrays[0]), dtype=object)
-#     for i in range(len(result)):
-#         parts = [str_arrays[j][i] for j in range(len(str_arrays))]
-#         result[i] = separator.join(parts)
-#     return result
 
-def _ultra_fast_join_strings(str_arrays, separator):
+@numba.jit(nopython=True, cache=True)
+def _ultra_fast_join_strings(str_arrays: list[np.ndarray], separator: str) -> np.ndarray:
+    """Join string arrays efficiently using numba-accelerated operations.
+    
+    Args:
+        str_arrays: List of numpy arrays containing strings to join
+        separator: String separator to use between joined elements
+        
+    Returns:
+        numpy.ndarray: Array of joined strings
+    """
+    if not str_arrays:
+        raise ValueError("str_arrays cannot be empty")
+    
+    # Check all arrays have same length using a loop (Numba-compatible)
+    length = len(str_arrays[0])
+    for arr in str_arrays:
+        if len(arr) != length:
+            raise ValueError("All arrays must have the same length")
+    
     # Convert to 2D NumPy array of str if not already
     arr = np.array(str_arrays, dtype=str)
-    return np.char.add.reduce(np.char.add(arr, separator)[:-1], axis=0)
+    
+    # Use vectorized operations for joining
+    # First add separator to all elements except last array
+    with_separator = np.char.add(arr[:-1], separator)
+    
+    # Then reduce by adding all arrays together
+    result = np.char.add.reduce(with_separator, axis=0)
+    
+    # Add the last array without separator
+    result = np.char.add(result, arr[-1])
+    
+    return result
 
 class CUDAStreamPrefetchCallback(lightning.Callback):
     def __init__(self, num_streams=3):
@@ -119,8 +142,8 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         # Extract string arrays
         str_arrays = [obs_df[col].astype(str).values for col in self.batch_column_names]
 
-        # Use numba-accelerated function
-        result = _fast_join_strings(str_arrays, self.batch_colsep)
+        # Use ultra-fast string joining function
+        result = _ultra_fast_join_strings(str_arrays, self.batch_colsep)
 
         obs_df[self.batch_colname] = result
         return obs_df

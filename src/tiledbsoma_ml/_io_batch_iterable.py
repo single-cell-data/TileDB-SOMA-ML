@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 from tiledbsoma import DataFrame, IntIndexer, SparseNDArray
+from tiledbsoma import Experiment
 
 from tiledbsoma_ml._common import NDArrayJoinId
 from tiledbsoma_ml._csr import CSR_IO_Buffer
@@ -172,7 +173,7 @@ class TrainingMetrics:
         }
 
 def _io_batch_iterable(
-    X: SOMAExperiment,
+    X: Experiment,
     batch_size: int,
     shuffle: bool,
     seed: int,
@@ -194,20 +195,25 @@ def _io_batch_iterable(
     Returns:
         An iterator that yields tuples of (data, labels) tensors.
     """
-    # Create a PyTorch dataset from the SOMAExperiment
-    dataset = SOMADataset(X, layer_name=layer_name)
+    # Get the measurement and layer from the experiment
+    measurement = X.ms[layer_name]
+    X_data = measurement.X["data"]
+    obs = X.obs
 
-    # Create a DataLoader to handle batching and shuffling
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
+    # Create an IOBatchIterable to handle the data loading
+    io_iterable = IOBatchIterable(
+        chunks=[range(len(obs))],  # Single chunk for all data
+        io_batch_size=batch_size,
+        obs=obs,
+        var_joinids=np.arange(X_data.shape[1]),
+        X=X_data,
+        seed=seed,
         shuffle=shuffle,
-        generator=torch.Generator().manual_seed(seed) if seed is not None else None,
-        **dataloader_kwargs,
+        use_eager_fetch=use_eager_fetch
     )
 
-    # Create an iterator from the DataLoader
-    _io_buf_iter = iter(dataloader)
+    # Create an iterator from the IOBatchIterable
+    _io_buf_iter = iter(io_iterable)
 
     # Use EagerIterator with optimized parameters for prefetching
     if use_eager_fetch:

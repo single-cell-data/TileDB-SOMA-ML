@@ -16,9 +16,13 @@ from tiledbsoma import DataFrame, IntIndexer, SparseNDArray
 from tiledbsoma_ml._common import NDArrayJoinId
 from tiledbsoma_ml._csr import CSR_IO_Buffer
 from tiledbsoma_ml._eager_iter import EagerIterator
-from tiledbsoma_ml._multi_prefetch_iter import MultiPrefetchIterator
 from tiledbsoma_ml._query_ids import Chunks
 from tiledbsoma_ml._utils import batched
+import os
+import psutil
+import torch
+from torch.utils.data import DataLoader
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger("tiledbsoma_ml._io_batch_iterable")
 IOBatch = Tuple[CSR_IO_Buffer, pd.DataFrame]
@@ -115,7 +119,7 @@ class IOBatchIterable(Iterable[IOBatch]):
                 for X_tbl in X_tbl_iter
             )
             if self.use_eager_fetch:
-                _io_buf_iter = MultiPrefetchIterator(EagerIterator(_io_buf_iter, pool=X.context.threadpool), prefetch=self.use_eager_fetch, pool=X.context.threadpool)
+                _io_buf_iter = EagerIterator(_io_buf_iter, pool=X.context.threadpool)
 
             # Now that X read is potentially in progress (in eager mode), go fetch obs data
             # fmt: off
@@ -139,3 +143,87 @@ class IOBatchIterable(Iterable[IOBatch]):
                 f"Retrieved SOMA IO batch, took {tm:.2f}sec, {X_io_batch.shape[0]/tm:0.1f} samples/sec"
             )
             yield X_io_batch, obs_io_batch
+
+
+class TrainingMetrics:
+    def __init__(self):
+        self.batch_times = []
+        self.data_load_times = []
+        self.gpu_memory_usage = []
+        self.cpu_memory_usage = []
+        self.losses = []
+    
+    def update(self, batch_time, data_load_time, loss):
+        self.batch_times.append(batch_time)
+        self.data_load_times.append(data_load_time)
+        self.losses.append(loss)
+        
+        if torch.cuda.is_available():
+            self.gpu_memory_usage.append(torch.cuda.memory_allocated())
+        self.cpu_memory_usage.append(psutil.Process().memory_info().rss / 1024 / 1024)  # MB
+    
+    def get_stats(self):
+        return {
+            'avg_batch_time': np.mean(self.batch_times),
+            'avg_data_load_time': np.mean(self.data_load_times),
+            'max_gpu_memory': max(self.gpu_memory_usage) / 1e9 if self.gpu_memory_usage else 0,  # GB
+            'max_cpu_memory': max(self.cpu_memory_usage),  # MB
+            'avg_loss': np.mean(self.losses)
+        }
+
+def _io_batch_iterable(
+    X: SOMAExperiment,
+    batch_size: int,
+    shuffle: bool,
+    seed: int,
+    use_eager_fetch: int,
+    layer_name: str,
+    dataloader_kwargs: dict,
+) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:
+    """Create an iterable that yields batches of data from a SOMAExperiment.
+
+    Args:
+        X: The SOMAExperiment to iterate over.
+        batch_size: The number of cells to include in each batch.
+        shuffle: Whether to shuffle the data before iterating.
+        seed: The random seed to use for shuffling.
+        use_eager_fetch: Number of batches to prefetch.
+        layer_name: The name of the layer to use.
+        dataloader_kwargs: Additional keyword arguments to pass to the DataLoader.
+
+    Returns:
+        An iterator that yields tuples of (data, labels) tensors.
+    """
+    # Create a PyTorch dataset from the SOMAExperiment
+    dataset = SOMADataset(X, layer_name=layer_name)
+
+    # Create a DataLoader to handle batching and shuffling
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        generator=torch.Generator().manual_seed(seed) if seed is not None else None,
+        **dataloader_kwargs,
+    )
+
+    # Create an iterator from the DataLoader
+    _io_buf_iter = iter(dataloader)
+
+    # Use EagerIterator with optimized parameters for prefetching
+    if use_eager_fetch:
+        # Calculate optimal prefetch size based on batch size and available memory
+        prefetch_size = min(use_eager_fetch * 2, 8)  # Cap at 8 to prevent memory issues
+        
+        # Create a dedicated thread pool for prefetching
+        prefetch_pool = ThreadPoolExecutor(
+            max_workers=min(prefetch_size, os.cpu_count() or 1),
+            thread_name_prefix="eager_fetch"
+        )
+        
+        _io_buf_iter = EagerIterator(
+            _io_buf_iter,
+            pool=prefetch_pool,
+            prefetch=prefetch_size
+        )
+
+    return _io_buf_iter

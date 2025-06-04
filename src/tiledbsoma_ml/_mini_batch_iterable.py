@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import logging
 from typing import Iterable, Iterator
+import os
+from concurrent.futures import ThreadPoolExecutor
 
 import attrs
 import numpy as np
@@ -13,7 +15,6 @@ from scipy import sparse
 
 from tiledbsoma_ml._common import MiniBatch
 from tiledbsoma_ml._eager_iter import EagerIterator
-from tiledbsoma_ml._multi_prefetch_iter import MultiPrefetchIterator
 from tiledbsoma_ml._io_batch_iterable import IOBatchIterable
 
 logger = logging.getLogger("tiledbsoma_ml._mini_batch_iterable")
@@ -88,7 +89,22 @@ class MiniBatchIterable(Iterable[MiniBatch]):
 
     def __iter__(self) -> Iterator[MiniBatch]:
         it = map(self.maybe_squeeze, self._iter())
-        return MultiPrefetchIterator(EagerIterator(it), prefetch=self.use_eager_fetch) if self.use_eager_fetch else it
+        if self.use_eager_fetch:
+            # Calculate optimal prefetch size based on batch size and available memory
+            prefetch_size = min(self.use_eager_fetch * 2, 8)  # Cap at 8 to prevent memory issues
+            
+            # Create a dedicated thread pool for prefetching
+            prefetch_pool = ThreadPoolExecutor(
+                max_workers=min(prefetch_size, os.cpu_count() or 1),
+                thread_name_prefix="eager_fetch"
+            )
+            
+            return EagerIterator(
+                it,
+                pool=prefetch_pool,
+                prefetch=prefetch_size
+            )
+        return it
 
     def maybe_squeeze(self, mini_batch: MiniBatch) -> MiniBatch:
         X, obs = mini_batch

@@ -92,7 +92,7 @@ def ds(
     io_batch_size: int,
     batch_size: int,
     return_sparse_X: bool,
-    use_eager_fetch: bool,
+    use_eager_fetch: int,
     rank: int,
     world_size: int,
     worker_id: int,

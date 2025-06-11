@@ -11,7 +11,7 @@ import time
 from tiledbsoma import Experiment, AxisQuery
 from tiledbsoma_ml import ExperimentDataset, optimized_experiment_dataloader
 import cellxgene_census
-from cellxgene_census.utils import highly_variable_genes
+from cellxgene_census.experimental.pp import highly_variable_genes
 import tiledbsoma as soma
 
 

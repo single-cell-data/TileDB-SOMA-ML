@@ -388,8 +388,6 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 seed=self.seed,
                 shuffle=self.shuffle,
                 use_eager_fetch=self.use_eager_fetch,
-                max_concurrent_requests=min(4, max(1, self.io_batch_size // 16384)),
-                prefetch_queue_size=self.prefetch_factor,
             )
 
             yield from MiniBatchIterable(

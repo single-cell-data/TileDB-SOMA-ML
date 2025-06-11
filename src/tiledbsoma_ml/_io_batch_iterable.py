@@ -5,10 +5,7 @@
 import gc
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Iterable, Iterator, Optional, Sequence, Tuple, List
-from queue import Queue
-import threading
+from typing import Iterable, Iterator, Optional, Sequence, Tuple
 
 import attrs
 import numpy as np
@@ -45,9 +42,6 @@ class IOBatchIterable(Iterable[IOBatch]):
     seed: Optional[int] = None
     shuffle: bool = True
     use_eager_fetch: bool = True
-    # New optimization parameters
-    max_concurrent_requests: int = 4
-    prefetch_queue_size: int = 2
 
     @property
     def io_batch_ids(self) -> Iterable[Tuple[int, ...]]:
@@ -63,6 +57,22 @@ class IOBatchIterable(Iterable[IOBatch]):
         shuffle_rng: np.random.Generator
     ) -> Iterator[IOBatch]:
         """Fetch multiple batches concurrently to improve S3 throughput."""
+        # For TileDB-SOMA thread safety, we need to open separate contexts per thread
+        # Fall back to sequential processing to avoid context issues
+        logger.debug("Using sequential batch processing for TileDB-SOMA thread safety")
+        for obs_coords in obs_coords_list:
+            yield self._fetch_single_batch_safe(obs_coords, shuffle_rng)
+
+    def _fetch_single_batch_safe(self, obs_coords: Tuple[int, ...], shuffle_rng: np.random.Generator) -> IOBatch:
+        """Fetch a single batch safely with proper context management."""
+        st_time = time.perf_counter()
+        
+        obs_shuffled_coords = (
+            np.array(obs_coords)
+            if not self.shuffle
+            else shuffle_rng.permuted(obs_coords)
+        )
+        
         X = self.X
         context = X.context
         obs_column_names = (
@@ -71,68 +81,31 @@ class IOBatchIterable(Iterable[IOBatch]):
             else ["soma_joinid", *self.obs_column_names]
         )
         var_joinids = self.var_joinids.astype("int64")
+        
+        # Create indexers within the same context
+        obs_indexer = IntIndexer(obs_shuffled_coords, context=context)
         var_indexer = IntIndexer(var_joinids, context=context)
+        
+        logger.debug(f"Retrieving next SOMA IO batch of length {len(obs_coords)}...")
 
-        def fetch_single_batch(obs_coords: Tuple[int, ...]) -> IOBatch:
-            """Fetch a single batch - optimized for concurrent execution."""
-            st_time = time.perf_counter()
-            obs_shuffled_coords = (
-                np.array(obs_coords)
-                if not self.shuffle
-                else shuffle_rng.permuted(obs_coords)
-            )
-            obs_indexer = IntIndexer(obs_shuffled_coords, context=context)
-            
-            # Create futures for X and obs data fetching
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                # Start X data fetch
-                x_future = executor.submit(self._fetch_x_data, obs_coords, obs_indexer, var_indexer)
-                # Start obs data fetch
-                obs_future = executor.submit(self._fetch_obs_data, obs_coords, obs_shuffled_coords, obs_column_names)
-                
-                # Wait for both to complete
-                X_io_batch = x_future.result()
-                obs_io_batch = obs_future.result()
+        # Fetch X data with optimized memory management
+        X_io_batch = self._fetch_x_data_safe(obs_coords, obs_indexer, var_indexer)
+        
+        # Fetch obs data
+        obs_io_batch = self._fetch_obs_data(obs_coords, obs_shuffled_coords, obs_column_names)
 
-            # Cleanup
-            del obs_indexer, obs_coords, obs_shuffled_coords
-            gc.collect(generation=0)  # Quick generation-0 collection
+        # Cleanup
+        del obs_indexer, obs_coords, obs_shuffled_coords
+        gc.collect(generation=0)
 
-            tm = time.perf_counter() - st_time
-            logger.debug(
-                f"Retrieved SOMA IO batch, took {tm:.2f}sec, {X_io_batch.shape[0]/tm:0.1f} samples/sec"
-            )
-            return X_io_batch, obs_io_batch
+        tm = time.perf_counter() - st_time
+        logger.debug(
+            f"Retrieved SOMA IO batch, took {tm:.2f}sec, {X_io_batch.shape[0]/tm:0.1f} samples/sec"
+        )
+        return X_io_batch, obs_io_batch
 
-        # Use ThreadPoolExecutor for concurrent batch fetching
-        with ThreadPoolExecutor(max_workers=self.max_concurrent_requests) as executor:
-            # Submit all batch fetch jobs
-            future_to_coords = {
-                executor.submit(fetch_single_batch, obs_coords): obs_coords 
-                for obs_coords in obs_coords_list
-            }
-            
-            # Yield results as they complete (maintaining order if needed)
-            if self.shuffle:
-                # If shuffling, order doesn't matter - yield as completed
-                for future in as_completed(future_to_coords):
-                    try:
-                        yield future.result()
-                    except Exception as e:
-                        logger.error(f"Error fetching batch: {e}")
-                        raise
-            else:
-                # If not shuffling, maintain order
-                futures_list = list(future_to_coords.keys())
-                for future in futures_list:
-                    try:
-                        yield future.result()
-                    except Exception as e:
-                        logger.error(f"Error fetching batch: {e}")
-                        raise
-
-    def _fetch_x_data(self, obs_coords: Tuple[int, ...], obs_indexer: IntIndexer, var_indexer: IntIndexer) -> CSR_IO_Buffer:
-        """Optimized X data fetching with memory management."""
+    def _fetch_x_data_safe(self, obs_coords: Tuple[int, ...], obs_indexer: IntIndexer, var_indexer: IntIndexer) -> CSR_IO_Buffer:
+        """Safely fetch X data with proper context management."""
         X_tbl_iter: Iterator[pa.Table] = self.X.read(
             coords=(obs_coords, self.var_joinids)
         ).tables()
@@ -190,54 +163,14 @@ class IOBatchIterable(Iterable[IOBatch]):
         )
 
     def __iter__(self) -> Iterator[IOBatch]:
-        """Emit |IOBatch|'s with optimized concurrent fetching."""
+        """Emit |IOBatch|'s with optimized sequential fetching for TileDB-SOMA thread safety."""
         # Because obs/var IDs have been partitioned/split/shuffled upstream of this class, this RNG does not need to be
         # identical across sub-processes, but seeding is supported anyway, for testing/reproducibility.
         shuffle_rng = np.random.default_rng(self.seed)
 
-        # Convert to list for concurrent processing
-        batch_coords_list = list(self.io_batch_ids)
+        # Use optimized sequential processing for TileDB-SOMA thread safety
+        # TileDB-SOMA objects are not thread-safe, so we process batches sequentially
+        # but with other optimizations like memory pooling and efficient CSR operations
         
-        if len(batch_coords_list) <= 1:
-            # Fall back to original implementation for single batch
-            yield from self._fetch_single_batch_original(shuffle_rng)
-        else:
-            # Use concurrent fetching for multiple batches
-            # Process in chunks to avoid overwhelming the system
-            chunk_size = max(1, min(self.max_concurrent_requests, len(batch_coords_list)))
-            for i in range(0, len(batch_coords_list), chunk_size):
-                chunk = batch_coords_list[i:i + chunk_size]
-                yield from self._fetch_batch_data_concurrent(chunk, shuffle_rng)
-
-    def _fetch_single_batch_original(self, shuffle_rng: np.random.Generator) -> Iterator[IOBatch]:
-        """Original single-batch implementation for fallback."""
-        X = self.X
-        context = X.context
-        obs_column_names = (
-            list(self.obs_column_names)
-            if "soma_joinid" in self.obs_column_names
-            else ["soma_joinid", *self.obs_column_names]
-        )
-        var_joinids = self.var_joinids.astype("int64")
-        var_indexer = IntIndexer(var_joinids, context=context)
-
         for obs_coords in self.io_batch_ids:
-            st_time = time.perf_counter()
-            obs_shuffled_coords = (
-                np.array(obs_coords)
-                if not self.shuffle
-                else shuffle_rng.permuted(obs_coords)
-            )
-            obs_indexer = IntIndexer(obs_shuffled_coords, context=context)
-
-            X_io_batch = self._fetch_x_data(obs_coords, obs_indexer, var_indexer)
-            obs_io_batch = self._fetch_obs_data(obs_coords, obs_shuffled_coords, obs_column_names)
-
-            del obs_indexer, obs_coords, obs_shuffled_coords
-            gc.collect()
-
-            tm = time.perf_counter() - st_time
-            logger.debug(
-                f"Retrieved SOMA IO batch, took {tm:.2f}sec, {X_io_batch.shape[0]/tm:0.1f} samples/sec"
-            )
-            yield X_io_batch, obs_io_batch
+            yield self._fetch_single_batch_safe(obs_coords, shuffle_rng)

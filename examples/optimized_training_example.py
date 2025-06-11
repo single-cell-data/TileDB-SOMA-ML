@@ -15,57 +15,47 @@ from cellxgene_census.experimental.pp import highly_variable_genes
 import tiledbsoma as soma
 
 
-def setup_optimized_dataset(measurement_name: str = "RNA") -> ExperimentDataset:
+def setup_optimized_dataset(experiment_path: str, measurement_name: str = "RNA") -> ExperimentDataset:
     """Create an optimized ExperimentDataset for high-performance training."""
     
-    census = cellxgene_census.open_soma(census_version="2025-01-30")
-    experiment_name = "mus_musculus"
-    obs_value_filter = 'is_primary_data == True and tissue_general in ["spleen", "kidney"] and nnz > 1000'
-    top_n_hvg = 8000
-    hvg_batch = ["assay", "suspension_type"]
-
-    hvgs_df = highly_variable_genes(
-        census["census_data"][experiment_name].axis_query(
-            measurement_name="RNA", obs_query=soma.AxisQuery(value_filter=obs_value_filter)
-        ),
-        n_top_genes=top_n_hvg,
-        batch_key=hvg_batch,
-    )
-    hv = hvgs_df.highly_variable
-    hv_idx = hv[hv].index
-
-    hvg_query = census["census_data"][experiment_name].axis_query(
-        measurement_name="RNA",
-        obs_query=soma.AxisQuery(value_filter=obs_value_filter),
-        var_query=soma.AxisQuery(coords=(list(hv_idx),)),
-    )
-
-    # Open experiment and create query
-    query = census["census_data"][experiment_name].axis_query(
-        measurement_name=measurement_name,
-        obs_query=AxisQuery(value_filter="is_primary_data == True")
-    )
+    # Note: The experiment context should be managed by the caller
+    # This function assumes the experiment_path is accessible
     
-    # Create dataset with performance optimizations
-    dataset = ExperimentDataset(
-        query=query,
-        layer_name="raw",
-        batch_size=512,                    # Larger batches for GPU efficiency
-        io_batch_size=131072,             # Large IO batches for S3 performance
-        shuffle=True,
-        shuffle_chunk_size=128,           # Balance randomness vs. locality
-        
-        # GPU optimizations
-        pin_memory=True,                  # Faster CPU-GPU transfers
-        prefetch_factor=3,                # Prefetch 3 batches ahead
-        use_cuda_streams=True,            # Overlap computation and transfer
-        tensor_cache_size=6,              # Cache 6 different tensor sizes
-        
-        # Enable optimized fetching
-        use_eager_fetch=True,
-    )
-    
-    return dataset
+    try:
+        # Test if we can open the experiment
+        with Experiment.open(experiment_path) as exp:
+            query = exp.axis_query(
+                measurement_name=measurement_name,
+                obs_query=AxisQuery(value_filter="is_primary_data == True")
+            )
+            
+            # Create dataset with performance optimizations
+            dataset = ExperimentDataset(
+                query=query,
+                layer_name="raw",
+                batch_size=512,                    # Larger batches for GPU efficiency
+                io_batch_size=65536,              # Reduced from 131072 for better memory management
+                shuffle=True,
+                shuffle_chunk_size=128,           # Balance randomness vs. locality
+                
+                # GPU optimizations (reduced for stability)
+                pin_memory=True,                  # Faster CPU-GPU transfers
+                prefetch_factor=2,                # Reduced prefetch for stability
+                use_cuda_streams=True,            # Overlap computation and transfer
+                tensor_cache_size=4,              # Reduced cache size
+                
+                # Enable optimized fetching
+                use_eager_fetch=True,
+            )
+            
+            return dataset
+            
+    except Exception as e:
+        print(f"Error opening experiment: {e}")
+        print("Make sure the experiment path is correct and accessible.")
+        print("For CELLxGENE Census data, you may need to install cellxgene-census:")
+        print("pip install cellxgene-census")
+        raise
 
 
 def create_optimized_dataloader(dataset: ExperimentDataset, num_workers: int = 4):
@@ -133,40 +123,89 @@ def benchmark_performance(dataloader, num_batches: int = 100):
 
 def main():
     """Main training loop example."""
-        
+    
+    # Use a public CELLxGENE Census example
+    print("Loading data from CELLxGENE Census...")
+    
     try:
-        print("Setting up optimized dataset...")
-        dataset = setup_optimized_dataset()
+        # Import cellxgene_census if available
+        import cellxgene_census
         
-        print("Creating optimized dataloader...")
-        dataloader = create_optimized_dataloader(dataset, num_workers=4)
-        
-        print("Starting performance benchmark...")
-        throughput = benchmark_performance(dataloader, num_batches=50)
-        
-        print(f"\nOptimized throughput: {throughput:.1f} samples/sec")
-        
-        # Example training loop
-        print("\nStarting training...")
-        for epoch in range(3):
-            dataset.set_epoch(epoch)  # Important for proper shuffling
+        # Open the census data
+        with cellxgene_census.open_soma() as census:
+            # Get mouse data
+            adata_query = census["census_data"]["mus_musculus"]
             
-            epoch_start = time.time()
-            batch_count = 0
+            # Create a smaller query for testing
+            query = adata_query.axis_query(
+                measurement_name="RNA",
+                obs_query=cellxgene_census.experimental.pp.AxisQuery(
+                    value_filter="tissue_general == 'brain' and is_primary_data == True"
+                )
+            )
             
-            for X_batch, obs_batch in dataloader:
-                # Your training code here
-                batch_count += 1
+            # Create dataset with optimizations
+            dataset = ExperimentDataset(
+                query=query,
+                layer_name="raw", 
+                batch_size=256,              # Reasonable batch size for testing
+                io_batch_size=32768,         # Conservative IO batch size
+                shuffle=True,
                 
-                if batch_count >= 20:  # Limit for example
-                    break
+                # GPU optimizations
+                pin_memory=torch.cuda.is_available(),
+                prefetch_factor=2,
+                use_cuda_streams=torch.cuda.is_available(),
+                tensor_cache_size=4,
+                use_eager_fetch=True,
+            )
             
-            epoch_time = time.time() - epoch_start
-            print(f"Epoch {epoch + 1}: {batch_count} batches in {epoch_time:.2f}s")
+            print("Creating optimized dataloader...")
+            dataloader = create_optimized_dataloader(dataset, num_workers=2)
+            
+            print("Starting performance benchmark...")
+            throughput = benchmark_performance(dataloader, num_batches=20)  # Reduced for testing
+            
+            print(f"\nOptimized throughput: {throughput:.1f} samples/sec")
+            
+            # Example training loop
+            print("\nStarting training...")
+            for epoch in range(2):  # Reduced epochs for testing
+                dataset.set_epoch(epoch)
+                
+                epoch_start = time.time()
+                batch_count = 0
+                
+                for X_batch, obs_batch in dataloader:
+                    batch_count += 1
+                    
+                    if batch_count >= 10:  # Limit for example
+                        break
+                
+                epoch_time = time.time() - epoch_start
+                print(f"Epoch {epoch + 1}: {batch_count} batches in {epoch_time:.2f}s")
+    
+    except ImportError:
+        print("cellxgene-census not available. Using local experiment example.")
+        print("To run with CELLxGENE Census data, install: pip install cellxgene-census")
+        
+        # Fall back to local experiment example
+        experiment_path = "s3://your-bucket/experiment.soma"
+        try:
+            dataset = setup_optimized_dataset(experiment_path)
+            dataloader = create_optimized_dataloader(dataset, num_workers=2)
+            throughput = benchmark_performance(dataloader, num_batches=20)
+            print(f"Optimized throughput: {throughput:.1f} samples/sec")
+        except Exception as e:
+            print(f"Error with local experiment: {e}")
+            print("Please update experiment_path with your actual SOMA experiment.")
     
     except Exception as e:
         print(f"Error: {e}")
-        print("Make sure to update experiment_path with your actual SOMA experiment.")
+        print("There was an issue with the data loading. This could be due to:")
+        print("1. Network connectivity issues")
+        print("2. Missing dependencies")
+        print("3. Authentication issues with S3")
 
 
 if __name__ == "__main__":
@@ -176,12 +215,16 @@ if __name__ == "__main__":
     print("Setting optimal environment variables...")
     
     # TileDB optimizations
-    os.environ.setdefault("TILEDB_VFS_S3_MAX_PARALLEL_OPS", "8")
-    os.environ.setdefault("TILEDB_VFS_S3_MULTIPART_PART_SIZE", "67108864")  # 64MB
+    os.environ.setdefault("TILEDB_VFS_S3_MAX_PARALLEL_OPS", "4")  # Reduced for stability
+    os.environ.setdefault("TILEDB_VFS_S3_MULTIPART_PART_SIZE", "33554432")  # 32MB
     
     # PyTorch optimizations
     if torch.cuda.is_available():
+        print(f"CUDA available: {torch.cuda.get_device_name(0)}")
         os.environ.setdefault("CUDA_LAUNCH_BLOCKING", "0")
-
+        torch.backends.cudnn.benchmark = True
+    else:
+        print("CUDA not available, running on CPU")
+    
     main()
  

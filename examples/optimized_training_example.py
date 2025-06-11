@@ -155,21 +155,32 @@ def main():
         import cellxgene_census
         
         # Open the census data
-        with cellxgene_census.open_soma() as census:
+        with cellxgene_census.open_soma(census_version="2025-01-30") as census:
             # Get mouse data
-            adata_query = census["census_data"]["mus_musculus"]
+            experiment_name = "mus_musculus"
+            obs_value_filter = 'is_primary_data == True and tissue_general in ["spleen", "kidney"] and nnz > 1000'
+            top_n_hvg = 8000
+            hvg_batch = ["assay", "suspension_type"]
             
-            # Create a smaller query for testing
-            query = adata_query.axis_query(
-                measurement_name="RNA",
-                obs_query=cellxgene_census.experimental.pp.AxisQuery(
-                    value_filter="tissue_general == 'brain' and is_primary_data == True"
-                )
+            hvgs_df = highly_variable_genes(
+                census["census_data"][experiment_name].axis_query(
+                    measurement_name="RNA", obs_query=soma.AxisQuery(value_filter=obs_value_filter)
+                ),
+                n_top_genes=top_n_hvg,
+                batch_key=hvg_batch,
             )
-            
+            hv = hvgs_df.highly_variable
+            hv_idx = hv[hv].index
+
+            # Create a smaller query for testing
+            hvg_query = census["census_data"][experiment_name].axis_query(
+                measurement_name="RNA",
+                obs_query=soma.AxisQuery(value_filter=obs_value_filter),
+                var_query=soma.AxisQuery(coords=(list(hv_idx),)),
+            )
             # Create dataset with optimizations
             dataset = ExperimentDataset(
-                query=query,
+                query=hvg_query,
                 layer_name="raw", 
                 batch_size=256,              # Reasonable batch size for testing
                 io_batch_size=32768,         # Conservative IO batch size

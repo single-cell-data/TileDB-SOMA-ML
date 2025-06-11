@@ -23,32 +23,55 @@ def setup_optimized_dataset(experiment_path: str, measurement_name: str = "RNA")
     
     try:
         # Test if we can open the experiment
-        with Experiment.open(experiment_path) as exp:
-            query = exp.axis_query(
-                measurement_name=measurement_name,
-                obs_query=AxisQuery(value_filter="is_primary_data == True")
-            )
-            
-            # Create dataset with performance optimizations
-            dataset = ExperimentDataset(
-                query=query,
-                layer_name="raw",
-                batch_size=512,                    # Larger batches for GPU efficiency
-                io_batch_size=65536,              # Reduced from 131072 for better memory management
-                shuffle=True,
-                shuffle_chunk_size=128,           # Balance randomness vs. locality
-                
-                # GPU optimizations (reduced for stability)
-                pin_memory=True,                  # Faster CPU-GPU transfers
-                prefetch_factor=2,                # Reduced prefetch for stability
-                use_cuda_streams=True,            # Overlap computation and transfer
-                tensor_cache_size=4,              # Reduced cache size
-                
-                # Enable optimized fetching
-                use_eager_fetch=True,
-            )
-            
-            return dataset
+        
+        census = cellxgene_census.open_soma(census_version="2025-01-30")
+        experiment_name = "mus_musculus"
+        obs_value_filter = 'is_primary_data == True and tissue_general in ["spleen", "kidney"] and nnz > 1000'
+        top_n_hvg = 8000
+        hvg_batch = ["assay", "suspension_type"]
+
+        hvgs_df = highly_variable_genes(
+            census["census_data"][experiment_name].axis_query(
+                measurement_name="RNA", obs_query=soma.AxisQuery(value_filter=obs_value_filter)
+            ),
+            n_top_genes=top_n_hvg,
+            batch_key=hvg_batch,
+        )
+        hv = hvgs_df.highly_variable
+        hv_idx = hv[hv].index
+
+        hvg_query = census["census_data"][experiment_name].axis_query(
+            measurement_name="RNA",
+            obs_query=soma.AxisQuery(value_filter=obs_value_filter),
+            var_query=soma.AxisQuery(coords=(list(hv_idx),)),
+        )
+
+        # Open experiment and create query
+        query = census["census_data"][experiment_name].axis_query(
+            measurement_name=measurement_name,
+            obs_query=AxisQuery(value_filter="is_primary_data == True")
+        )
+        
+        # Create dataset with performance optimizations
+        dataset = ExperimentDataset(
+                    query=query,
+                    layer_name="raw",
+                    batch_size=512,                    # Larger batches for GPU efficiency
+                    io_batch_size=65536,              # Reduced from 131072 for better memory management
+                    shuffle=True,
+                    shuffle_chunk_size=128,           # Balance randomness vs. locality
+                    
+                    # GPU optimizations (reduced for stability)
+                    pin_memory=True,                  # Faster CPU-GPU transfers
+                    prefetch_factor=2,                # Reduced prefetch for stability
+                    use_cuda_streams=True,            # Overlap computation and transfer
+                    tensor_cache_size=4,              # Reduced cache size
+                    
+                    # Enable optimized fetching
+                    use_eager_fetch=True,
+                )
+
+        return dataset
             
     except Exception as e:
         print(f"Error opening experiment: {e}")

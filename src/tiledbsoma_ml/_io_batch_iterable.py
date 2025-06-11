@@ -5,7 +5,7 @@
 import gc
 import logging
 import time
-from typing import Iterable, Iterator, Optional, Sequence, Tuple
+from typing import Iterable, Iterator, Optional, Sequence, Tuple, List
 
 import attrs
 import numpy as np

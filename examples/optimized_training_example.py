@@ -182,4 +182,6 @@ if __name__ == "__main__":
     # PyTorch optimizations
     if torch.cuda.is_available():
         os.environ.setdefault("CUDA_LAUNCH_BLOCKING", "0")
+
+    main()
  

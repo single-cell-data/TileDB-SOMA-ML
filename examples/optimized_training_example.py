@@ -10,14 +10,38 @@ import torch
 import time
 from tiledbsoma import Experiment, AxisQuery
 from tiledbsoma_ml import ExperimentDataset, optimized_experiment_dataloader
+import cellxgene_census
+from cellxgene_census.utils import highly_variable_genes
+import tiledbsoma as soma
 
 
-def setup_optimized_dataset(experiment_path: str, measurement_name: str = "RNA") -> ExperimentDataset:
+def setup_optimized_dataset(measurement_name: str = "RNA") -> ExperimentDataset:
     """Create an optimized ExperimentDataset for high-performance training."""
     
+    census = cellxgene_census.open_soma(census_version="2025-01-30")
+    experiment_name = "mus_musculus"
+    obs_value_filter = 'is_primary_data == True and tissue_general in ["spleen", "kidney"] and nnz > 1000'
+    top_n_hvg = 8000
+    hvg_batch = ["assay", "suspension_type"]
+
+    hvgs_df = highly_variable_genes(
+        census["census_data"][experiment_name].axis_query(
+            measurement_name="RNA", obs_query=soma.AxisQuery(value_filter=obs_value_filter)
+        ),
+        n_top_genes=top_n_hvg,
+        batch_key=hvg_batch,
+    )
+    hv = hvgs_df.highly_variable
+    hv_idx = hv[hv].index
+
+    hvg_query = census["census_data"][experiment_name].axis_query(
+        measurement_name="RNA",
+        obs_query=soma.AxisQuery(value_filter=obs_value_filter),
+        var_query=soma.AxisQuery(coords=(list(hv_idx),)),
+    )
+
     # Open experiment and create query
-    exp = Experiment.open(experiment_path)
-    query = exp.axis_query(
+    query = census["census_data"][experiment_name].axis_query(
         measurement_name=measurement_name,
         obs_query=AxisQuery(value_filter="is_primary_data == True")
     )
@@ -109,13 +133,10 @@ def benchmark_performance(dataloader, num_batches: int = 100):
 
 def main():
     """Main training loop example."""
-    
-    # Example experiment path (replace with your actual path)
-    experiment_path = "s3://your-bucket/experiment.soma"
-    
+        
     try:
         print("Setting up optimized dataset...")
-        dataset = setup_optimized_dataset(experiment_path)
+        dataset = setup_optimized_dataset()
         
         print("Creating optimized dataloader...")
         dataloader = create_optimized_dataloader(dataset, num_workers=4)

@@ -132,6 +132,16 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     r"""When ``True``, return ``X`` data as a |csr_matrix| (by default, return |ndarray|\ s)."""
     use_eager_fetch: bool = field(default=True)
     """Pre-fetch one "IO batch" and one "mini batch"."""
+    
+    # GPU optimization parameters
+    pin_memory: bool = field(default=True)
+    """Pin memory for faster GPU transfers when using CUDA."""
+    prefetch_factor: int = field(default=2, validator=gt(0))
+    """Number of batches to prefetch ahead of GPU processing."""
+    use_cuda_streams: bool = field(default=True)
+    """Use CUDA streams for overlapping data transfer and computation."""
+    tensor_cache_size: int = field(default=4)
+    """Number of tensor batches to cache for reuse."""
 
     # Internal state
     epoch: int = field(default=0, init=False)
@@ -152,6 +162,11 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         seed: Optional[int] = None,
         return_sparse_X: bool = False,
         use_eager_fetch: bool = True,
+        # GPU optimization parameters
+        pin_memory: bool = True,
+        prefetch_factor: int = 2,
+        use_cuda_streams: bool = True,
+        tensor_cache_size: int = 4,
     ):
         r"""Construct a new |ExperimentDataset|.
 
@@ -206,6 +221,14 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 made available for processing via the iterator. This allows network (or filesystem) requests to be made
                 in parallel with client-side processing of the SOMA data, potentially improving overall performance at
                 the cost of doubling memory utilization. Defaults to ``True``.
+            pin_memory:
+                Pin memory for faster GPU transfers when using CUDA. Defaults to ``True``.
+            prefetch_factor:
+                Number of batches to prefetch ahead of GPU processing. Defaults to 2.
+            use_cuda_streams:
+                Use CUDA streams for overlapping data transfer and computation. Defaults to ``True``.
+            tensor_cache_size:
+                Number of tensor batches to cache for reuse. Defaults to 4.
 
         Raises:
             ValueError: on unsupported or malformed parameter values.
@@ -253,6 +276,10 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             seed=seed,
             return_sparse_X=return_sparse_X,
             use_eager_fetch=use_eager_fetch,
+            pin_memory=pin_memory,
+            prefetch_factor=prefetch_factor,
+            use_cuda_streams=use_cuda_streams,
+            tensor_cache_size=tensor_cache_size,
         )
 
     def __attrs_post_init__(self) -> None:
@@ -361,6 +388,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 seed=self.seed,
                 shuffle=self.shuffle,
                 use_eager_fetch=self.use_eager_fetch,
+                max_concurrent_requests=min(4, max(1, self.io_batch_size // 16384)),
+                prefetch_queue_size=self.prefetch_factor,
             )
 
             yield from MiniBatchIterable(
@@ -368,6 +397,10 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 batch_size=self.batch_size,
                 use_eager_fetch=self.use_eager_fetch,
                 return_sparse_X=self.return_sparse_X,
+                pin_memory=self.pin_memory,
+                prefetch_factor=self.prefetch_factor,
+                use_cuda_streams=self.use_cuda_streams,
+                tensor_cache_size=self.tensor_cache_size,
             )
 
         self.epoch += 1

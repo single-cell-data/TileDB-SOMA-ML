@@ -70,6 +70,52 @@ def experiment_dataloader(
     )
 
 
+def optimized_experiment_dataloader(
+    ds: ExperimentDataset,
+    num_workers: int = 2,
+    pin_memory: bool = None,
+    persistent_workers: bool = True,
+    prefetch_factor: int = 2,
+    **dataloader_kwargs: Any,
+) -> DataLoader:
+    """Optimized |DataLoader| factory for maximum performance with GPU training.
+    
+    This function provides optimized defaults for high-performance GPU training,
+    including automatic pin_memory detection, worker optimization, and memory management.
+    
+    Args:
+        ds: A |ExperimentDataset| to wrap.
+        num_workers: Number of worker processes. Defaults to 2 for optimal S3 performance.
+        pin_memory: Whether to pin memory. Auto-detected if None.
+        persistent_workers: Keep workers alive between epochs. Defaults to True.
+        prefetch_factor: Samples loaded ahead by each worker. Defaults to 2.
+        **dataloader_kwargs: Additional DataLoader arguments.
+        
+    Returns:
+        Optimized |DataLoader| instance.
+        
+    Lifecycle:
+        experimental
+    """
+    import torch
+    
+    # Auto-detect optimal pin_memory setting
+    if pin_memory is None:
+        pin_memory = torch.cuda.is_available()
+    
+    # Set optimized defaults
+    optimized_kwargs = {
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+        "persistent_workers": persistent_workers and num_workers > 0,
+        "prefetch_factor": prefetch_factor,
+        "drop_last": False,  # Don't drop last incomplete batch
+        **dataloader_kwargs
+    }
+    
+    return experiment_dataloader(ds, **optimized_kwargs)
+
+
 def _collate_noop(datum: _T) -> _T:
     """Noop collation used by |experiment_dataloader|.
 

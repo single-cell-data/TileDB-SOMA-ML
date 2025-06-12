@@ -7,7 +7,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from ._query_ids import SamplingMethod
 from .dataloader import experiment_dataloader, optimized_experiment_dataloader
-from .dataset import ExperimentDataset
+from .dataset import ExperimentDataset, OptimizedExperimentDataset
 from .scvi import SCVIDataModule
 
 try:
@@ -19,6 +19,7 @@ except PackageNotFoundError:
 
 __all__ = [
     "ExperimentDataset",
+    "OptimizedExperimentDataset",
     "experiment_dataloader",
     "optimized_experiment_dataloader",
     "SamplingMethod",

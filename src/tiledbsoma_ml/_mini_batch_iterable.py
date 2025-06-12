@@ -268,6 +268,10 @@ class MiniBatchIterable:
             else:
                 mini_batch["soma_joinid"] = soma_joinids
         
+        # Add raw obs DataFrame for compatibility with scVI and other integrations
+        # This allows access to obs columns that aren't explicitly encoded
+        mini_batch["obs"] = obs_mini
+        
         # Cleanup
         gc.collect(generation=0)
         

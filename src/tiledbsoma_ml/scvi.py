@@ -10,6 +10,7 @@ from tiledbsoma import ExperimentAxisQuery
 from torch.utils.data import DataLoader
 
 from tiledbsoma_ml import ExperimentDataset, experiment_dataloader
+from tiledbsoma_ml.dataloader import optimized_experiment_dataloader
 from tiledbsoma_ml._common import MiniBatch
 
 
@@ -31,6 +32,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         batch_column_names: Sequence[str] | None = None,
         batch_labels: Sequence[str] | None = None,
         dataloader_kwargs: dict[str, Any] | None = None,
+        use_optimized_dataloader: bool = False,
         **kwargs: Any,
     ):
         """Args:
@@ -56,6 +58,11 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
 
         dataloader_kwargs: dict, optional
         Keyword arguments passed to `tiledbsoma_ml.experiment_dataloader()`, e.g. `num_workers`.
+
+        use_optimized_dataloader: bool, optional
+        Whether to use the optimized dataloader with threading and GPU optimizations. 
+        Defaults to False for backward compatibility. When True, uses 
+        `optimized_experiment_dataloader` which returns dictionary format batches.
         """
         super().__init__()
         self.query = query
@@ -64,6 +71,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         self.dataloader_kwargs = (
             dataloader_kwargs if dataloader_kwargs is not None else {}
         )
+        self.use_optimized_dataloader = use_optimized_dataloader
         self.batch_column_names = (
             batch_column_names
             if batch_column_names is not None
@@ -81,7 +89,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
                 .concat()
                 .to_pandas()
             )
-            self._add_batch_col(obs_df, inplace=True)
+            obs_df = self._add_batch_col(obs_df, inplace=False)
             batch_labels = obs_df[self.batch_colname].unique()
         self.batch_labels = batch_labels
         self.batch_encoder = LabelEncoder().fit(self.batch_labels)
@@ -96,16 +104,25 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         )
 
     def train_dataloader(self) -> DataLoader:
-        return experiment_dataloader(
-            self.train_dataset,
-            **self.dataloader_kwargs,
-        )
+        if self.use_optimized_dataloader:
+            return optimized_experiment_dataloader(
+                self.train_dataset,
+                **self.dataloader_kwargs,
+            )
+        else:
+            return experiment_dataloader(
+                self.train_dataset,
+                **self.dataloader_kwargs,
+            )
 
     def _add_batch_col(
         self, obs_df: pd.DataFrame, inplace: bool = False
     ) -> pd.DataFrame:
         # synthesize a new column for obs_df by concatenating the self.batch_column_names columns
         if not inplace:
+            obs_df = obs_df.copy()
+        else:
+            # Always make a copy to avoid SettingWithCopyWarning
             obs_df = obs_df.copy()
         obs_df[self.batch_colname] = (
             obs_df[self.batch_column_names]
@@ -119,17 +136,47 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         batch: MiniBatch,
         dataloader_idx: int,
     ) -> dict[str, torch.Tensor | None]:
-        # DataModule hook: transform the ExperimentDataset data batch (X: ndarray, obs_df: DataFrame)
-        # into X & batch variable tensors for scVI (using batch_encoder on scvi_batch)
-        batch_X, batch_obs = batch
-        self._add_batch_col(batch_obs, inplace=True)
-        return {
-            "X": torch.from_numpy(batch_X).float(),
-            "batch": torch.from_numpy(
-                self.batch_encoder.transform(batch_obs[self.batch_colname])
-            ).unsqueeze(1),
-            "labels": torch.empty(0),
-        }
+        # DataModule hook: transform the ExperimentDataset data batch into X & batch variable tensors for scVI
+        # Supports both tuple format (standard dataloader) and dictionary format (optimized dataloader)
+        
+        if isinstance(batch, dict):
+            # Optimized dataloader format: {'X': tensor, 'obs': dataframe, ...}
+            batch_X = batch['X']
+            batch_obs = batch.get('obs', None)
+            
+            # Handle case where obs data might not be present in optimized format
+            if batch_obs is None:
+                # If no obs data, create a minimal batch encoding
+                # This assumes all samples belong to the same batch for this mini-batch
+                batch_size = batch_X.shape[0] if hasattr(batch_X, 'shape') else len(batch_X)
+                default_batch_label = self.batch_colsep.join(['unknown'] * len(self.batch_column_names))
+                batch_encoded = torch.zeros(batch_size, 1, dtype=torch.long)
+                
+                return {
+                    "X": torch.from_numpy(batch_X).float() if not torch.is_tensor(batch_X) else batch_X.float(),
+                    "batch": batch_encoded,
+                    "labels": torch.empty(0),
+                }
+            else:
+                batch_obs = self._add_batch_col(batch_obs, inplace=False)
+                return {
+                    "X": torch.from_numpy(batch_X).float() if not torch.is_tensor(batch_X) else batch_X.float(),
+                    "batch": torch.from_numpy(
+                        self.batch_encoder.transform(batch_obs[self.batch_colname])
+                    ).unsqueeze(1),
+                    "labels": torch.empty(0),
+                }
+        else:
+            # Standard dataloader format: (X_batch, obs_batch) tuple
+            batch_X, batch_obs = batch
+            batch_obs = self._add_batch_col(batch_obs, inplace=False)
+            return {
+                "X": torch.from_numpy(batch_X).float(),
+                "batch": torch.from_numpy(
+                    self.batch_encoder.transform(batch_obs[self.batch_colname])
+                ).unsqueeze(1),
+                "labels": torch.empty(0),
+            }
 
     # scVI expects these properties on the DataModule:
 

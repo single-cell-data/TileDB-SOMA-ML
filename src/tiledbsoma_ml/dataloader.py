@@ -10,7 +10,7 @@ from typing import Any, TypeVar, Optional, Union, Sequence
 from torch.utils.data import DataLoader
 
 from tiledbsoma_ml._distributed import init_multiprocessing
-from tiledbsoma_ml.dataset import ExperimentDataset
+from tiledbsoma_ml.dataset import ExperimentDataset, OptimizedExperimentDataset
 
 import logging
 import warnings
@@ -85,7 +85,7 @@ def experiment_dataloader(
     if num_workers != 0:
         raise ValueError("num_workers must be 0")
 
-    return DataLoader(exp_data, num_workers=num_workers, **dataloader_kwargs)
+    return DataLoader(exp_data, num_workers=num_workers, collate_fn=_collate_noop, **dataloader_kwargs)
 
 
 def optimized_experiment_dataloader(
@@ -170,19 +170,24 @@ def optimized_experiment_dataloader(
     max_concurrent_requests = max(1, max_concurrent_requests)
     max_concurrent_batch_processing = max(1, max_concurrent_batch_processing)
     
-    # Configure the dataset for threading optimization
-    if hasattr(exp_data, '_io_batch_size'):
-        exp_data._io_batch_size = io_batch_size
-    if hasattr(exp_data, '_max_concurrent_requests'):
-        exp_data._max_concurrent_requests = max_concurrent_requests
-    if hasattr(exp_data, '_use_eager_fetch'):
-        exp_data._use_eager_fetch = use_eager_fetch
-    if hasattr(exp_data, '_enable_pinned_memory'):
-        exp_data._enable_pinned_memory = enable_pinned_memory
-    if hasattr(exp_data, '_enable_tensor_cache'):
-        exp_data._enable_tensor_cache = enable_tensor_cache
-    if hasattr(exp_data, '_max_concurrent_batch_processing'):
-        exp_data._max_concurrent_batch_processing = max_concurrent_batch_processing
+    # Create optimized dataset from the standard dataset
+    optimized_dataset = OptimizedExperimentDataset(
+        x_locator=exp_data.x_locator,
+        query_ids=exp_data.query_ids,
+        obs_column_names=exp_data.obs_column_names,
+        batch_size=batch_size,
+        io_batch_size=io_batch_size,
+        shuffle=shuffle,
+        shuffle_chunk_size=exp_data.shuffle_chunk_size,
+        seed=exp_data.seed,
+        return_sparse_X=exp_data.return_sparse_X,
+        use_eager_fetch=use_eager_fetch,
+        max_concurrent_requests=max_concurrent_requests,
+        prefetch_queue_size=prefetch_queue_size,
+        enable_pinned_memory=enable_pinned_memory,
+        enable_tensor_cache=enable_tensor_cache,
+        max_concurrent_batch_processing=max_concurrent_batch_processing,
+    )
     
     logger.info(f"Creating optimized dataloader with:")
     logger.info(f"  - batch_size: {batch_size}")
@@ -194,10 +199,11 @@ def optimized_experiment_dataloader(
     logger.info(f"  - use_eager_fetch: {use_eager_fetch}")
     
     return DataLoader(
-        exp_data, 
+        optimized_dataset, 
         batch_size=None,  # We handle batching internally
         num_workers=num_workers, 
         shuffle=False,  # We handle shuffling internally
+        collate_fn=_collate_noop,  # Use no-op collation for dict format
         **dataloader_kwargs
     )
 

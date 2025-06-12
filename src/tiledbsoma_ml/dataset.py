@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterator, List, Optional, Sequence, Tuple
+from typing import Iterator, List, Optional, Sequence, Tuple, Dict, Any
 
 import numpy as np
 import torch
@@ -16,6 +16,7 @@ from tiledbsoma import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
 from tiledbsoma_ml._common import MiniBatch
+from scipy import sparse
 from tiledbsoma_ml._distributed import (
     get_distributed_rank_and_world_size,
     get_worker_id_and_num,
@@ -351,7 +352,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         *fracs: float,
         seed: Optional[int] = None,
         method: SamplingMethod = "stochastic_rounding",
-    ) -> Tuple[ExperimentDataset, ...]:
+    ) -> Tuple["ExperimentDataset", ...]:
         r"""Split this |ExperimentDataset| into 1 or more |ExperimentDataset|\ 's, randomly sampled according ``fracs``.
 
         - ``fracs`` must sum to $1$
@@ -435,29 +436,36 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         self.epoch += 1
 
     def _process_io_batch_to_mini_batches(self, X_io_batch, obs_io_batch) -> Iterator[MiniBatch]:
-        """Process a single IO batch into mini-batches with threading optimizations."""
-        from tiledbsoma_ml._mini_batch_iterable import MiniBatchIterable
+        """Process a single IO batch into mini-batches."""
         
-        # Create temporary iterator that yields just this IO batch
-        io_batch_iter = iter([(X_io_batch, obs_io_batch)])
+        # For now, use simple sequential processing to maintain compatibility
+        # with the standard MiniBatch tuple format
+        if hasattr(X_io_batch, 'to_scipy_sparse_matrix'):
+            X_dense = X_io_batch.to_scipy_sparse_matrix()
+            if not self.return_sparse_X:
+                X_dense = X_dense.toarray()
+        else:
+            X_dense = X_io_batch
         
-        # Use MiniBatchIterable with threading optimizations
-        mini_batch_iter = MiniBatchIterable(
-            io_batch_iter=io_batch_iter,
-            encoders=[],  # Simple case without encoders for now
-            mini_batch_size=self.batch_size,
-            return_sparse_X=self.return_sparse_X,
-            use_eager_fetch=False,  # Don't double-buffer
-            shuffle=self.shuffle,
-            seed=self.seed,
-            soma_joinid="soma_joinid" in self.obs_column_names,
-            # GPU optimization settings from dataset
-            enable_pinned_memory=self.enable_pinned_memory,
-            enable_tensor_cache=self.enable_tensor_cache,
-            max_concurrent_batch_processing=self.max_concurrent_batch_processing,
-        )
+        # Shuffle if requested
+        num_samples = X_dense.shape[0]
+        indices = np.arange(num_samples)
+        if self.shuffle:
+            rng = np.random.default_rng(self.seed)
+            rng.shuffle(indices)
         
-        yield from mini_batch_iter
+        # Generate mini-batches in standard tuple format
+        for i in range(0, len(indices), self.batch_size):
+            mini_batch_indices = indices[i:i + self.batch_size]
+            
+            X_mini = X_dense[mini_batch_indices]
+            obs_mini = obs_io_batch.iloc[mini_batch_indices]
+            
+            # Return in standard MiniBatch tuple format
+            if self.return_sparse_X and not sparse.issparse(X_mini):
+                X_mini = sparse.csr_matrix(X_mini)
+            
+            yield X_mini, obs_mini
 
     def __len__(self) -> int:
         """Return the number of batches this iterable will produce. If run in the context of |torch.distributed| or as a
@@ -514,4 +522,235 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     def __getitem__(self, index: int) -> MiniBatch:
         raise NotImplementedError(
             "`Experiment` can only be iterated - does not support mapping"
+        )
+
+
+@define
+class OptimizedExperimentDataset(IterableDataset[Dict[str, Any]]):  # type: ignore[misc]
+    r"""Optimized |IterableDataset| implementation for high-performance training.
+
+    This version returns mini-batches as dictionaries instead of tuples, enabling
+    optimized concurrent processing with tensor caching and GPU acceleration.
+
+    Example return format: {'X': tensor, 'obs': dataframe, 'soma_joinid': tensor, ...}
+
+    Lifecycle:
+        experimental
+    """
+
+    # Core data fields (same as ExperimentDataset)
+    x_locator: XLocator = field()
+    query_ids: QueryIDs = field()
+    obs_column_names: List[str] = field(factory=lambda: [*DEFAULT_OBS_COLUMN_NAMES])
+
+    # Configuration fields with defaults
+    batch_size: int = field(default=1, validator=gt(0))
+    io_batch_size: int = field(default=DEFAULT_IO_BATCH_SIZE, validator=gt(0))
+    shuffle: bool = field(default=True)
+    shuffle_chunk_size: int = field(default=DEFAULT_SHUFFLE_CHUNK_SIZE, validator=gt(0))
+    seed: Optional[int] = field(default=None)
+    return_sparse_X: bool = field(default=False)
+    use_eager_fetch: bool = field(default=True)
+    
+    # Threading optimization parameters - more aggressive defaults
+    max_concurrent_requests: int = field(default=4, validator=gt(0))
+    prefetch_queue_size: int = field(default=2, validator=gt(0))
+    enable_pinned_memory: bool = field(default=False)
+    enable_tensor_cache: bool = field(default=True)
+    max_concurrent_batch_processing: int = field(default=2, validator=gt(0))
+
+    # Internal state
+    epoch: int = field(default=0, init=False)
+    rank: int = field(init=False)
+    world_size: int = field(init=False)
+
+    def __init__(
+        self,
+        query: ExperimentAxisQuery | None = None,
+        layer_name: str | None = None,
+        x_locator: XLocator | None = None,
+        query_ids: QueryIDs | None = None,
+        obs_column_names: Sequence[str] = DEFAULT_OBS_COLUMN_NAMES,
+        batch_size: int = 64,
+        io_batch_size: int = DEFAULT_IO_BATCH_SIZE,
+        shuffle: bool = True,
+        shuffle_chunk_size: int = DEFAULT_SHUFFLE_CHUNK_SIZE,
+        seed: Optional[int] = None,
+        return_sparse_X: bool = False,
+        use_eager_fetch: bool = True,
+        # Threading optimization parameters with better defaults
+        max_concurrent_requests: int = 4,
+        prefetch_queue_size: int = 2,
+        enable_pinned_memory: bool = False,
+        enable_tensor_cache: bool = True,
+        max_concurrent_batch_processing: int = 2,
+    ):
+        """Construct an optimized ExperimentDataset for high-performance training."""
+        if query and layer_name:
+            if x_locator or query_ids:
+                raise ValueError(
+                    "Expected `{query,layer_name}` xor `{x_locator,query_ids}`"
+                )
+            query_ids = QueryIDs.create(query=query)
+            x_locator = XLocator.create(
+                query.experiment,
+                measurement_name=query.measurement_name,
+                layer_name=layer_name,
+            )
+        elif x_locator and query_ids:
+            if query or layer_name:
+                raise ValueError(
+                    "Expected `{query,layer_name}` xor `{x_locator,query_ids}`"
+                )
+        else:
+            raise ValueError(
+                "Expected `{query,layer_name}` xor `{x_locator,query_ids}`"
+            )
+
+        self.__attrs_init__(
+            x_locator=x_locator,
+            query_ids=query_ids,
+            obs_column_names=list(obs_column_names),
+            batch_size=batch_size,
+            io_batch_size=io_batch_size,
+            shuffle=shuffle,
+            shuffle_chunk_size=shuffle_chunk_size,
+            seed=seed,
+            return_sparse_X=return_sparse_X,
+            use_eager_fetch=use_eager_fetch,
+            max_concurrent_requests=max_concurrent_requests,
+            prefetch_queue_size=prefetch_queue_size,
+            enable_pinned_memory=enable_pinned_memory,
+            enable_tensor_cache=enable_tensor_cache,
+            max_concurrent_batch_processing=max_concurrent_batch_processing,
+        )
+
+    def __attrs_post_init__(self) -> None:
+        """Validate configuration and initialize distributed state."""
+        obs_column_names = self.obs_column_names
+        if not obs_column_names:
+            raise ValueError("Must specify at least one value in `obs_column_names`")
+
+        if self.shuffle:
+            # Verify `io_batch_size` is a multiple of `shuffle_chunk_size`
+            if self.io_batch_size % self.shuffle_chunk_size:
+                raise ValueError(
+                    f"{self.io_batch_size=} is not a multiple of {self.shuffle_chunk_size=}"
+                )
+
+        if self.seed is None:
+            object.__setattr__(
+                self, "seed", np.random.default_rng().integers(0, 2**32 - 1)
+            )
+
+        # Set distributed state
+        rank, world_size = get_distributed_rank_and_world_size()
+        object.__setattr__(self, "rank", rank)
+        object.__setattr__(self, "world_size", world_size)
+
+    @property
+    def measurement_name(self) -> str:
+        return self.x_locator.measurement_name
+
+    @property
+    def layer_name(self) -> Optional[str]:
+        return self.x_locator.layer_name
+
+    def _multiproc_check(self) -> None:
+        """Rule out config combinations that are invalid in multiprocess mode."""
+        if self.return_sparse_X:
+            worker_info = torch.utils.data.get_worker_info()
+            if worker_info and worker_info.num_workers > 0:
+                raise NotImplementedError(
+                    "torch does not work with sparse tensors in multi-processing mode "
+                    "(see https://github.com/pytorch/pytorch/issues/20248)"
+                )
+
+        rank, world_size = get_distributed_rank_and_world_size()
+        worker_id, n_workers = get_worker_id_and_num()
+        logger.debug(
+            f"Iterator created {rank=}, {world_size=}, {worker_id=}, {n_workers=}, seed={self.seed}, epoch={self.epoch}"
+        )
+        if world_size > 1 and self.shuffle and self.seed is None:
+            raise ValueError(
+                "Experiment requires an explicit `seed` when shuffle is used in a multi-process configuration."
+            )
+
+    def __iter__(self) -> Iterator[Dict[str, Any]]:
+        """Emit optimized mini-batches as dictionaries with concurrent processing."""
+        self._multiproc_check()
+
+        worker_id, n_workers = get_worker_id_and_num()
+        partition = Partition(
+            rank=self.rank,
+            world_size=self.world_size,
+            worker_id=worker_id,
+            n_workers=n_workers,
+        )
+        query_ids = self.query_ids.partitioned(partition)
+        if self.shuffle:
+            chunks = query_ids.shuffle_chunks(
+                shuffle_chunk_size=self.shuffle_chunk_size,
+                seed=self.seed,
+            )
+        else:
+            chunks = [query_ids.obs_joinids]
+
+        with self.x_locator.open() as (X, obs):
+            io_batch_iter = IOBatchIterable(
+                chunks=chunks,
+                io_batch_size=self.io_batch_size,
+                obs=obs,
+                var_joinids=query_ids.var_joinids,
+                X=X,
+                obs_column_names=self.obs_column_names,
+                seed=self.seed,
+                shuffle=self.shuffle,
+                use_eager_fetch=self.use_eager_fetch,
+                max_concurrent_requests=self.max_concurrent_requests,
+                prefetch_queue_size=self.prefetch_queue_size,
+            )
+
+            # Use optimized MiniBatchIterable for dictionary format
+            mini_batch_iter = MiniBatchIterable(
+                io_batch_iter=io_batch_iter,
+                encoders=[],  # No encoders for basic implementation
+                mini_batch_size=self.batch_size,
+                return_sparse_X=self.return_sparse_X,
+                use_eager_fetch=False,  # Don't double-buffer
+                shuffle=self.shuffle,
+                seed=self.seed,
+                soma_joinid="soma_joinid" in self.obs_column_names,
+                # GPU optimization settings
+                enable_pinned_memory=self.enable_pinned_memory,
+                enable_tensor_cache=self.enable_tensor_cache,
+                max_concurrent_batch_processing=self.max_concurrent_batch_processing,
+            )
+            
+            yield from mini_batch_iter
+
+        self.epoch += 1
+
+    def __len__(self) -> int:
+        """Return the number of batches this iterable will produce."""
+        return self.shape[0]
+
+    @property
+    def shape(self) -> Tuple[int, int]:
+        """Return the number of batches and features that will be yielded."""
+        rank, world_size = get_distributed_rank_and_world_size()
+        worker_id, n_workers = get_worker_id_and_num()
+        obs_per_proc = len(self.query_ids.obs_joinids) // world_size
+        obs_per_worker, obs_rem = divmod(obs_per_proc, n_workers)
+        n_worker_obs = obs_per_worker + bool(worker_id < obs_rem)
+        n_batches, rem = divmod(n_worker_obs, self.batch_size)
+        return n_batches + bool(rem), len(self.query_ids.var_joinids)
+
+    def set_epoch(self, epoch: int) -> None:
+        """Set the epoch for this Data iterator."""
+        self.epoch = epoch
+
+    def __getitem__(self, index: int) -> Dict[str, Any]:
+        raise NotImplementedError(
+            "`OptimizedExperimentDataset` can only be iterated - does not support mapping"
         )

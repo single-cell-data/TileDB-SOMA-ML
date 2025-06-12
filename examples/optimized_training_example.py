@@ -4,8 +4,12 @@ Example: High-Performance GPU Training with TileDB-SOMA-ML
 
 This example demonstrates how to use the optimized TileDB-SOMA-ML features
 for maximum performance when training on GPU with S3-backed data.
+
+Note: The optimized dataloader returns batches as dictionaries with keys like 'X',
+not as tuples (X_batch, obs_batch) like the standard implementation.
 """
 
+import numpy as np
 import torch
 import time
 from tiledbsoma import Experiment, AxisQuery
@@ -101,30 +105,40 @@ def benchmark_performance(dataloader, num_batches: int = 100):
     
     # Warmup
     print("Warming up...")
-    for i, (X_batch, obs_batch) in enumerate(dataloader):
+    for i, batch in enumerate(dataloader):
         if i >= 5:  # 5 warmup batches
             break
-        if torch.cuda.is_available():
-            X_tensor = torch.from_numpy(X_batch).to(device)
+        X_batch = batch['X']
+        if torch.cuda.is_available() and torch.is_tensor(X_batch):
+            X_tensor = X_batch.to(device)
     
     # Benchmark
     print(f"Benchmarking {num_batches} batches...")
     start_time = time.time()
     total_samples = 0
     
-    for i, (X_batch, obs_batch) in enumerate(dataloader):
+    for i, batch in enumerate(dataloader):
         if i >= num_batches:
             break
-            
+        
+        X_batch = batch['X']
+        
         # Simulate GPU training
-        if torch.cuda.is_available():
-            # Transfer to GPU
-            X_tensor = torch.from_numpy(X_batch).to(device, non_blocking=True)
+        if torch.cuda.is_available() and torch.is_tensor(X_batch):
+            # Transfer to GPU (may already be on GPU with pinned memory)
+            if X_batch.device != device:
+                X_tensor = X_batch.to(device, non_blocking=True)
+            else:
+                X_tensor = X_batch
             
             # Simulate computation
             with torch.cuda.stream(torch.cuda.current_stream()):
                 result = torch.sum(X_tensor)  # Simple computation
                 torch.cuda.synchronize()  # Wait for completion
+        elif isinstance(X_batch, np.ndarray):
+            # Handle numpy arrays
+            X_tensor = torch.from_numpy(X_batch).to(device)
+            result = torch.sum(X_tensor)
         
         total_samples += X_batch.shape[0]
         
@@ -210,8 +224,12 @@ def main():
                 epoch_start = time.time()
                 batch_count = 0
                 
-                for X_batch, obs_batch in dataloader:
+                for batch in dataloader:
                     batch_count += 1
+                    X_batch = batch['X']
+                    
+                    # You can access other data in the batch dict if needed
+                    # obs_data = batch.get('soma_joinid', None)  # If available
                     
                     if batch_count >= 10:  # Limit for example
                         break

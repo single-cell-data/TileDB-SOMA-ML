@@ -111,6 +111,14 @@ def optimized_experiment_dataloader(
     This function creates a DataLoader that uses threading-based optimizations while maintaining
     thread safety with TileDB-SOMA by checking and reopening SOMA objects as needed.
     
+    **Important**: This optimized dataloader returns batches as dictionaries with keys like 'X',
+    not as tuples (X_batch, obs_batch) like the standard experiment_dataloader. 
+    
+    Example usage:
+        for batch in dataloader:
+            X_batch = batch['X']  # Extract X data
+            # Use X_batch for training...
+    
     Args:
         exp_data: A :class:`tiledbsoma_ml.ExperimentDataset`.
         batch_size: Number of samples per batch.

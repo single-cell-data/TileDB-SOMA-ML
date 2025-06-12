@@ -6,7 +6,7 @@ import pandas as pd
 import torch
 from lightning import LightningDataModule
 from sklearn.preprocessing import LabelEncoder
-from tiledbsoma import ExperimentAxisQuery
+from tiledbsoma import ExperimentAxisQuery, SOMATileDBContext
 from torch.utils.data import DataLoader
 
 from tiledbsoma_ml import ExperimentDataset, experiment_dataloader
@@ -33,6 +33,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         batch_labels: Sequence[str] | None = None,
         dataloader_kwargs: dict[str, Any] | None = None,
         use_optimized_dataloader: bool = False,
+        context: SOMATileDBContext | None = None,
         **kwargs: Any,
     ):
         """Args:
@@ -63,6 +64,10 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         Whether to use the optimized dataloader with threading and GPU optimizations. 
         Defaults to False for backward compatibility. When True, uses 
         `optimized_experiment_dataloader` which returns dictionary format batches.
+
+        context: SOMATileDBContext, optional
+        Custom TileDB context for S3 optimizations. If provided, this context will be used
+        for all TileDB-SOMA operations. Useful for configuring S3 performance settings.
         """
         super().__init__()
         self.query = query
@@ -72,6 +77,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
             dataloader_kwargs if dataloader_kwargs is not None else {}
         )
         self.use_optimized_dataloader = use_optimized_dataloader
+        self.context = context
         self.batch_column_names = (
             batch_column_names
             if batch_column_names is not None
@@ -84,11 +90,20 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         #   2. add scvi_batch column
         #   3. fit LabelEncoder to the scvi_batch column's unique values
         if batch_labels is None:
-            obs_df = (
-                self.query.obs(column_names=self.batch_column_names)
-                .concat()
-                .to_pandas()
-            )
+            # Use custom context if provided
+            if self.context is not None:
+                with self.query.experiment.open(context=self.context) as exp:
+                    obs_df = (
+                        exp.obs(column_names=self.batch_column_names)
+                        .concat()
+                        .to_pandas()
+                    )
+            else:
+                obs_df = (
+                    self.query.obs(column_names=self.batch_column_names)
+                    .concat()
+                    .to_pandas()
+                )
             obs_df = self._add_batch_col(obs_df, inplace=False)
             batch_labels = obs_df[self.batch_colname].unique()
         self.batch_labels = batch_labels

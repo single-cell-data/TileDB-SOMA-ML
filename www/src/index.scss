@@ -22,15 +22,13 @@ body, :root {
   width: 100%;
   svg {
     width: 100%;
-    padding-bottom: 2em;
-    //border: 1px solid white;
-    g {
-      border: 1px solid white;
-    }
+    height: 3rem;
+    padding-bottom: .5em;
   }
 }
 
 .controls {
+  margin-top: 1rem;
   label {
     margin-right: 1em;
     span {
@@ -38,7 +36,6 @@ body, :root {
     }
     &.number {
       input[type="number"] {
-        width: 3em;
         background-color: transparent;
         color: inherit;
         border: 1px solid rgba($fg, 0.4);

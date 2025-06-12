@@ -48,6 +48,8 @@ class XLocator:
         with Experiment.open(
             self.uri, tiledb_timestamp=self.tiledb_timestamp_ms, context=context
         ) as exp:
+            print(X)
+            print(self.measurement_name, self.layer_name)
             X = exp.ms[self.measurement_name].X[self.layer_name]
             obs = exp.obs
             if not isinstance(X, SparseNDArray):

@@ -6,10 +6,23 @@
 Private module.
 """
 
+import os
 from math import ceil
 from typing import Any, List, Sequence, Tuple, Type, Optional
 import threading
 from functools import lru_cache
+
+# Configure threading for stability BEFORE importing numba
+# This prevents conflicts between Numba parallelization and our manual threading
+def _configure_safe_threading():
+    """Configure safe threading settings to prevent conflicts."""
+    # Set conservative threading limits if not already set
+    if 'NUMBA_NUM_THREADS' not in os.environ:
+        os.environ['NUMBA_NUM_THREADS'] = '1'
+    if 'OMP_NUM_THREADS' not in os.environ:
+        os.environ['OMP_NUM_THREADS'] = str(min(4, os.cpu_count() or 1))
+
+_configure_safe_threading()
 
 import numba
 import numpy as np
@@ -179,6 +192,13 @@ class CSR_IO_Buffer:
         indptr -= indptr[0]
         return sparse.csr_matrix((data, indices, indptr), shape=(n_rows, self.shape[1]))
 
+    def to_scipy_sparse_matrix(self) -> sparse.csr_matrix:
+        """Convert entire CSR_IO_Buffer to a scipy.sparse.csr_matrix."""
+        return sparse.csr_matrix(
+            (self.data.copy(), self.indices.copy(), self.indptr.copy()), 
+            shape=self.shape
+        )
+
     @staticmethod
     def merge(mtxs: Sequence["CSR_IO_Buffer"]) -> "CSR_IO_Buffer":
         r"""Merge |CSR_IO_Buffer|\ s with optimized parallel processing."""
@@ -228,7 +248,7 @@ def smallest_uint_dtype(max_val: int) -> Type[np.unsignedinteger[Any]]:
         return np.uint64
 
 
-@numba.njit(nogil=True, parallel=True, cache=True)  # type: ignore[misc]
+@numba.njit(nogil=True, parallel=False, cache=True)  # type: ignore[misc]
 def _csr_merge_inner_optimized(
     As: Tuple[Tuple[_CSRIdxArray, _CSRIdxArray, NDArrayNumber], ...],  # P,J,D
     Bp: _CSRIdxArray,
@@ -253,7 +273,7 @@ def _csr_merge_inner_optimized(
         offsets[:-1] += n_elmts
 
 
-@numba.njit(nogil=True, parallel=True, cache=True)  # type: ignore[misc]
+@numba.njit(nogil=True, parallel=False, cache=True)  # type: ignore[misc]
 def _csr_to_dense_inner_optimized(
     row_idx_start: int,
     n_rows: int,
@@ -273,7 +293,7 @@ def _csr_to_dense_inner_optimized(
             out[out_row, indices[j]] = data[j]
 
 
-@numba.njit(nogil=True, parallel=True, cache=True, inline="always")  # type: ignore[misc]
+@numba.njit(nogil=True, parallel=False, cache=True, inline="always")  # type: ignore[misc]
 def _count_rows(n_rows: int, Ai: NDArrayNumber, Bp: NDArrayNumber) -> NDArrayNumber:
     """Private: parallel row count with optimized memory access."""
     nnz = len(Ai)
@@ -323,7 +343,7 @@ def _coo_to_csr_inner_optimized(
     Bp[0] = 0
 
 
-@numba.njit(nogil=True, parallel=True, cache=True)  # type: ignore[misc]
+@numba.njit(nogil=True, parallel=False, cache=True)  # type: ignore[misc]
 def _csr_sort_indices_optimized(Bp: _CSRIdxArray, Bj: _CSRIdxArray, Bd: NDArrayNumber) -> None:
     """Optimized CSR index sorting with parallel processing."""
     n_rows = len(Bp) - 1

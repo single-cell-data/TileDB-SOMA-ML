@@ -137,11 +137,23 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     pin_memory: bool = field(default=True)
     """Pin memory for faster GPU transfers when using CUDA."""
     prefetch_factor: int = field(default=2, validator=gt(0))
-    """Number of batches to prefetch ahead of GPU processing."""
+    """Number of batches to prefetch ahead of GPU processing (API compatibility, no threading used)."""
     use_cuda_streams: bool = field(default=True)
     """Use CUDA streams for overlapping data transfer and computation."""
     tensor_cache_size: int = field(default=4)
     """Number of tensor batches to cache for reuse."""
+    
+    # Threading optimization parameters
+    max_concurrent_requests: int = field(default=1, validator=gt(0))
+    """Maximum number of concurrent IO requests for fetching data from TileDB-SOMA."""
+    prefetch_queue_size: int = field(default=2, validator=gt(0))
+    """Size of prefetch queue for concurrent processing."""
+    enable_pinned_memory: bool = field(default=False)
+    """Whether to use CUDA pinned memory for faster GPU transfers in threaded mode."""
+    enable_tensor_cache: bool = field(default=True)
+    """Whether to cache and reuse tensors to reduce allocations."""
+    max_concurrent_batch_processing: int = field(default=1, validator=gt(0))
+    """Maximum number of concurrent mini-batch processing workers."""
 
     # Internal state
     epoch: int = field(default=0, init=False)
@@ -167,6 +179,12 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         prefetch_factor: int = 2,
         use_cuda_streams: bool = True,
         tensor_cache_size: int = 4,
+        # Threading optimization parameters
+        max_concurrent_requests: int = 1,
+        prefetch_queue_size: int = 2,
+        enable_pinned_memory: bool = False,
+        enable_tensor_cache: bool = True,
+        max_concurrent_batch_processing: int = 1,
     ):
         r"""Construct a new |ExperimentDataset|.
 
@@ -224,11 +242,21 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             pin_memory:
                 Pin memory for faster GPU transfers when using CUDA. Defaults to ``True``.
             prefetch_factor:
-                Number of batches to prefetch ahead of GPU processing. Defaults to 2.
+                Number of batches to prefetch ahead of GPU processing (API compatibility, no threading used). Defaults to 2.
             use_cuda_streams:
                 Use CUDA streams for overlapping data transfer and computation. Defaults to ``True``.
             tensor_cache_size:
                 Number of tensor batches to cache for reuse. Defaults to 4.
+            max_concurrent_requests:
+                Maximum number of concurrent IO requests for fetching data from TileDB-SOMA. Defaults to 1.
+            prefetch_queue_size:
+                Size of prefetch queue for concurrent processing. Defaults to 2.
+            enable_pinned_memory:
+                Whether to use CUDA pinned memory for faster GPU transfers in threaded mode. Defaults to False.
+            enable_tensor_cache:
+                Whether to cache and reuse tensors to reduce allocations. Defaults to True.
+            max_concurrent_batch_processing:
+                Maximum number of concurrent mini-batch processing workers. Defaults to 1.
 
         Raises:
             ValueError: on unsupported or malformed parameter values.
@@ -280,6 +308,11 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             prefetch_factor=prefetch_factor,
             use_cuda_streams=use_cuda_streams,
             tensor_cache_size=tensor_cache_size,
+            max_concurrent_requests=max_concurrent_requests,
+            prefetch_queue_size=prefetch_queue_size,
+            enable_pinned_memory=enable_pinned_memory,
+            enable_tensor_cache=enable_tensor_cache,
+            max_concurrent_batch_processing=max_concurrent_batch_processing,
         )
 
     def __attrs_post_init__(self) -> None:
@@ -388,20 +421,43 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 seed=self.seed,
                 shuffle=self.shuffle,
                 use_eager_fetch=self.use_eager_fetch,
+                # Threading optimization parameters
+                max_concurrent_requests=self.max_concurrent_requests,
+                prefetch_queue_size=self.prefetch_queue_size,
             )
 
-            yield from MiniBatchIterable(
-                io_batch_iter=io_batch_iter,
-                batch_size=self.batch_size,
-                use_eager_fetch=self.use_eager_fetch,
-                return_sparse_X=self.return_sparse_X,
-                pin_memory=self.pin_memory,
-                prefetch_factor=self.prefetch_factor,
-                use_cuda_streams=self.use_cuda_streams,
-                tensor_cache_size=self.tensor_cache_size,
-            )
+            # Create a simple MiniBatchIterable that works with current interface
+            for X_io_batch, obs_io_batch in io_batch_iter:
+                yield from self._process_io_batch_to_mini_batches(
+                    X_io_batch, obs_io_batch
+                )
 
         self.epoch += 1
+
+    def _process_io_batch_to_mini_batches(self, X_io_batch, obs_io_batch) -> Iterator[MiniBatch]:
+        """Process a single IO batch into mini-batches with threading optimizations."""
+        from tiledbsoma_ml._mini_batch_iterable import MiniBatchIterable
+        
+        # Create temporary iterator that yields just this IO batch
+        io_batch_iter = iter([(X_io_batch, obs_io_batch)])
+        
+        # Use MiniBatchIterable with threading optimizations
+        mini_batch_iter = MiniBatchIterable(
+            io_batch_iter=io_batch_iter,
+            encoders=[],  # Simple case without encoders for now
+            mini_batch_size=self.batch_size,
+            return_sparse_X=self.return_sparse_X,
+            use_eager_fetch=False,  # Don't double-buffer
+            shuffle=self.shuffle,
+            seed=self.seed,
+            soma_joinid="soma_joinid" in self.obs_column_names,
+            # GPU optimization settings from dataset
+            enable_pinned_memory=self.enable_pinned_memory,
+            enable_tensor_cache=self.enable_tensor_cache,
+            max_concurrent_batch_processing=self.max_concurrent_batch_processing,
+        )
+        
+        yield from mini_batch_iter
 
     def __len__(self) -> int:
         """Return the number of batches this iterable will produce. If run in the context of |torch.distributed| or as a

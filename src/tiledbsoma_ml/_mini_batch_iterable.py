@@ -1,12 +1,12 @@
 # Copyright (c) TileDB, Inc. and The Chan Zuckerberg Initiative Foundation
 #
 # Licensed under the MIT License.
-from __future__ import annotations
 
+import gc
 import logging
-from typing import Iterable, Iterator, Optional
-from queue import Queue
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Iterator, Optional, Sequence, Tuple
 
 import attrs
 import numpy as np
@@ -14,203 +14,261 @@ import pandas as pd
 import torch
 from scipy import sparse
 
-from tiledbsoma_ml._common import MiniBatch, NDArrayNumber
-from tiledbsoma_ml._csr import CSR_IO_Buffer
-from tiledbsoma_ml._eager_iter import EagerIterator
-from tiledbsoma_ml._io_batch_iterable import IOBatch, IOBatchIterable
+from ._csr import CSR_IO_Buffer
+from ._io_batch_iterable import IOBatch
 
 logger = logging.getLogger("tiledbsoma_ml._mini_batch_iterable")
 
-# Thread-local tensor cache for reusing memory allocations
-_thread_local_cache = threading.local()
 
-def _get_tensor_cache():
-    """Get thread-local tensor cache for reusing tensor allocations."""
-    if not hasattr(_thread_local_cache, 'tensor_cache'):
-        _thread_local_cache.tensor_cache = {}
-    return _thread_local_cache.tensor_cache
+def _check_and_reopen_soma_object(soma_obj, original_uri: str):
+    """Check if a SOMA object is open and reopen it if necessary (same as in IOBatchIterable)."""
+    try:
+        # Try to access a basic property to check if it's open
+        _ = soma_obj.schema
+        return soma_obj  # Object is open and accessible
+    except Exception:
+        # Object is closed, need to reopen it
+        logger.debug(f"Reopening closed SOMA object: {original_uri}")
+        if hasattr(soma_obj, 'open'):
+            # For SparseNDArray and DataFrame
+            return type(soma_obj).open(original_uri, mode="r", context=soma_obj.context)
+        else:
+            raise RuntimeError(f"Don't know how to reopen SOMA object of type {type(soma_obj)}")
+
+
+# Thread-local storage for caching tensors to avoid repeated allocations
+_thread_local = threading.local()
+
+
+def _get_thread_local_cache():
+    """Get or create thread-local tensor cache."""
+    if not hasattr(_thread_local, 'tensor_cache'):
+        _thread_local.tensor_cache = {}
+        _thread_local.pinned_memory_pool = {}
+    return _thread_local.tensor_cache, _thread_local.pinned_memory_pool
 
 
 @attrs.define(frozen=True)
 class MiniBatchIterable:
-    """Iterate over mini-batches from IO batches, with GPU optimization support."""
+    """An ``Iterable`` of mini-batches, each mini-batch is a ``Dict[str, Union[np.ndarray, torch.Tensor]]``
+    containing PyTorch Tensors or NumPy arrays (depending on ``return_sparse_X``).
 
-    io_batch_iter: IOBatchIterable
-    batch_size: int
-    use_eager_fetch: bool = True
+    The ``X`` key refers to a dense |np.ndarray| containing X data. The remainder of keys refer to
+    |pandas.DataFrame| columns in ``obs``, and contain 1D |np.ndarray|'s.
+
+    Example::
+
+        mini_batch_iterable = MiniBatchIterable(...)
+        mini_batch = next(mini_batch_iterable)
+        print(mini_batch)
+        # {'X': np.ndarray(...), 'label': np.ndarray(...), ...}
+
+    """
+
+    io_batch_iter: Iterator[IOBatch]
+    encoders: Sequence[any]
+    mini_batch_size: int
     return_sparse_X: bool = False
-    
-    # GPU optimization parameters
-    pin_memory: bool = True
-    prefetch_factor: int = 2
-    use_cuda_streams: bool = True
-    tensor_cache_size: int = 4
+    use_eager_fetch: bool = True
+    shuffle: bool = True
+    seed: Optional[int] = None
+    soma_joinid: bool = False
+    # GPU optimization settings
+    enable_pinned_memory: bool = False
+    enable_tensor_cache: bool = True
+    max_concurrent_batch_processing: int = 2
 
-    def __iter__(self) -> Iterator[MiniBatch]:
-        """Emit mini-batches with GPU optimizations."""
-        if self.use_eager_fetch:
-            io_batch_iter = EagerIterator(iter(self.io_batch_iter))
+    def __iter__(self) -> Iterator:
+        """Iterate over mini-batches with optimized concurrent processing."""
+        mini_batch_rng = np.random.default_rng(self.seed)
+        
+        # Process IOBatches and yield mini-batches
+        for io_batch in self.io_batch_iter:
+            # Process each IO batch into mini-batches
+            yield from self._process_io_batch_into_mini_batches(io_batch, mini_batch_rng)
+
+    def _process_io_batch_into_mini_batches(self, io_batch: IOBatch, mini_batch_rng: np.random.Generator) -> Iterator:
+        """Process a single IO batch into multiple mini-batches with optimizations."""
+        X_io_batch, obs_io_batch = io_batch
+        
+        if self.max_concurrent_batch_processing > 1 and X_io_batch.shape[0] > self.mini_batch_size * 2:
+            # Use concurrent processing for large IO batches
+            yield from self._process_io_batch_concurrent(X_io_batch, obs_io_batch, mini_batch_rng)
         else:
-            io_batch_iter = iter(self.io_batch_iter)
+            # Use sequential processing for smaller batches
+            yield from self._process_io_batch_sequential(X_io_batch, obs_io_batch, mini_batch_rng)
 
-        # Set up CUDA streams if available and requested
-        cuda_available = torch.cuda.is_available()
-        stream = None
-        if cuda_available and self.use_cuda_streams:
-            try:
-                stream = torch.cuda.Stream()
-            except Exception as e:
-                logger.warning(f"Could not create CUDA stream: {e}")
-                stream = None
+    def _process_io_batch_concurrent(
+        self, X_io_batch: CSR_IO_Buffer, obs_io_batch: pd.DataFrame, mini_batch_rng: np.random.Generator
+    ) -> Iterator:
+        """Process IO batch into mini-batches using concurrent processing."""
+        
+        # Convert to dense for easier processing
+        X_dense = X_io_batch.to_scipy_sparse_matrix().toarray()
+        
+        # Calculate mini-batch indices
+        num_samples = X_dense.shape[0]
+        indices = np.arange(num_samples)
+        if self.shuffle:
+            mini_batch_rng.shuffle(indices)
+        
+        # Split into mini-batch chunks
+        mini_batch_indices_list = [
+            indices[i:i + self.mini_batch_size] 
+            for i in range(0, len(indices), self.mini_batch_size)
+        ]
+        
+        if len(mini_batch_indices_list) <= 1:
+            # Fall back to sequential for single mini-batch
+            yield from self._process_io_batch_sequential(X_io_batch, obs_io_batch, mini_batch_rng)
+            return
+        
+        def process_mini_batch_chunk(mini_batch_indices: np.ndarray) -> dict:
+            """Process a chunk of data into a mini-batch in a thread-safe way."""
+            cache, pinned_pool = _get_thread_local_cache()
+            
+            # Extract data for this mini-batch
+            X_mini = X_dense[mini_batch_indices]
+            obs_mini = obs_io_batch.iloc[mini_batch_indices]
+            
+            # Create mini-batch dictionary
+            mini_batch = self._create_mini_batch_dict(X_mini, obs_mini, cache, pinned_pool)
+            
+            return mini_batch
+        
+        # Use ThreadPoolExecutor for concurrent mini-batch processing
+        with ThreadPoolExecutor(max_workers=self.max_concurrent_batch_processing) as executor:
+            # Submit all mini-batch processing jobs
+            futures = [
+                executor.submit(process_mini_batch_chunk, mini_batch_indices)
+                for mini_batch_indices in mini_batch_indices_list
+            ]
+            
+            # Yield results as they complete
+            for future in futures:  # Maintain order
+                try:
+                    yield future.result()
+                except Exception as e:
+                    logger.error(f"Error processing mini-batch: {e}")
+                    raise
 
-        # Prefetching queue for GPU optimization
-        prefetch_queue = Queue(maxsize=self.prefetch_factor) if self.prefetch_factor > 1 else None
-        prefetch_thread = None
+    def _process_io_batch_sequential(
+        self, X_io_batch: CSR_IO_Buffer, obs_io_batch: pd.DataFrame, mini_batch_rng: np.random.Generator
+    ) -> Iterator:
+        """Process IO batch into mini-batches sequentially (fallback method)."""
+        # Convert to dense
+        X_dense = X_io_batch.to_scipy_sparse_matrix().toarray()
+        
+        # Shuffle if requested
+        num_samples = X_dense.shape[0]
+        indices = np.arange(num_samples)
+        if self.shuffle:
+            mini_batch_rng.shuffle(indices)
+        
+        cache, pinned_pool = _get_thread_local_cache()
+        
+        # Generate mini-batches
+        for i in range(0, len(indices), self.mini_batch_size):
+            mini_batch_indices = indices[i:i + self.mini_batch_size]
+            
+            X_mini = X_dense[mini_batch_indices]
+            obs_mini = obs_io_batch.iloc[mini_batch_indices]
+            
+            yield self._create_mini_batch_dict(X_mini, obs_mini, cache, pinned_pool)
 
-        if prefetch_queue:
-            prefetch_thread = threading.Thread(
-                target=self._prefetch_worker,
-                args=(io_batch_iter, prefetch_queue, stream),
-                daemon=True
-            )
-            prefetch_thread.start()
-            batch_source = self._get_from_queue(prefetch_queue)
+    def _create_mini_batch_dict(
+        self, X_mini: np.ndarray, obs_mini: pd.DataFrame, cache: dict, pinned_pool: dict
+    ) -> dict:
+        """Create a mini-batch dictionary with optimizations."""
+        mini_batch = {}
+        
+        # Handle X data
+        if self.return_sparse_X:
+            # Convert to sparse if requested
+            X_sparse = sparse.csr_matrix(X_mini)
+            mini_batch["X"] = X_sparse
         else:
-            batch_source = io_batch_iter
-
-        try:
-            for X_io_batch, obs_io_batch in batch_source:
-                yield from self._process_io_batch_optimized(
-                    X_io_batch, obs_io_batch, stream
-                )
-        finally:
-            if prefetch_thread:
-                prefetch_queue.put(None)  # Signal thread to stop
-                prefetch_thread.join(timeout=1.0)
-
-    def _prefetch_worker(self, io_batch_iter: Iterator[IOBatch], queue: Queue, stream):
-        """Worker thread for prefetching batches."""
-        try:
-            for batch in io_batch_iter:
-                queue.put(batch)
-            queue.put(None)  # Signal end of batches
-        except Exception as e:
-            logger.error(f"Error in prefetch worker: {e}")
-            queue.put(None)
-
-    def _get_from_queue(self, queue: Queue) -> Iterator[IOBatch]:
-        """Get batches from prefetch queue."""
-        while True:
-            batch = queue.get()
-            if batch is None:
-                break
-            yield batch
-
-    def _process_io_batch_optimized(
-        self, 
-        X_io_batch: CSR_IO_Buffer, 
-        obs_io_batch, 
-        stream
-    ) -> Iterator[MiniBatch]:
-        """Process IO batch with GPU optimizations."""
-        total_rows = X_io_batch.shape[0]
-        
-        for start_row in range(0, total_rows, self.batch_size):
-            end_row = min(start_row + self.batch_size, total_rows)
-            batch_slice = slice(start_row, end_row)
-            
-            # Extract mini-batch data with optimized memory management
-            if self.return_sparse_X:
-                X_batch = self._extract_sparse_batch_optimized(X_io_batch, batch_slice, stream)
+            # Convert to PyTorch tensor with optimizations
+            if self.enable_tensor_cache:
+                # Try to reuse tensor if same shape
+                tensor_key = f"X_{X_mini.shape}"
+                if tensor_key in cache and cache[tensor_key].shape == X_mini.shape:
+                    X_tensor = cache[tensor_key]
+                    X_tensor.copy_(torch.from_numpy(X_mini))
+                else:
+                    X_tensor = torch.from_numpy(X_mini.copy()).float()
+                    if self.enable_pinned_memory and torch.cuda.is_available():
+                        X_tensor = X_tensor.pin_memory()
+                    cache[tensor_key] = X_tensor
             else:
-                X_batch = self._extract_dense_batch_optimized(X_io_batch, batch_slice, stream)
+                X_tensor = torch.from_numpy(X_mini.copy()).float()
+                if self.enable_pinned_memory and torch.cuda.is_available():
+                    X_tensor = X_tensor.pin_memory()
             
-            obs_batch = obs_io_batch.iloc[batch_slice].copy()
-            
-            yield X_batch, obs_batch
+            mini_batch["X"] = X_tensor
 
-    def _extract_dense_batch_optimized(
-        self, 
-        X_io_batch: CSR_IO_Buffer, 
-        batch_slice: slice,
-        stream
-    ) -> NDArrayNumber:
-        """Extract dense batch with GPU optimizations and tensor caching."""
-        # Get tensor cache
-        tensor_cache = _get_tensor_cache()
-        
-        # Calculate batch dimensions
-        n_rows = batch_slice.stop - batch_slice.start
-        n_cols = X_io_batch.shape[1]
-        batch_shape = (n_rows, n_cols)
-        dtype = X_io_batch.dtype
-        
-        # Try to reuse cached tensor
-        cache_key = f"dense_{batch_shape}_{dtype}"
-        
-        if cache_key in tensor_cache and len(tensor_cache) <= self.tensor_cache_size:
-            cached_array = tensor_cache[cache_key]
-            if cached_array.shape == batch_shape and cached_array.dtype == dtype:
-                # Reuse cached array
-                X_batch = cached_array
-                X_batch.fill(0)  # Reset values
-            else:
-                # Create new array
-                X_batch = self._create_optimized_array(batch_shape, dtype)
-                tensor_cache[cache_key] = X_batch.copy()
-        else:
-            # Create new array and cache it
-            X_batch = self._create_optimized_array(batch_shape, dtype)
-            if len(tensor_cache) < self.tensor_cache_size:
-                tensor_cache[cache_key] = X_batch.copy()
-
-        # Fill the array using optimized CSR extraction
-        try:
-            if stream and torch.cuda.is_available():
-                with torch.cuda.stream(stream):
-                    X_io_batch.slice_tonumpy_inplace(batch_slice, X_batch)
-            else:
-                # Use the optimized in-place slice method
-                result = X_io_batch.slice_tonumpy(batch_slice)
-                X_batch[:] = result
-        except AttributeError:
-            # Fallback to original method
-            X_batch = X_io_batch.slice_tonumpy(batch_slice)
-
-        return X_batch
-
-    def _extract_sparse_batch_optimized(
-        self, 
-        X_io_batch: CSR_IO_Buffer, 
-        batch_slice: slice,
-        stream
-    ) -> sparse.csr_matrix:
-        """Extract sparse batch with optimizations."""
-        return X_io_batch.slice_toscipy(batch_slice)
-
-    def _create_optimized_array(self, shape, dtype) -> NDArrayNumber:
-        """Create optimized numpy array with optional pinned memory."""
-        if self.pin_memory and torch.cuda.is_available():
-            try:
-                # Create pinned memory tensor and convert to numpy
-                tensor = torch.zeros(shape, dtype=self._numpy_to_torch_dtype(dtype), pin_memory=True)
-                return tensor.numpy()
-            except Exception as e:
-                logger.warning(f"Could not create pinned memory array: {e}")
+        # Handle obs data with encoders
+        for encoder in self.encoders:
+            column_name = encoder.name
+            if column_name in obs_mini.columns:
+                encoded_values = encoder.transform(obs_mini[column_name])
                 
-        # Fallback to regular numpy array
-        return np.zeros(shape, dtype=dtype)
+                # Convert to tensor if needed
+                if not self.return_sparse_X and not isinstance(encoded_values, (sparse.spmatrix, sparse._base.spbase)):
+                    if self.enable_tensor_cache:
+                        tensor_key = f"{column_name}_{encoded_values.shape}"
+                        if tensor_key in cache and cache[tensor_key].shape == encoded_values.shape:
+                            values_tensor = cache[tensor_key]
+                            if encoded_values.dtype == np.int64:
+                                values_tensor.copy_(torch.from_numpy(encoded_values))
+                            else:
+                                values_tensor.copy_(torch.from_numpy(encoded_values.astype(np.float32)))
+                        else:
+                            if encoded_values.dtype == np.int64:
+                                values_tensor = torch.from_numpy(encoded_values.copy())
+                            else:
+                                values_tensor = torch.from_numpy(encoded_values.astype(np.float32))
+                            
+                            if self.enable_pinned_memory and torch.cuda.is_available():
+                                values_tensor = values_tensor.pin_memory()
+                            cache[tensor_key] = values_tensor
+                    else:
+                        if encoded_values.dtype == np.int64:
+                            values_tensor = torch.from_numpy(encoded_values.copy())
+                        else:
+                            values_tensor = torch.from_numpy(encoded_values.astype(np.float32))
+                        
+                        if self.enable_pinned_memory and torch.cuda.is_available():
+                            values_tensor = values_tensor.pin_memory()
+                    
+                    mini_batch[column_name] = values_tensor
+                else:
+                    mini_batch[column_name] = encoded_values
 
-    def _numpy_to_torch_dtype(self, numpy_dtype):
-        """Convert numpy dtype to torch dtype."""
-        dtype_mapping = {
-            np.float32: torch.float32,
-            np.float64: torch.float64,
-            np.int32: torch.int32,
-            np.int64: torch.int64,
-            np.uint8: torch.uint8,
-            np.int8: torch.int8,
-            np.int16: torch.int16,
-            np.bool_: torch.bool,
-        }
-        return dtype_mapping.get(numpy_dtype, torch.float32)
+        # Add soma_joinid if requested
+        if self.soma_joinid:
+            soma_joinids = obs_mini["soma_joinid"].values
+            if not self.return_sparse_X:
+                if self.enable_tensor_cache:
+                    tensor_key = f"soma_joinid_{soma_joinids.shape}"
+                    if tensor_key in cache and cache[tensor_key].shape == soma_joinids.shape:
+                        joinid_tensor = cache[tensor_key]
+                        joinid_tensor.copy_(torch.from_numpy(soma_joinids))
+                    else:
+                        joinid_tensor = torch.from_numpy(soma_joinids.copy())
+                        if self.enable_pinned_memory and torch.cuda.is_available():
+                            joinid_tensor = joinid_tensor.pin_memory()
+                        cache[tensor_key] = joinid_tensor
+                else:
+                    joinid_tensor = torch.from_numpy(soma_joinids.copy())
+                    if self.enable_pinned_memory and torch.cuda.is_available():
+                        joinid_tensor = joinid_tensor.pin_memory()
+                
+                mini_batch["soma_joinid"] = joinid_tensor
+            else:
+                mini_batch["soma_joinid"] = soma_joinids
+        
+        # Cleanup
+        gc.collect(generation=0)
+        
+        return mini_batch

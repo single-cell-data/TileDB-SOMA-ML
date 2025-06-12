@@ -4,116 +4,194 @@
 
 from __future__ import annotations
 
-from typing import Any, TypeVar
+import os
+from typing import Any, TypeVar, Optional, Union, Sequence
 
 from torch.utils.data import DataLoader
 
 from tiledbsoma_ml._distributed import init_multiprocessing
 from tiledbsoma_ml.dataset import ExperimentDataset
 
+import logging
+import warnings
+
 _T = TypeVar("_T")
+
+logger = logging.getLogger("tiledbsoma_ml.dataloader")
+
+
+def configure_threading_for_stability():
+    """Configure threading settings for stable operation.
+    
+    This function sets conservative threading limits to prevent conflicts
+    between TileDB-SOMA, Numba, OpenMP, and PyTorch threading.
+    
+    Call this function before creating datasets or dataloaders if you
+    encounter segmentation faults or threading issues.
+    """
+    # Set conservative threading limits if not already set
+    if 'NUMBA_NUM_THREADS' not in os.environ:
+        os.environ['NUMBA_NUM_THREADS'] = '1'
+        logger.info("Set NUMBA_NUM_THREADS=1 for stability")
+    
+    if 'OMP_NUM_THREADS' not in os.environ:
+        num_threads = str(min(4, os.cpu_count() or 1))
+        os.environ['OMP_NUM_THREADS'] = num_threads
+        logger.info(f"Set OMP_NUM_THREADS={num_threads} for stability")
+    
+    if 'MKL_NUM_THREADS' not in os.environ:
+        num_threads = str(min(4, os.cpu_count() or 1))
+        os.environ['MKL_NUM_THREADS'] = num_threads
+        logger.info(f"Set MKL_NUM_THREADS={num_threads} for stability")
 
 
 def experiment_dataloader(
-    ds: ExperimentDataset,
+    exp_data: ExperimentDataset,
+    num_workers: int = 0,
     **dataloader_kwargs: Any,
 ) -> DataLoader:
-    """|DataLoader| factory method for safely wrapping an |ExperimentDataset|.
-
-    Several |DataLoader| constructor parameters are not applicable, or are non-performant when using loaders from this
-    module, including ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``. Specifying any of these
-    parameters will result in an error.
-
-    Refer to `the DataLoader docs <https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader>`_ for more
-    information on |DataLoader| parameters, and |ExperimentDataset| for info on corresponding parameters.
+    """Factory function for |PyTorch DataLoader|. This function is a light wrapper around
+    |torch.utils.data.DataLoader|. Please see the |PyTorch DataLoader docs|_
+    for a complete description of the parameters.
 
     Args:
-        ds:
-            A |IterableDataset|. May include chained data pipes.
-        **dataloader_kwargs:
-            Additional keyword arguments to pass to the |DataLoader| constructor,
-            except for ``shuffle``, ``batch_size``, ``sampler``, and ``batch_sampler``, which are not
-            supported when using data loaders in this module.
+        exp_data: A :class:`tiledbsoma_ml.ExperimentDataset`.
+        num_workers: how many subprocesses to use for data loading. 0 means that the data
+            will be loaded in the main process. Note: num_workers=0 is the only
+            supported value at this time.
+        **dataloader_kwargs: Additional keyword arguments to pass to |torch.utils.data.DataLoader|
 
     Returns:
-        |DataLoader|
+        A |torch.utils.data.DataLoader|.
 
     Raises:
-        ValueError: if any of the ``shuffle``, ``batch_size``, ``sampler``, or ``batch_sampler`` params
-            are passed as keyword arguments.
+        ValueError: if ``num_workers`` is not 0.
 
-    Lifecycle:
-        experimental
+    Examples:
+        Use with any |PyTorch Lightning| class:
+
+        >>> train_dataloader = experiment_dataloader(
+        ...     ExperimentDataset(...), batch_size=16, shuffle=True
+        ... )
+        >>> model = MyLightningModule(...)
+        >>> trainer = Trainer(...)
+        >>> trainer.fit(model, train_dataloaders=train_dataloader)
+
+    .. |PyTorch DataLoader| replace:: :class:`torch.utils.data.DataLoader`
+    .. |PyTorch DataLoader docs| replace:: :class:`torch.utils.data.DataLoader`
+    .. _PyTorch DataLoader docs: https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
+    .. |PyTorch Lightning| replace:: :mod:`pytorch_lightning`
     """
-    unsupported_dataloader_args = [
-        "shuffle",
-        "batch_size",
-        "sampler",
-        "batch_sampler",
-    ]
-    if set(unsupported_dataloader_args).intersection(dataloader_kwargs.keys()):
-        raise ValueError(
-            f"The {','.join(unsupported_dataloader_args)} DataLoader parameters are not supported"
-        )
+    if num_workers != 0:
+        raise ValueError("num_workers must be 0")
 
-    if dataloader_kwargs.get("num_workers", 0) > 0:
-        init_multiprocessing()
-
-    if "collate_fn" not in dataloader_kwargs:
-        dataloader_kwargs["collate_fn"] = _collate_noop
-
-    return DataLoader(
-        ds,
-        batch_size=None,  # batching is handled by upstream iterator
-        shuffle=False,  # shuffling is handled by upstream iterator
-        **dataloader_kwargs,
-    )
+    return DataLoader(exp_data, num_workers=num_workers, **dataloader_kwargs)
 
 
 def optimized_experiment_dataloader(
-    ds: ExperimentDataset,
-    num_workers: int = 2,
-    pin_memory: bool = None,
-    persistent_workers: bool = True,
-    prefetch_factor: int = 2,
+    exp_data: ExperimentDataset,
+    batch_size: int = 64,
+    num_workers: int = 0,
+    shuffle: bool = True,
+    # Threading and concurrency parameters
+    max_concurrent_requests: int = 4,
+    max_concurrent_batch_processing: int = 2,
+    prefetch_queue_size: int = 2,
+    # GPU optimization parameters  
+    enable_pinned_memory: bool = False,
+    enable_tensor_cache: bool = True,
+    # TileDB-SOMA parameters
+    io_batch_size: Optional[int] = None,
+    use_eager_fetch: bool = True,
     **dataloader_kwargs: Any,
 ) -> DataLoader:
-    """Optimized |DataLoader| factory for maximum performance with GPU training.
+    """
+    Factory function for optimized PyTorch DataLoader with thread-safe concurrent processing.
     
-    This function provides optimized defaults for high-performance GPU training,
-    including automatic pin_memory detection, worker optimization, and memory management.
+    This function creates a DataLoader that uses threading-based optimizations while maintaining
+    thread safety with TileDB-SOMA by checking and reopening SOMA objects as needed.
     
     Args:
-        ds: A |ExperimentDataset| to wrap.
-        num_workers: Number of worker processes. Defaults to 2 for optimal S3 performance.
-        pin_memory: Whether to pin memory. Auto-detected if None.
-        persistent_workers: Keep workers alive between epochs. Defaults to True.
-        prefetch_factor: Samples loaded ahead by each worker. Defaults to 2.
-        **dataloader_kwargs: Additional DataLoader arguments.
-        
+        exp_data: A :class:`tiledbsoma_ml.ExperimentDataset`.
+        batch_size: Number of samples per batch.
+        num_workers: Number of PyTorch DataLoader workers (recommended: 0 for single-process).
+        shuffle: Whether to shuffle the data.
+        max_concurrent_requests: Maximum concurrent IO requests for fetching data from TileDB-SOMA.
+        max_concurrent_batch_processing: Maximum concurrent mini-batch processing workers.
+        prefetch_queue_size: Size of prefetch queue (for future use).
+        enable_pinned_memory: Whether to use CUDA pinned memory for faster GPU transfers.
+        enable_tensor_cache: Whether to cache and reuse tensors to reduce allocations.
+        io_batch_size: Size of IO batches. If None, defaults to batch_size * 128.
+        use_eager_fetch: Whether to use eager fetching for better performance.
+        **dataloader_kwargs: Additional keyword arguments to pass to torch.utils.data.DataLoader.
+    
     Returns:
-        Optimized |DataLoader| instance.
+        A torch.utils.data.DataLoader with optimized performance settings.
         
-    Lifecycle:
-        experimental
+    Examples:
+        >>> # Basic usage with conservative threading
+        >>> dataloader = optimized_experiment_dataloader(
+        ...     dataset, 
+        ...     batch_size=64,
+        ...     max_concurrent_requests=2,
+        ...     max_concurrent_batch_processing=1
+        ... )
+        
+        >>> # Aggressive optimization for high-performance training
+        >>> dataloader = optimized_experiment_dataloader(
+        ...     dataset,
+        ...     batch_size=128, 
+        ...     max_concurrent_requests=8,
+        ...     max_concurrent_batch_processing=4,
+        ...     enable_pinned_memory=True,
+        ...     enable_tensor_cache=True
+        ... )
     """
-    import torch
+    if num_workers != 0:
+        warnings.warn(
+            "num_workers > 0 with threading optimizations may cause issues. "
+            "Consider using num_workers=0 with max_concurrent_requests instead.",
+            UserWarning
+        )
     
-    # Auto-detect optimal pin_memory setting
-    if pin_memory is None:
-        pin_memory = torch.cuda.is_available()
+    # Set default io_batch_size if not provided
+    if io_batch_size is None:
+        io_batch_size = max(batch_size * 128, 32768)
     
-    # Set optimized defaults
-    optimized_kwargs = {
-        "num_workers": num_workers,
-        "pin_memory": pin_memory,
-        "persistent_workers": persistent_workers and num_workers > 0,
-        "prefetch_factor": prefetch_factor,
-        "drop_last": False,  # Don't drop last incomplete batch
+    # Validate concurrency parameters
+    max_concurrent_requests = max(1, max_concurrent_requests)
+    max_concurrent_batch_processing = max(1, max_concurrent_batch_processing)
+    
+    # Configure the dataset for threading optimization
+    if hasattr(exp_data, '_io_batch_size'):
+        exp_data._io_batch_size = io_batch_size
+    if hasattr(exp_data, '_max_concurrent_requests'):
+        exp_data._max_concurrent_requests = max_concurrent_requests
+    if hasattr(exp_data, '_use_eager_fetch'):
+        exp_data._use_eager_fetch = use_eager_fetch
+    if hasattr(exp_data, '_enable_pinned_memory'):
+        exp_data._enable_pinned_memory = enable_pinned_memory
+    if hasattr(exp_data, '_enable_tensor_cache'):
+        exp_data._enable_tensor_cache = enable_tensor_cache
+    if hasattr(exp_data, '_max_concurrent_batch_processing'):
+        exp_data._max_concurrent_batch_processing = max_concurrent_batch_processing
+    
+    logger.info(f"Creating optimized dataloader with:")
+    logger.info(f"  - batch_size: {batch_size}")
+    logger.info(f"  - io_batch_size: {io_batch_size}")
+    logger.info(f"  - max_concurrent_requests: {max_concurrent_requests}")
+    logger.info(f"  - max_concurrent_batch_processing: {max_concurrent_batch_processing}")
+    logger.info(f"  - enable_pinned_memory: {enable_pinned_memory}")
+    logger.info(f"  - enable_tensor_cache: {enable_tensor_cache}")
+    logger.info(f"  - use_eager_fetch: {use_eager_fetch}")
+    
+    return DataLoader(
+        exp_data, 
+        batch_size=None,  # We handle batching internally
+        num_workers=num_workers, 
+        shuffle=False,  # We handle shuffling internally
         **dataloader_kwargs
-    }
-    
-    return experiment_dataloader(ds, **optimized_kwargs)
+    )
 
 
 def _collate_noop(datum: _T) -> _T:

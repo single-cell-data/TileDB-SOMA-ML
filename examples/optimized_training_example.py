@@ -52,7 +52,7 @@ def setup_optimized_dataset(experiment_path: str, measurement_name: str = "RNA")
             obs_query=AxisQuery(value_filter="is_primary_data == True")
         )
         
-        # Create dataset with performance optimizations
+        # Create dataset with optimizations
         dataset = ExperimentDataset(
                     query=query,
                     layer_name="raw",
@@ -182,23 +182,23 @@ def main():
             dataset = ExperimentDataset(
                 query=hvg_query,
                 layer_name="raw", 
-                batch_size=256,              # Reasonable batch size for testing
-                io_batch_size=32768,         # Conservative IO batch size
+                batch_size=128,              # Smaller batch size for stability
+                io_batch_size=16384,         # Smaller IO batch size for safer memory usage
                 shuffle=True,
                 
-                # GPU optimizations
+                # GPU optimizations (conservative settings)
                 pin_memory=torch.cuda.is_available(),
-                prefetch_factor=2,
+                prefetch_factor=1,           # Reduced to 1 for stability
                 use_cuda_streams=torch.cuda.is_available(),
-                tensor_cache_size=4,
+                tensor_cache_size=2,         # Reduced cache size
                 use_eager_fetch=True,
             )
             
             print("Creating optimized dataloader...")
-            dataloader = create_optimized_dataloader(dataset, num_workers=2)
+            dataloader = create_optimized_dataloader(dataset, num_workers=1)  # Conservative setting
             
             print("Starting performance benchmark...")
-            throughput = benchmark_performance(dataloader, num_batches=20)  # Reduced for testing
+            throughput = benchmark_performance(dataloader, num_batches=10)  # Reduced batches
             
             print(f"\nOptimized throughput: {throughput:.1f} samples/sec")
             
@@ -227,8 +227,8 @@ def main():
         experiment_path = "s3://your-bucket/experiment.soma"
         try:
             dataset = setup_optimized_dataset(experiment_path)
-            dataloader = create_optimized_dataloader(dataset, num_workers=2)
-            throughput = benchmark_performance(dataloader, num_batches=20)
+            dataloader = create_optimized_dataloader(dataset, num_workers=1)  # Conservative setting
+            throughput = benchmark_performance(dataloader, num_batches=10)  # Reduced batches
             print(f"Optimized throughput: {throughput:.1f} samples/sec")
         except Exception as e:
             print(f"Error with local experiment: {e}")

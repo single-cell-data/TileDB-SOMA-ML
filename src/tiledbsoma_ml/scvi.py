@@ -73,6 +73,8 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         self.query = query
         self.dataset_args = args
         self.dataset_kwargs = kwargs
+        if context is not None:
+            self.dataset_kwargs["context"] = context
         self.dataloader_kwargs = (
             dataloader_kwargs if dataloader_kwargs is not None else {}
         )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any, Sequence, Dict
 
 import pandas as pd
 import torch
@@ -33,7 +33,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         batch_labels: Sequence[str] | None = None,
         dataloader_kwargs: dict[str, Any] | None = None,
         use_optimized_dataloader: bool = False,
-        context: SOMATileDBContext | None = None,
+        tiledb_config: Dict[str, str | float] | None = None,
         **kwargs: Any,
     ):
         """Args:
@@ -65,21 +65,21 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         Defaults to False for backward compatibility. When True, uses 
         `optimized_experiment_dataloader` which returns dictionary format batches.
 
-        context: SOMATileDBContext, optional
-        Custom TileDB context for S3 optimizations. If provided, this context will be used
+        tiledb_config: Dict[str, str | float], optional
+        TileDB configuration dictionary for S3 optimizations. If provided, this configuration will be used
         for all TileDB-SOMA operations. Useful for configuring S3 performance settings.
         """
         super().__init__()
         self.query = query
         self.dataset_args = args
         self.dataset_kwargs = kwargs
-        if context is not None:
-            self.dataset_kwargs["context"] = context
+        if tiledb_config is not None:
+            self.dataset_kwargs["tiledb_config"] = tiledb_config
         self.dataloader_kwargs = (
             dataloader_kwargs if dataloader_kwargs is not None else {}
         )
         self.use_optimized_dataloader = use_optimized_dataloader
-        self.context = context
+        self.tiledb_config = tiledb_config
         self.batch_column_names = (
             batch_column_names
             if batch_column_names is not None
@@ -92,9 +92,10 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         #   2. add scvi_batch column
         #   3. fit LabelEncoder to the scvi_batch column's unique values
         if batch_labels is None:
-            # Use custom context if provided
-            if self.context is not None:
-                with self.query.experiment.open(context=self.context) as exp:
+            # Use custom config if provided
+            if self.tiledb_config is not None:
+                context = SOMATileDBContext(tiledb_config=self.tiledb_config)
+                with self.query.experiment.open(context=context) as exp:
                     obs_df = (
                         exp.obs(column_names=self.batch_column_names)
                         .concat()

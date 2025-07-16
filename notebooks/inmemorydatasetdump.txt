@@ -1,0 +1,25 @@
+2025-07-07 07:18:49,971 FIT Profiler Report
+Profile stats for: records
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg       CPU Mem  Self CPU Mem    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                          ProfilerStep*         2.14%     134.951ms        95.99%        6.052s        2.017s           8 b          28 b             3  
+[pl][profile][_TrainingEpochLoop].train_dataloader_n...         0.01%     833.902us        89.08%        5.616s        1.872s           0 b           0 b             3  
+enumerate(DataLoader)#_MultiProcessingDataLoaderIter...        89.06%        5.615s        89.07%        5.615s        1.872s           0 b           0 b             3  
+                        [pl][profile]run_training_batch         0.01%     911.451us         2.66%     167.534ms      55.845ms           0 b           0 b             3  
+[pl][profile][LightningModule]TrainingPlan.optimizer...         0.01%     430.431us         2.64%     166.547ms      55.516ms           0 b           0 b             3  
+                               Optimizer.step#Adam.step         0.92%      58.078ms         2.63%     166.116ms      55.372ms           0 b         -16 b             3  
+       [pl][profile][Strategy]DDPStrategy.training_step         0.01%     850.242us         2.33%     147.141ms      49.047ms          24 b           0 b             3  
+                        DistributedDataParallel.forward         1.14%      72.017ms         2.32%     146.291ms      48.764ms          24 b         -36 b             3  
+            [pl][profile][Strategy]DDPStrategy.backward         1.69%     106.375ms         1.71%     108.100ms      36.033ms         -40 b         -40 b             3  
+[pl][profile][LightningDataModule]SCVIDataModule.on_...         1.06%      66.580ms         1.06%      66.706ms      22.235ms           0 b           0 b             3  
+               [pl][module]scvi.module._vae.VAE: module         0.25%      15.629ms         0.87%      55.110ms      18.370ms          48 b          48 b             3  
+     [pl][profile][Strategy]DDPStrategy.batch_to_device         0.02%       1.348ms         0.78%      49.472ms      16.491ms           0 b           0 b             3  
+[pl][profile][LightningModule]TrainingPlan.transfer_...         0.37%      23.231ms         0.76%      47.747ms      15.916ms           0 b           0 b             3  
+                                            aten::copy_         0.08%       5.319ms         0.55%      34.460ms     294.529us           0 b           0 b           117  
+                                        cudaMemcpyAsync         0.47%      29.340ms         0.47%      29.340ms     227.441us           0 b           0 b           129  
+[pl][module]scvi.nn._base_components.Encoder: module...         0.04%       2.570ms         0.40%      25.363ms       8.454ms           0 b           0 b             3  
+                                               aten::to         0.00%     180.850us         0.39%      24.859ms     125.552us           0 b           0 b           198  
+                                         aten::_to_copy         0.00%     173.565us         0.39%      24.678ms       2.057ms           0 b           0 b            12  
+autograd::engine::evaluate_function: NativeBatchNorm...         0.33%      20.617ms         0.37%      23.428ms       3.905ms           0 b           0 b             6  
+autograd::engine::evaluate_function: torch::autograd...         0.10%       5.991ms         0.32%      20.400ms     453.336us           0 b           0 b            45  

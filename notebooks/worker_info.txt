@@ -1,0 +1,113 @@
+Epoch 2/3:  33%|████████████████████████████████████████████████                                                                                                | 1/3 [04:07<08:14, 247.03s/it, v_num=1, train_loss_step=2.7e+3, train_loss_epoch=3.1e+3]CRITICAL INFORMATION,  0 1 2 8
+On the torch side,  8 2
+Iterator created rank=0, world_size=1, worker_id=2, n_workers=8, seed=42, epoch=0
+[PID 16690] partitioning took 0.001s
+[PID 16690] shuffle-chunking took 0.018s
+[PID 16690] I/O-batch iterator built in 0.000s
+[PID 16690] worker 2/8 produced 64 mini-batches in 37.418s (avg 0.585s/batch)
+CRITICAL INFORMATION,  0 1 6 8
+On the torch side,  8 6
+Iterator created rank=0, world_size=1, worker_id=6, n_workers=8, seed=42, epoch=0
+[PID 16916] partitioning took 0.001s
+[PID 16916] shuffle-chunking took 0.018s
+[PID 16916] I/O-batch iterator built in 0.000s
+[PID 16916] worker 6/8 produced 64 mini-batches in 42.377s (avg 0.662s/batch)
+CRITICAL INFORMATION,  0 1 0 8
+On the torch side,  8 0
+Iterator created rank=0, world_size=1, worker_id=0, n_workers=8, seed=42, epoch=0
+[PID 16618] partitioning took 0.001s
+[PID 16618] shuffle-chunking took 0.018s
+[PID 16618] I/O-batch iterator built in 0.000s
+[PID 16618] worker 0/8 produced 64 mini-batches in 45.919s (avg 0.717s/batch)
+CRITICAL INFORMATION,  0 1 4 8
+On the torch side,  8 4
+Iterator created rank=0, world_size=1, worker_id=4, n_workers=8, seed=42, epoch=0
+[PID 16818] partitioning took 0.001s
+[PID 16818] shuffle-chunking took 0.009s
+[PID 16818] I/O-batch iterator built in 0.000s
+[PID 16818] worker 4/8 produced 64 mini-batches in 42.767s (avg 0.668s/batch)
+CRITICAL INFORMATION,  0 1 3 8
+On the torch side,  8 3
+Iterator created rank=0, world_size=1, worker_id=3, n_workers=8, seed=42, epoch=0
+[PID 16783] partitioning took 0.000s
+[PID 16783] shuffle-chunking took 0.009s
+[PID 16783] I/O-batch iterator built in 0.000s
+[PID 16783] worker 3/8 produced 64 mini-batches in 43.525s (avg 0.680s/batch)
+CRITICAL INFORMATION,  0 1 1 8
+On the torch side,  8 1
+Iterator created rank=0, world_size=1, worker_id=1, n_workers=8, seed=42, epoch=0
+[PID 16655] partitioning took 0.001s
+[PID 16655] shuffle-chunking took 0.009s
+[PID 16655] I/O-batch iterator built in 0.000s
+[PID 16655] worker 1/8 produced 64 mini-batches in 44.298s (avg 0.692s/batch)
+CRITICAL INFORMATION,  0 1 7 8
+On the torch side,  8 7
+Iterator created rank=0, world_size=1, worker_id=7, n_workers=8, seed=42, epoch=0
+[PID 16951] partitioning took 0.001s
+[PID 16951] shuffle-chunking took 0.018s
+[PID 16951] I/O-batch iterator built in 0.000s
+[PID 16951] worker 7/8 produced 64 mini-batches in 43.322s (avg 0.677s/batch)
+CRITICAL INFORMATION,  0 1 5 8
+On the torch side,  8 5
+Iterator created rank=0, world_size=1, worker_id=5, n_workers=8, seed=42, epoch=0
+[PID 16871] partitioning took 0.000s
+[PID 16871] shuffle-chunking took 0.009s
+[PID 16871] I/O-batch iterator built in 0.000s
+[PID 16871] worker 5/8 produced 64 mini-batches in 42.718s (avg 0.667s/batch)
+Epoch 3/3:  67%|██████████████████████████████████████████████████████████████████████████████████████████████▋                                               | 2/3 [08:53<04:30, 270.13s/it, v_num=1, train_loss_step=2.59e+3, train_loss_epoch=2.58e+3]CRITICAL INFORMATION,  0 1 4 8
+On the torch side,  8 4
+Iterator created rank=0, world_size=1, worker_id=4, n_workers=8, seed=42, epoch=0
+[PID 18516] partitioning took 0.000s
+[PID 18516] shuffle-chunking took 0.015s
+[PID 18516] I/O-batch iterator built in 0.000s
+[PID 18516] worker 4/8 produced 64 mini-batches in 42.717s (avg 0.667s/batch)
+CRITICAL INFORMATION,  0 1 7 8
+On the torch side,  8 7
+Iterator created rank=0, world_size=1, worker_id=7, n_workers=8, seed=42, epoch=0
+[PID 18624] partitioning took 0.001s
+[PID 18624] shuffle-chunking took 0.018s
+[PID 18624] I/O-batch iterator built in 0.000s
+[PID 18624] worker 7/8 produced 64 mini-batches in 42.779s (avg 0.668s/batch)
+CRITICAL INFORMATION,  0 1 0 8
+On the torch side,  8 0
+Iterator created rank=0, world_size=1, worker_id=0, n_workers=8, seed=42, epoch=0
+[PID 18370] partitioning took 0.001s
+[PID 18370] shuffle-chunking took 0.018s
+[PID 18370] I/O-batch iterator built in 0.000s
+[PID 18370] worker 0/8 produced 64 mini-batches in 45.769s (avg 0.715s/batch)
+CRITICAL INFORMATION,  0 1 3 8
+On the torch side,  8 3
+Iterator created rank=0, world_size=1, worker_id=3, n_workers=8, seed=42, epoch=0
+[PID 18481] partitioning took 0.001s
+[PID 18481] shuffle-chunking took 0.018s
+[PID 18481] I/O-batch iterator built in 0.000s
+[PID 18481] worker 3/8 produced 64 mini-batches in 43.608s (avg 0.681s/batch)
+CRITICAL INFORMATION,  0 1 1 8
+On the torch side,  8 1
+Iterator created rank=0, world_size=1, worker_id=1, n_workers=8, seed=42, epoch=0
+[PID 18406] partitioning took 0.001s
+[PID 18406] shuffle-chunking took 0.016s
+[PID 18406] I/O-batch iterator built in 0.000s
+[PID 18406] worker 1/8 produced 64 mini-batches in 43.964s (avg 0.687s/batch)
+CRITICAL INFORMATION,  0 1 5 8
+On the torch side,  8 5
+Iterator created rank=0, world_size=1, worker_id=5, n_workers=8, seed=42, epoch=0
+[PID 18553] partitioning took 0.001s
+[PID 18553] shuffle-chunking took 0.017s
+[PID 18553] I/O-batch iterator built in 0.000s
+[PID 18553] worker 5/8 produced 64 mini-batches in 42.961s (avg 0.671s/batch)
+CRITICAL INFORMATION,  0 1 2 8
+On the torch side,  8 2
+Iterator created rank=0, world_size=1, worker_id=2, n_workers=8, seed=42, epoch=0
+[PID 18441] partitioning took 0.001s
+[PID 18441] shuffle-chunking took 0.016s
+[PID 18441] I/O-batch iterator built in 0.000s
+[PID 18441] worker 2/8 produced 64 mini-batches in 38.140s (avg 0.596s/batch)
+CRITICAL INFORMATION,  0 1 6 8
+On the torch side,  8 6
+Iterator created rank=0, world_size=1, worker_id=6, n_workers=8, seed=42, epoch=0
+[PID 18588] partitioning took 0.001s
+[PID 18588] shuffle-chunking took 0.017s
+[PID 18588] I/O-batch iterator built in 0.000s
+[PID 18588] worker 6/8 produced 64 mini-batches in 44.102s (avg 0.689s/batch)
+Epoch 3/3: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 3/3 [13:30<00:00, 273.47s/it, v_num=1, train_loss_step=2.53e+3, train_loss_epoch=2.49e+3]

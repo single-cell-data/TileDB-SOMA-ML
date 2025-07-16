@@ -64,6 +64,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         self.dataloader_kwargs = (
             dataloader_kwargs if dataloader_kwargs is not None else {}
         )
+        print(dataloader_kwargs)
         self.batch_column_names = (
             batch_column_names
             if batch_column_names is not None
@@ -95,6 +96,8 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
             **self.dataset_kwargs,  # type: ignore[misc]
         )
 
+    # Seems to just remove unsupported args and call the pytorch DataLoader, shouldn't have anything different happening here
+    # This is where it initiates multi_processing though
     def train_dataloader(self) -> DataLoader:
         return experiment_dataloader(
             self.train_dataset,

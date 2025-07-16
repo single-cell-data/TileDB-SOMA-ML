@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 from typing import Iterable, Iterator
+import time, os
 
 import attrs
 import numpy as np
@@ -28,16 +29,33 @@ class MiniBatchIterable(Iterable[MiniBatch]):
     return_sparse_X: bool = False
 
     def _iter(self) -> Iterator[MiniBatch]:
+        """Yield MiniBatches while printing timing diagnostics."""
         batch_size = self.batch_size
         result: MiniBatch | None = None
+        pid = os.getpid()            # helpful when several workers interleave prints
+        mb_counter = 0               # running index of mini-batches produced
+
         for X_io_batch, obs_io_batch in self.io_batch_iter:
-            assert X_io_batch.shape[0] == obs_io_batch.shape[0]
-            iob_idx = 0  # current offset into io batch
+            t_iob_start = time.perf_counter()
+
+            iob_idx = 0
             iob_len = X_io_batch.shape[0]
 
+            # print(f"[PID {pid}] ▼ received IO-batch of {iob_len:,} rows")
             while iob_idx < iob_len:
+                # -----------------------------------------------------------------
+                #  initialise per-iteration timing buckets
+                # -----------------------------------------------------------------
+                t0              = time.perf_counter()
+                slice_ms        = 0.0   # time to slice X from the IO-batch
+                obs_slice_ms    = 0.0   # time to slice obs rows
+                stack_ms        = 0.0   # time spent in vstack / concatenate
+                obs_cat_ms      = 0.0   # time spent in pd.concat
+
+                # ------- build (or extend) the in-progress mini-batch ------------
                 if result is None:
-                    # perform zero copy slice where possible
+                    # ---- X slice ----
+                    t1 = time.perf_counter()
                     X_datum = (
                         X_io_batch.slice_toscipy(slice(iob_idx, iob_idx + batch_size))
                         if self.return_sparse_X
@@ -45,45 +63,88 @@ class MiniBatchIterable(Iterable[MiniBatch]):
                             slice(iob_idx, iob_idx + batch_size)
                         )
                     )
-                    result = (
-                        X_datum,
-                        obs_io_batch.iloc[iob_idx : iob_idx + batch_size].reset_index(
-                            drop=True
-                        ),
+                    t2 = time.perf_counter()
+                    slice_ms = (t2 - t1) * 1_000
+
+                    # ---- obs slice ----
+                    t3 = time.perf_counter()
+                    obs_datum = obs_io_batch.iloc[iob_idx : iob_idx + batch_size].reset_index(
+                        drop=True
                     )
+                    t4 = time.perf_counter()
+                    obs_slice_ms = (t4 - t3) * 1_000
+
+                    result = (X_datum, obs_datum)
                     iob_idx += len(result[1])
+
                 else:
-                    # Use any remnant from previous IO batch
                     to_take = min(batch_size - len(result[1]), iob_len - iob_idx)
-                    X_datum = (
-                        sparse.vstack(
-                            [result[0], X_io_batch.slice_toscipy(slice(0, to_take))]
-                        )
+
+                    # ---- X slice ----
+                    t1 = time.perf_counter()
+                    X_part = (
+                        X_io_batch.slice_toscipy(slice(0, to_take))
                         if self.return_sparse_X
-                        else np.concatenate(
-                            [result[0], X_io_batch.slice_tonumpy(slice(0, to_take))]
-                        )
+                        else X_io_batch.slice_tonumpy(slice(0, to_take))
                     )
-                    result = (
-                        X_datum,
-                        pd.concat(
-                            [result[1], obs_io_batch.iloc[0:to_take]],
-                            # Index `obs_batch` from 0 to N-1, instead of disjoint, concatenated pieces of IO batches'
-                            # indices
-                            ignore_index=True,
-                        ),
+                    t2 = time.perf_counter()
+                    slice_ms = (t2 - t1) * 1_000
+
+                    # ---- X stack / concatenate ----
+                    t3 = time.perf_counter()
+                    X_datum = (
+                        sparse.vstack([result[0], X_part])
+                        if self.return_sparse_X
+                        else np.concatenate([result[0], X_part])
                     )
+                    t4 = time.perf_counter()
+                    stack_ms = (t4 - t3) * 1_000
+
+                    # ---- obs concat ----
+                    t5 = time.perf_counter()
+                    obs_datum = pd.concat(
+                        [result[1], obs_io_batch.iloc[0:to_take]],
+                        ignore_index=True,
+                    )
+                    t6 = time.perf_counter()
+                    obs_cat_ms = (t6 - t5) * 1_000
+
+                    result = (X_datum, obs_datum)
                     iob_idx += to_take
 
+                # -----------------------------------------------------------------
+                #  summary print for THIS loop iteration (may be < batch_size big)
+                # -----------------------------------------------------------------
+                pid = os.getpid()
+                # print(
+                #     f"[PID {pid}]   slice {slice_ms:7.1f} ms  "
+                #     f"obs_slice {obs_slice_ms:7.1f} ms  "
+                #     f"stack {stack_ms:7.1f} ms  "
+                #     f"obs_cat {obs_cat_ms:7.1f} ms"
+                # )
+
                 X, obs = result
-                assert X.shape[0] == obs.shape[0]
                 if X.shape[0] == batch_size:
+                    # print(
+                    #     f"[PID {pid}]   • mini-batch {mb_counter:>5} ready "
+                    #     f"(total rows {X.shape[0]:,})"
+                    # )
+                    mb_counter += 1
                     yield result
                     result = None
-        else:
-            # yield the remnant, if any
-            if result is not None:
-                yield result
+
+            t_iob_end = time.perf_counter()
+            # print(
+            #     f"[PID {pid}] ▲ finished IO-batch in {(t_iob_end - t_iob_start):.3f} s"
+            # )
+
+        # Emit any leftover rows that didn’t reach batch_size
+        if result is not None:
+            # print(
+            #     f"[PID {pid}]   • mini-batch {mb_counter:>5} (final, partial) "
+            #     f"size {result[0].shape[0]} rows"
+            # )
+            yield result
 
     def __iter__(self) -> Iterator[MiniBatch]:
         it = map(self.maybe_squeeze, self._iter())

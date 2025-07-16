@@ -12,6 +12,7 @@ from typing import Any, List, Sequence, Tuple, Type
 import numba
 import numpy as np
 import numpy.typing as npt
+import time, os, sys
 from scipy import sparse
 from typing_extensions import Self
 
@@ -92,15 +93,29 @@ class CSR_IO_Buffer:
 
         Does not assume any particular ordering of minor axis.
         """
+        t0 = time.perf_counter()
         assert isinstance(row_index, slice)
         assert row_index.step in (1, None)
         row_idx_start, row_idx_end, _ = row_index.indices(self.indptr.shape[0] - 1)
+        t1 = time.perf_counter()
         n_rows = max(row_idx_end - row_idx_start, 0)
+        t2 = time.perf_counter()
         out = np.zeros((n_rows, self.shape[1]), dtype=self.data.dtype)
+        print(f"We have n_rows= {n_rows} and shape be {self.shape[1]}")
+        t3 = time.perf_counter()
         if n_rows >= 0:
             _csr_to_dense_inner(
                 row_idx_start, n_rows, self.indptr, self.indices, self.data, out
             )
+        else:
+            print("0 rows here")
+        t4 = time.perf_counter()
+        print(
+            f"[PID {os.getpid()}] slice_tonumpy called for rows "
+            f"{row_index.start}:{row_index.stop}\n",   # noqa: E501
+        )
+        print(f"withing slice_tonumpy, we have t1 {(t1-t0)*1000:7.1f}; t2 {(t2-t1)*1000:7.1f}; t3 {(t3-t2)*1000:7.1f}; t4 {(t4-t3)*1000:7.1f};\n")
+
         return out
 
     def slice_toscipy(self, row_index: slice) -> sparse.csr_matrix:
@@ -109,17 +124,33 @@ class CSR_IO_Buffer:
         Does not assume any particular ordering of minor axis, but will return a canonically ordered scipy sparse
         object.
         """
+        print("In scipy")
+        print(
+            f"[PID {os.getpid()}] slice_toscipy called for rows "
+            f"{row_index.start}:{row_index.stop}",   # noqa: E501
+            file=sys.stderr, flush=True
+        )
+        t0 = time.perf_counter()
         assert isinstance(row_index, slice)
         assert row_index.step in (1, None)
+        t1 = time.perf_counter()
         row_idx_start, row_idx_end, _ = row_index.indices(self.indptr.shape[0] - 1)
+        t2 = time.perf_counter()
         n_rows = max(row_idx_end - row_idx_start, 0)
+        t3 = time.perf_counter()
         if n_rows == 0:
+            print("Num Rows 0???")
             return sparse.csr_matrix((0, self.shape[1]), dtype=self.dtype)
 
         indptr = self.indptr[row_idx_start : row_idx_end + 1].copy()
+        t4 = time.perf_counter()
         indices = self.indices[indptr[0] : indptr[-1]].copy()
+        t5 = time.perf_counter()
         data = self.data[indptr[0] : indptr[-1]].copy()
         indptr -= indptr[0]
+        t6 = time.perf_counter()
+        print("TEST\n")
+        print(f"withing slice_toscipy, we have t1 {(t1-t0)*1000:7.1f}; t2 {(t2-t1)*1000:7.1f}; t3 {(t3-t2)*1000:7.1f}; t4 {(t4-t3)*1000:7.1f}; t5 {(t5-t4)*1000:7.1f}; t6 {(t6-t5)*1000:7.1f};\n")
         return sparse.csr_matrix((data, indices, indptr), shape=(n_rows, self.shape[1]))
 
     @staticmethod
@@ -178,7 +209,6 @@ def _csr_merge_inner(
             Bj[offsets[n] : offsets[n] + n_elmts[n]] = Aj[Ap[n] : Ap[n] + n_elmts[n]]
             Bd[offsets[n] : offsets[n] + n_elmts[n]] = Ad[Ap[n] : Ap[n] + n_elmts[n]]
         offsets[:-1] += n_elmts
-
 
 @numba.njit(nogil=True, parallel=True)  # type: ignore[misc]
 def _csr_to_dense_inner(

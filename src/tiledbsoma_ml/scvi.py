@@ -17,7 +17,7 @@ from tiledbsoma_ml._common import MiniBatch
 DEFAULT_DATALOADER_KWARGS: dict[str, Any] = {
     "pin_memory": torch.cuda.is_available(),
     "persistent_workers": True,
-    "num_workers": max(os.cpu_count() // 2, 1),
+    "num_workers": max(((os.cpu_count() or 1) // 2), 1)
 }
 
 class SCVIDataModule(LightningDataModule):  # type: ignore[misc]

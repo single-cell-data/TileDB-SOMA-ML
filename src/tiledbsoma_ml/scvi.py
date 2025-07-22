@@ -4,6 +4,7 @@ from typing import Any, Sequence
 
 import pandas as pd
 import torch
+import os
 from lightning import LightningDataModule
 from sklearn.preprocessing import LabelEncoder
 from tiledbsoma import ExperimentAxisQuery

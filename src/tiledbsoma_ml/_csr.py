@@ -101,7 +101,7 @@ class CSR_IO_Buffer:
         n_rows = max(row_idx_end - row_idx_start, 0)
         t2 = time.perf_counter()
         out = np.zeros((n_rows, self.shape[1]), dtype=self.data.dtype)
-        print(f"We have n_rows= {n_rows} and shape be {self.shape[1]}")
+        # print(f"We have n_rows= {n_rows} and shape be {self.shape[1]}")
         t3 = time.perf_counter()
         if n_rows >= 0:
             _csr_to_dense_inner(
@@ -110,11 +110,11 @@ class CSR_IO_Buffer:
         else:
             print("0 rows here")
         t4 = time.perf_counter()
-        print(
-            f"[PID {os.getpid()}] slice_tonumpy called for rows "
-            f"{row_index.start}:{row_index.stop}\n",   # noqa: E501
-        )
-        print(f"withing slice_tonumpy, we have t1 {(t1-t0)*1000:7.1f}; t2 {(t2-t1)*1000:7.1f}; t3 {(t3-t2)*1000:7.1f}; t4 {(t4-t3)*1000:7.1f};\n")
+        # print(
+        #     f"[PID {os.getpid()}] slice_tonumpy called for rows "
+        #     f"{row_index.start}:{row_index.stop}\n",   # noqa: E501
+        # )
+        # print(f"withing slice_tonumpy, we have t1 {(t1-t0)*1000:7.1f}; t2 {(t2-t1)*1000:7.1f}; t3 {(t3-t2)*1000:7.1f}; t4 {(t4-t3)*1000:7.1f};\n")
 
         return out
 

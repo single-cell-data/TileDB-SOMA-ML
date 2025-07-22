@@ -30,8 +30,10 @@ import time
 logger = logging.getLogger("tiledbsoma_ml.dataset")
 
 DEFAULT_OBS_COLUMN_NAMES = ("soma_joinid",)
-DEFAULT_SHUFFLE_CHUNK_SIZE = 64
-DEFAULT_IO_BATCH_SIZE = 2**16
+# DEFAULT_SHUFFLE_CHUNK_SIZE = 64
+# DEFAULT_IO_BATCH_SIZE = 2**16
+DEFAULT_SHUFFLE_CHUNK_SIZE = 1024
+DEFAULT_IO_BATCH_SIZE = 8192
 
 
 @define
@@ -315,88 +317,16 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         worker_info = torch.utils.data.get_worker_info()
         rank, world_size = get_distributed_rank_and_world_size()
         worker_id, n_workers = get_worker_id_and_num()
-        # print("CRITICAL INFORMATION, ", rank, world_size, worker_id, n_workers)
-        # print("On the torch side, ", worker_info.num_workers, worker_info.id)
-        # print(
-        #     f"Iterator created {rank=}, {world_size=}, {worker_id=}, {n_workers=}, seed={self.seed}, epoch={self.epoch}"
-        # )
         if world_size > 1 and self.shuffle and self.seed is None:
             raise ValueError(
                 "Experiment requires an explicit `seed` when shuffle is used in a multi-process configuration."
             )
 
-    # def __iter__(self) -> Iterator[MiniBatch]:
-    #     r"""Emit |MiniBatch|\ s (aligned ``X`` and ``obs`` rows).
-
-    #     Returns:
-    #         |Iterator|\[|MiniBatch|\]
-
-    #     Lifecycle:
-    #         experimental
-    #     """
-    #     self._multiproc_check()
-
-    #     worker_id, n_workers = get_worker_id_and_num()
-    #     print("Critical Information Part 2 ", os.getpid())
-    #     print("Heya", os.getpid())
-    #     partition = Partition(
-    #         rank=self.rank,
-    #         world_size=self.world_size,
-    #         worker_id=worker_id,
-    #         n_workers=n_workers,
-    #     )
-    #     query_ids = self.query_ids.partitioned(partition)
-    #     print(f"[PID {os.getpid():>6}] first 5 obs_joinids for worker ", f"{worker_id}/{n_workers}: {query_ids.obs_joinids[:5]}")
-    #     if self.shuffle:
-    #         chunks = query_ids.shuffle_chunks(
-    #             shuffle_chunk_size=self.shuffle_chunk_size,
-    #             seed=self.seed,
-    #         )
-    #     else:
-    #         # In no-shuffle mode, all the `obs_joinids` can be treated as one "shuffle chunk",
-    #         # which IO-batches will stride over.
-    #         chunks = [query_ids.obs_joinids]
-        
-    #     counter = 0
-
-    #     with self.x_locator.open() as (X, obs):
-    #         io_batch_iter = IOBatchIterable(
-    #             chunks=chunks,
-    #             io_batch_size=self.io_batch_size,
-    #             obs=obs,
-    #             var_joinids=query_ids.var_joinids,
-    #             X=X,
-    #             obs_column_names=self.obs_column_names,
-    #             seed=self.seed,
-    #             shuffle=self.shuffle,
-    #             use_eager_fetch=self.use_eager_fetch,
-    #         )
-
-    #         for mb in MiniBatchIterable(    
-    #             io_batch_iter=io_batch_iter,
-    #             batch_size=self.batch_size,
-    #             use_eager_fetch=self.use_eager_fetch,
-    #             return_sparse_X=self.return_sparse_X,
-    #         ):
-    #             counter += 1
-    #             yield mb
-        
-    #     print(f"[PID {os.getpid():>6}] worker {worker_id}/{n_workers} ", f"processed {counter} mini-batches in epoch {self.epoch}")
-
-    #     self.epoch += 1
     def __iter__(self) -> Iterator[MiniBatch]:
         """Emit MiniBatches (aligned X/obs rows)."""
         self._multiproc_check()
-
-        # ------------------------------------------------------------------ #
-        # 0.  Identify this worker                                           #
-        # ------------------------------------------------------------------ #
         worker_id, n_workers = get_worker_id_and_num()
         pid = os.getpid()
-
-        # ------------------------------------------------------------------ #
-        # 1.  Partitioning                                                   #
-        # ------------------------------------------------------------------ #
         t_part0 = time.perf_counter()
 
         partition = Partition(
@@ -408,11 +338,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         query_ids = self.query_ids.partitioned(partition)
 
         t_part1 = time.perf_counter()
-        # print(f"[PID {pid}] partitioning took {t_part1-t_part0:.3f}s")
 
-        # ------------------------------------------------------------------ #
-        # 2.  Shuffle-chunking                                               #
-        # ------------------------------------------------------------------ #
         t_chunk0 = time.perf_counter()
 
         if self.shuffle:
@@ -424,11 +350,6 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             chunks = [query_ids.obs_joinids]
 
         t_chunk1 = time.perf_counter()
-        # print(f"[PID {pid}] shuffle-chunking took {t_chunk1-t_chunk0:.3f}s")
-
-        # ------------------------------------------------------------------ #
-        # 3.  Build I/O-batch iterator                                       #
-        # ------------------------------------------------------------------ #
         with self.x_locator.open() as (X, obs):
             t_iobatch0 = time.perf_counter()
 
@@ -445,11 +366,6 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             )
 
             t_iobatch1 = time.perf_counter()
-            # print(f"[PID {pid}] I/O-batch iterator built in {t_iobatch1-t_iobatch0:.3f}s")
-
-            # ------------------------------------------------------------------ #
-            # 4.  Iterate over mini-batches                                       #
-            # ------------------------------------------------------------------ #
             mb_counter          = 0
             mb_time_sum         = 0.0          # total time spent *producing* mini-batches
             copy_time_sum       = 0.0          # time spent copying/format-converting X
@@ -463,25 +379,11 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 return_sparse_X=self.return_sparse_X,
             ):
                 t_mb0 = time.perf_counter()
-
-                # -----  OPTIONAL: break down mb creation further  --------------
-                # e.g. if you want to time the csr→ndarray conversion, or
-                # CPU→GPU transfer, insert timers here.
-
                 yield mb
 
                 t_mb1 = time.perf_counter()
                 mb_counter  += 1
                 mb_time_sum += (t_mb1 - t_mb0)
-
-            # after loop
-            # print(
-            #     f"[PID {pid}] worker {worker_id}/{n_workers} "
-            #     f"produced {mb_counter} mini-batches in {mb_time_sum:.3f}s "
-            #     f"(avg {mb_time_sum/mb_counter if mb_counter else 0:.3f}s/batch)"
-            # )
-
-        # next epoch
         self.epoch += 1
 
     def __len__(self) -> int:

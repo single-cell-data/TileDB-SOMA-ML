@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import os
 from typing import Any, Sequence
 
 import pandas as pd
 import torch
-import os
 from lightning import LightningDataModule
 from sklearn.preprocessing import LabelEncoder
 from tiledbsoma import ExperimentAxisQuery
@@ -16,8 +16,9 @@ from tiledbsoma_ml._common import MiniBatch
 DEFAULT_DATALOADER_KWARGS: dict[str, Any] = {
     "pin_memory": torch.cuda.is_available(),
     "persistent_workers": True,
-    "num_workers": max(((os.cpu_count() or 1) // 2), 1)
+    "num_workers": max(((os.cpu_count() or 1) // 2), 1),
 }
+
 
 class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
     """PyTorch Lightning DataModule for training scVI models from SOMA data.

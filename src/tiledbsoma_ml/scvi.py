@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any, Sequence
 
 import pandas as pd
@@ -11,6 +12,12 @@ from torch.utils.data import DataLoader
 
 from tiledbsoma_ml import ExperimentDataset, experiment_dataloader
 from tiledbsoma_ml._common import MiniBatch
+
+DEFAULT_DATALOADER_KWARGS: dict[str, Any] = {
+    "pin_memory": torch.cuda.is_available(),
+    "persistent_workers": True,
+    "num_workers": max(((os.cpu_count() or 1) // 2), 1),
+}
 
 
 class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
@@ -61,9 +68,10 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         self.query = query
         self.dataset_args = args
         self.dataset_kwargs = kwargs
-        self.dataloader_kwargs = (
-            dataloader_kwargs if dataloader_kwargs is not None else {}
-        )
+        self.dataloader_kwargs = {
+            **DEFAULT_DATALOADER_KWARGS,
+            **(dataloader_kwargs or {}),
+        }
         self.batch_column_names = (
             batch_column_names
             if batch_column_names is not None

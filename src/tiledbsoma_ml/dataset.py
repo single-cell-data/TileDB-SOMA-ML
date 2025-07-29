@@ -33,7 +33,10 @@ DEFAULT_OBS_COLUMN_NAMES = ("soma_joinid",)
 # DEFAULT_SHUFFLE_CHUNK_SIZE = 64
 # DEFAULT_IO_BATCH_SIZE = 2**16
 DEFAULT_SHUFFLE_CHUNK_SIZE = 4096
-DEFAULT_IO_BATCH_SIZE = 262144
+DEFAULT_IO_BATCH_SIZE = 131072*2
+
+DEFAULT_SHUFFLE_CHUNK_SIZE_ON_DISC = 1024
+DEFAULT_IO_BATCH_SIZE_ON_DISC = 8192
 
 
 @define
@@ -151,6 +154,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         obs_column_names: Sequence[str] = DEFAULT_OBS_COLUMN_NAMES,
         batch_size: int = 1,
         io_batch_size: int = DEFAULT_IO_BATCH_SIZE,
+        data_on_disc: bool = False,
         shuffle: bool = True,
         shuffle_chunk_size: int = DEFAULT_SHUFFLE_CHUNK_SIZE,
         seed: Optional[int] = None,
@@ -245,6 +249,15 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             raise ValueError(
                 "Expected `{query,layer_name}` xor `{x_locator,query_ids}`"
             )
+        
+        user_specified_io_batch_size = io_batch_size != DEFAULT_IO_BATCH_SIZE
+        user_specified_shuffle_chunk_size = shuffle_chunk_size != DEFAULT_SHUFFLE_CHUNK_SIZE
+
+        if data_on_disc:
+            if not user_specified_io_batch_size:
+                io_batch_size = DEFAULT_IO_BATCH_SIZE_ON_DISC
+            if not user_specified_shuffle_chunk_size:
+                shuffle_chunk_size = DEFAULT_SHUFFLE_CHUNK_SIZE_ON_DISC
 
         self.__attrs_init__(
             x_locator=x_locator,

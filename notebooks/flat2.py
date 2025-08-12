@@ -1,4 +1,6 @@
-import argpase
+import argparse
+from lightning.pytorch.callbacks import Callback
+import numpy as np
 
 def get_args():
     parser = argparse.ArgumentParser(
@@ -17,7 +19,6 @@ def main():
     from typing import Any, Dict, List
     import torch
     import cellxgene_census
-    import numpy as np
     import pandas as pd
     import scanpy as sc
     import scvi
@@ -28,12 +29,12 @@ def main():
     from lightning import LightningDataModule
     from sklearn.preprocessing import LabelEncoder
     from torch.utils.data import DataLoader
+    
 
     from poller import GPUUtilSampler
     import uuid, time, json
 
-    run_id = f"run_{uuid.uuid4().hex[:6]}"
-    run_dir = f"./runs/{run_id}"
+    
 
     # import logging
     # logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(message)s")
@@ -59,6 +60,9 @@ def main():
     # )
     
     args = get_args() 
+
+    run_id = f"run_{uuid.uuid4().hex[:6]}"
+    run_dir = f"./runs/{args.io_batch_size}_{args.shuffle_chunk_size}_{run_id}"
 
     t0 = time.perf_counter()
     warnings.filterwarnings("ignore")
@@ -101,7 +105,10 @@ def main():
         hvg_query,
         layer_name="data",
         batch_size=1024,
-        shuffle=True,
+        shuffle=False,
+        shuffle_on_gpu=True,
+        device=torch.device('cuda', 0),
+        use_eager_fetch=True,
         seed=42,
         data_on_disc=True,
         dataloader_kwargs={"num_workers": 8, "persistent_workers": True, "pin_memory": True},
@@ -122,13 +129,6 @@ def main():
         encode_covariates=False,
     )
 
-    # profiler = PyTorchProfiler(
-    #     dirpath="./log/pt_prof",   # folder created automatically
-    #     filename="trace",          # results in trace.prof & TB events
-    #     schedule=prof_sched,             # use default schedule (or customise)
-    #     record_memory=True,
-    # )
-
     sampler = GPUUtilSampler(
         run_meta = {
             "run_id": run_id,
@@ -136,12 +136,14 @@ def main():
             "dataset_uri": LOCAL_URI,
             "n_layers": 1,
             "n_latent": 50,
+            "io_batch_size":args.io_batch_size, 
+            "shuffle_chunk_size":args.shuffle_chunk_size,
         },
         out_dir = run_dir,
         interval = 0.1,
     )
     sampler.start()
-
+    
     model.train(
         datamodule=datamodule,
         max_epochs=2,

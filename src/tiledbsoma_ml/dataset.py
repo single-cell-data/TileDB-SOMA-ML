@@ -140,6 +140,22 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     use_eager_fetch: bool = field(default=True)
     """Pre-fetch one "IO batch" and one "mini batch"."""
 
+        # GPU shuffle config
+    device: Optional[torch.device] = field(default=None)
+    """Device to move X to; set to torch.device('cuda', N) to enable GPU shuffle."""
+    shuffle_on_gpu: bool = field(default=False)
+    """Shuffle each produced mini-batch on the GPU (dense only)."""
+    non_blocking_h2d: bool = field(default=True)
+    """Use non_blocking=True for H2D copies from pinned host memory."""
+
+
+    # New - temp
+    # --- Row shuffle control (separate from CPU chunk mixing via `shuffle`) ---
+    row_shuffle_mode: str = field(default="none")  # "none" | "cpu" | "gpu"
+    gpu_shuffle_scope: str = field(default="iobatch")  # "mini" | "iobatch"
+    gpu_shuffle_chunk_size: Optional[int] = field(default=None)  # None => full randperm
+
+
     # Internal state
     epoch: int = field(default=0, init=False)
     rank: int = field(init=False)
@@ -160,6 +176,12 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         seed: Optional[int] = None,
         return_sparse_X: bool = False,
         use_eager_fetch: bool = True,
+        shuffle_on_gpu: bool = False,
+        device: Optional[torch.device] = None,
+        non_blocking_h2d: bool = True,
+        row_shuffle_mode: str = "none",
+        gpu_shuffle_scope: str = "iobatch",
+        gpu_shuffle_chunk_size: Optional[int] = None,
     ):
         r"""Construct a new |ExperimentDataset|.
 
@@ -250,14 +272,23 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 "Expected `{query,layer_name}` xor `{x_locator,query_ids}`"
             )
         
+        print(f"Here, we have {shuffle_chunk_size} and {io_batch_size}")
+
         user_specified_io_batch_size = io_batch_size != DEFAULT_IO_BATCH_SIZE
         user_specified_shuffle_chunk_size = shuffle_chunk_size != DEFAULT_SHUFFLE_CHUNK_SIZE
 
-        if data_on_disc:
-            if not user_specified_io_batch_size:
-                io_batch_size = DEFAULT_IO_BATCH_SIZE_ON_DISC
-            if not user_specified_shuffle_chunk_size:
-                shuffle_chunk_size = DEFAULT_SHUFFLE_CHUNK_SIZE_ON_DISC
+        print(f"Here, we have {shuffle_chunk_size} and {io_batch_size}")
+        print(f"Here, we have {user_specified_io_batch_size} and {user_specified_shuffle_chunk_size}")
+
+
+        # if data_on_disc:
+        #     if not user_specified_io_batch_size:
+        #         io_batch_size = DEFAULT_IO_BATCH_SIZE_ON_DISC
+        #     if not user_specified_shuffle_chunk_size:
+        #         shuffle_chunk_size = DEFAULT_SHUFFLE_CHUNK_SIZE_ON_DISC
+        
+
+        print(f"Here, we have {shuffle_chunk_size} and {io_batch_size}")
 
         self.__attrs_init__(
             x_locator=x_locator,
@@ -269,7 +300,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             shuffle_chunk_size=shuffle_chunk_size,
             seed=seed,
             return_sparse_X=return_sparse_X,
-            use_eager_fetch=use_eager_fetch,
+            use_eager_fetch=use_eager_fetch,            
         )
 
     def __attrs_post_init__(self) -> None:
@@ -295,6 +326,25 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         object.__setattr__(self, "rank", rank)
         object.__setattr__(self, "world_size", world_size)
 
+        # Streams/events for overlap when doing GPU shuffle
+        if self.shuffle_on_gpu:
+            if self.device is None or self.device.type != "cuda":
+                raise ValueError("shuffle_on_gpu=True requires device=torch.device('cuda', ...)")
+            torch.cuda.set_device(self.device)
+            object.__setattr__(self, "_copy_stream", torch.cuda.Stream())
+            object.__setattr__(self, "_shuffle_stream", torch.cuda.Stream())
+            object.__setattr__(self, "_evt_copy_done", torch.cuda.Event())
+            object.__setattr__(self, "_evt_shuffle_done", torch.cuda.Event())
+
+            # Deterministic per (seed, epoch, rank, worker_id)
+            rank, _ = get_distributed_rank_and_world_size()
+            worker_id, _ = get_worker_id_and_num()
+            g = torch.Generator(device='cuda')
+            # fold in seed/epoch/rank/worker for per-epoch disjoint perms
+            base = int(self.seed) if self.seed is not None else 0
+            g.manual_seed(base + self.epoch + 997 * rank + 7919 * worker_id)
+            object.__setattr__(self, "_gpu_rng", g)
+
     @property
     def measurement_name(self) -> str:
         return self.x_locator.measurement_name
@@ -317,6 +367,36 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         """
         split_query_ids = self.query_ids.random_split(*fracs, seed=seed, method=method)
         return tuple(evolve(self, query_ids=q) for q in split_query_ids)
+
+        def _to_device_and_gpu_shuffle(self, x_host: np.ndarray, obs_batch):
+            if self.return_sparse_X:
+                raise NotImplementedError("GPU shuffle path currently supports dense X only.")
+
+            # 1) Host → pinned torch tensor
+            x_host_t = torch.as_tensor(x_host)  # shares memory when possible
+            if not x_host_t.is_pinned():
+                x_host_t = x_host_t.pin_memory()
+
+            # 2) Async H2D on copy stream
+            with torch.cuda.stream(self._copy_stream):
+                x_dev = x_host_t.to(self.device, non_blocking=self.non_blocking_h2d)
+            self._evt_copy_done.record(self._copy_stream)
+
+            # 3) On shuffle stream, wait for copy, then permute rows
+            with torch.cuda.stream(self._shuffle_stream):
+                self._shuffle_stream.wait_event(self._evt_copy_done)
+                n = x_dev.size(0)
+                if n > 1:  # no-op for n==1
+                    perm = torch.randperm(n, device=self.device, generator=self._gpu_rng)
+                    x_dev = x_dev.index_select(0, perm)
+                    # mirror perm on obs (CPU)
+                    obs_batch = obs_batch.iloc[perm.detach().cpu().numpy()]
+            self._evt_shuffle_done.record(self._shuffle_stream)
+
+            # 4) Ensure default stream sees shuffled tensor ready before we return
+            torch.cuda.current_stream(self.device).wait_event(self._evt_shuffle_done)
+            return x_dev, obs_batch
+
 
     def _multiproc_check(self) -> None:
         """Rule out config combinations that are invalid in multiprocess mode."""
@@ -392,7 +472,12 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 return_sparse_X=self.return_sparse_X,
             ):
                 t_mb0 = time.perf_counter()
-                yield mb
+                if self.shuffle_on_gpu:
+                    x_host, obs_batch = mb  # assume (np.ndarray, DataFrame)
+                    x_dev, obs_batch = self._to_device_and_gpu_shuffle(x_host, obs_batch)
+                    yield (x_dev, obs_batch)
+                else:
+                    yield mb
 
                 t_mb1 = time.perf_counter()
                 mb_counter  += 1

@@ -55,9 +55,12 @@ class IOBatchIterable(Iterable[IOBatch]):
         """Emit |IOBatch|'s."""
         # Because obs/var IDs have been partitioned/split/shuffled upstream of this class, this RNG does not need to be
         # identical across sub-processes, but seeding is supported anyway, for testing/reproducibility.
-        shuffle_rng = np.random.default_rng(self.seed)
         X = self.X
         context = X.context
+
+        # only build rng if we shuffle
+        shuffle_rng = np.random.default_rng(self.seed) if self.shuffle else None
+
         obs_column_names = (
             list(self.obs_column_names)
             if "soma_joinid" in self.obs_column_names
@@ -70,12 +73,14 @@ class IOBatchIterable(Iterable[IOBatch]):
 
         for obs_coords in self.io_batch_ids:
             st_time = time.perf_counter()
-            obs_shuffled_coords = (
+
+            if shuffle_rng is None:
+                obs_order = obs_shuffled_coords
+            else:
                 np.array(obs_coords)
-                if not self.shuffle
-                else shuffle_rng.permuted(obs_coords)
-            )
-            obs_indexer = IntIndexer(obs_shuffled_coords, context=context)
+                obs_order = rng.permuted(obs_coords)
+
+            obs_indexer = IntIndexer(obs_order, context=context)
             logger.debug(
                 f"Retrieving next SOMA IO batch of length {len(obs_coords)}..."
             )

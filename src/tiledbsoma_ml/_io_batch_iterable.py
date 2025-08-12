@@ -78,7 +78,7 @@ class IOBatchIterable(Iterable[IOBatch]):
                 obs_order = np.fromiter(obs_coords, dtype=np.int64, count=len(obs_coords))
             else:
                 np.array(obs_coords)
-                obs_order = rng.permuted(obs_coords)
+                obs_order = shuffle_rng.permuted(obs_coords)
 
             obs_indexer = IntIndexer(obs_order, context=context)
             logger.debug(

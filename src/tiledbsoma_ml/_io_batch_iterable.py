@@ -68,9 +68,10 @@ class IOBatchIterable(Iterable[IOBatch]):
         )
         # NOTE: `.astype("int64")` works around the `np.int64` singleton failing reference-equality after cross-process
         # SerDes.
-        var_joinids = self.var_joinids
-        if getattr(var_joinids, "dtype", None) != np.int64:
-            var_joinids = var_joinids.astype("int64")
+
+        var_joinids = self.var_joinids.astype("int64")
+        # if getattr(var_joinids, "dtype", None) != np.int64:
+        #     var_joinids = var_joinids.astype("int64")
         var_indexer = IntIndexer(var_joinids, context=context)
 
         for obs_coords in self.io_batch_ids:

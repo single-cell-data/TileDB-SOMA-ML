@@ -68,17 +68,14 @@ class IOBatchIterable(Iterable[IOBatch]):
         )
         # NOTE: `.astype("int64")` works around the `np.int64` singleton failing reference-equality after cross-process
         # SerDes.
-
-        var_joinids = self.var_joinids.astype("int64")
-        # if getattr(var_joinids, "dtype", None) != np.int64:
-        #     var_joinids = var_joinids.astype("int64")
+        var_joinids = np.asarray(self.var_joinids, dtype=np.int64) # as array only typecasts if needed
         var_indexer = IntIndexer(var_joinids, context=context)
 
         for obs_coords in self.io_batch_ids:
             st_time = time.perf_counter()
 
             if shuffle_rng is None:
-                obs_order = obs_coords
+                obs_order = np.fromiter(obs_coords, dtype=np.int64, count=len(obs_coords))
             else:
                 np.array(obs_coords)
                 obs_order = rng.permuted(obs_coords)

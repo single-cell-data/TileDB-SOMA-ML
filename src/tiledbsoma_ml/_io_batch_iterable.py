@@ -68,14 +68,16 @@ class IOBatchIterable(Iterable[IOBatch]):
         )
         # NOTE: `.astype("int64")` works around the `np.int64` singleton failing reference-equality after cross-process
         # SerDes.
-        var_joinids = self.var_joinids.astype("int64")
+        var_joinids = self.var_joinids
+        if getattr(var_joinids, "dtype", None) != np.int64:
+            var_joinids = var_joinids.astype("int64")
         var_indexer = IntIndexer(var_joinids, context=context)
 
         for obs_coords in self.io_batch_ids:
             st_time = time.perf_counter()
 
             if shuffle_rng is None:
-                obs_order = obs_shuffled_coords
+                obs_order = obs_coords
             else:
                 np.array(obs_coords)
                 obs_order = rng.permuted(obs_coords)
@@ -128,14 +130,14 @@ class IOBatchIterable(Iterable[IOBatch]):
                 .concat()
                 .to_pandas()
                 .set_index("soma_joinid")
-                .reindex(obs_shuffled_coords, copy=False)
+                .reindex(obs_order, copy=False)
                 .reset_index()  # demote "soma_joinid" to a column
                 [self.obs_column_names]
             )  # fmt: on
 
             X_io_batch = CSR_IO_Buffer.merge(tuple(_io_buf_iter))
 
-            del obs_indexer, obs_coords, obs_shuffled_coords, _io_buf_iter
+            del obs_indexer, obs_coords, obs_order, _io_buf_iter
             gc.collect()
 
             tm = time.perf_counter() - st_time

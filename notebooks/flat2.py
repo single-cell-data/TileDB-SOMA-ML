@@ -101,16 +101,17 @@ def main():
         var_query=soma.AxisQuery(coords=(list(hv_idx),)),
     )
 
+    print("Here")
+
     datamodule = SCVIDataModule(
         hvg_query,
         layer_name="data",
         batch_size=1024,
-        shuffle=False,
-        shuffle_on_gpu=True,
+        shuffle=True,
+        shuffle_mode="gpu",
         device=torch.device('cuda', 0),
         use_eager_fetch=True,
         seed=42,
-        data_on_disc=True,
         dataloader_kwargs={"num_workers": 8, "persistent_workers": True, "pin_memory": True},
         io_batch_size=args.io_batch_size, 
         shuffle_chunk_size=args.shuffle_chunk_size,

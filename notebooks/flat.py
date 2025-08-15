@@ -105,7 +105,7 @@ def main():
         io_batch_size=args.io_batch_size, 
         shuffle_chunk_size=args.shuffle_chunk_size,
         shuffle=True,
-        shuffle_on_gpu=False,
+        shuffle_mode="gpu",
         device=torch.device('cuda', 0),
         use_eager_fetch=True,
     )

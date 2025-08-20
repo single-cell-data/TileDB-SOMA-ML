@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 
 from tiledbsoma_ml import ExperimentDataset, experiment_dataloader
 from tiledbsoma_ml._common import MiniBatch
+from tiledbsoma_ml._query_ids import QueryIDs
 
 DEFAULT_DATALOADER_KWARGS: dict[str, Any] = {
     "pin_memory": torch.cuda.is_available(),
@@ -38,6 +39,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         batch_column_names: Sequence[str] | None = None,
         batch_labels: Sequence[str] | None = None,
         dataloader_kwargs: dict[str, Any] | None = None,
+        train_size: float = 1.0,
         **kwargs: Any,
     ):
         """Args:
@@ -63,6 +65,10 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
 
         dataloader_kwargs: dict, optional
         Keyword arguments passed to `tiledbsoma_ml.experiment_dataloader()`, e.g. `num_workers`.
+        
+        train_size: float, optional
+        Fraction of data to use for training (between 0 and 1). Default is 1.0 (use all data for training).
+        If less than 1.0, the remaining data will be used for validation.
         """
         super().__init__()
         self.query = query
@@ -93,21 +99,59 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
             batch_labels = obs_df[self.batch_colname].unique()
         self.batch_labels = batch_labels
         self.batch_encoder = LabelEncoder().fit(self.batch_labels)
+        self.train_size = train_size
+        self.train_query_ids = None
+        self.val_query_ids = None
 
     def setup(self, stage: str | None = None) -> None:
-        # Instantiate the ExperimentDataset with the provided args and kwargs.
-        self.train_dataset = ExperimentDataset(
+        # Create QueryIDs from the query
+        query_ids = QueryIDs.create(self.query)
+        
+        # Split data into train and validation sets if train_size < 1.0
+        if self.train_size < 1.0:
+            # Use QueryIDs.split() for efficient splitting
+            val_size = 1.0 - self.train_size
+            self.train_query_ids, self.val_query_ids = query_ids.split(
+                self.train_size, val_size, seed=42
+            )
+        else:
+            # Use all data for training
+            self.train_query_ids = query_ids
+            self.val_query_ids = None
+
+    def train_dataloader(self) -> DataLoader:
+        assert self.train_query_ids is not None, "setup() must be called before train_dataloader()"
+        
+        # Create dataset with train query_ids
+        train_dataset = ExperimentDataset(
             self.query,
             *self.dataset_args,
             obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
+            query_ids=self.train_query_ids,
             **self.dataset_kwargs,  # type: ignore[misc]
         )
-
-    def train_dataloader(self) -> DataLoader:
         return experiment_dataloader(
-            self.train_dataset,
+            train_dataset,
             **self.dataloader_kwargs,
         )
+    
+    def val_dataloader(self) -> DataLoader | None:
+        if self.val_query_ids is not None:
+            # Create dataset with validation query_ids
+            val_dataset = ExperimentDataset(
+                self.query,
+                *self.dataset_args,
+                obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
+                query_ids=self.val_query_ids,
+                **self.dataset_kwargs,  # type: ignore[misc]
+            )
+            return experiment_dataloader(
+                val_dataset,
+                **self.dataloader_kwargs,
+            )
+        else:
+            # No validation data if train_size == 1.0
+            return None
 
     def _add_batch_col(
         self, obs_df: pd.DataFrame, inplace: bool = False

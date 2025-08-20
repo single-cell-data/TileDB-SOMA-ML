@@ -131,13 +131,17 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         assert self.train_query_ids is not None, "setup() must be called before train_dataloader()"
         assert self.x_locator is not None, "setup() must be called before train_dataloader()"
         
+        # Filter out query and layer_name from dataset_kwargs since we're using x_locator and query_ids
+        filtered_kwargs = {k: v for k, v in self.dataset_kwargs.items() 
+                          if k not in ('query', 'layer_name')}
+        
         # Create dataset with train query_ids and x_locator
         train_dataset = ExperimentDataset(
             x_locator=self.x_locator,
             query_ids=self.train_query_ids,
             obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
             *self.dataset_args,
-            **self.dataset_kwargs,  # type: ignore[misc]
+            **filtered_kwargs,  # type: ignore[misc]
         )
         return experiment_dataloader(
             train_dataset,
@@ -146,13 +150,17 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
     
     def val_dataloader(self) -> DataLoader | None:
         if self.val_query_ids is not None and self.x_locator is not None:
+            # Filter out query and layer_name from dataset_kwargs since we're using x_locator and query_ids
+            filtered_kwargs = {k: v for k, v in self.dataset_kwargs.items() 
+                              if k not in ('query', 'layer_name')}
+            
             # Create dataset with validation query_ids and x_locator
             val_dataset = ExperimentDataset(
                 x_locator=self.x_locator,
                 query_ids=self.val_query_ids,
                 obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
                 *self.dataset_args,
-                **self.dataset_kwargs,  # type: ignore[misc]
+                **filtered_kwargs,  # type: ignore[misc]
             )
             return experiment_dataloader(
                 val_dataset,

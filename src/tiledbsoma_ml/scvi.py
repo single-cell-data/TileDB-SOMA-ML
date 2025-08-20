@@ -156,10 +156,6 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
     
     def val_dataloader(self) -> DataLoader | None:
         if self.val_query_ids is not None and self.x_locator is not None:
-            # Print validation indices for manual verification
-            val_ids = self.val_query_ids.obs_joinids
-            print(f"📊 Validation indices (seed={self.seed}): first 10: {val_ids[:10]}, last 10: {val_ids[-10:]}")
-            
             # Filter out query and layer_name from dataset_kwargs since we're using x_locator and query_ids
             filtered_kwargs = {k: v for k, v in self.dataset_kwargs.items() 
                               if k not in ('query', 'layer_name')}

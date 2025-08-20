@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any, Sequence
 
+import numpy as np
 import pandas as pd
 import torch
 from lightning import LightningDataModule
@@ -41,6 +42,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         batch_labels: Sequence[str] | None = None,
         dataloader_kwargs: dict[str, Any] | None = None,
         train_size: float = 1.0,
+        seed: int = 42,
         **kwargs: Any,
     ):
         """Args:
@@ -70,6 +72,9 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         train_size: float, optional
         Fraction of data to use for training (between 0 and 1). Default is 1.0 (use all data for training).
         If less than 1.0, the remaining data will be used for validation.
+        
+        seed: int, optional
+        Random seed for deterministic train/validation split. Default is 42.
         """
         super().__init__()
         self.query = query
@@ -101,6 +106,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         self.batch_labels = batch_labels
         self.batch_encoder = LabelEncoder().fit(self.batch_labels)
         self.train_size = train_size
+        self.seed = seed
         self.train_query_ids = None
         self.val_query_ids = None
         self.x_locator = None
@@ -120,7 +126,7 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
             # Use QueryIDs.random_split() for efficient splitting
             val_size = 1.0 - self.train_size
             self.train_query_ids, self.val_query_ids = query_ids.random_split(
-                self.train_size, val_size, seed=42
+                self.train_size, val_size, seed=self.seed
             )
         else:
             # Use all data for training
@@ -150,6 +156,10 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
     
     def val_dataloader(self) -> DataLoader | None:
         if self.val_query_ids is not None and self.x_locator is not None:
+            # Print validation indices for manual verification
+            val_ids = self.val_query_ids.obs_joinids
+            print(f"📊 Validation indices (seed={self.seed}): first 10: {val_ids[:10]}, last 10: {val_ids[-10:]}")
+            
             # Filter out query and layer_name from dataset_kwargs since we're using x_locator and query_ids
             filtered_kwargs = {k: v for k, v in self.dataset_kwargs.items() 
                               if k not in ('query', 'layer_name')}

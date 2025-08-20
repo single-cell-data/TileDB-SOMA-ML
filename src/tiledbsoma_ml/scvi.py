@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from tiledbsoma_ml import ExperimentDataset, experiment_dataloader
 from tiledbsoma_ml._common import MiniBatch
 from tiledbsoma_ml._query_ids import QueryIDs
+from tiledbsoma_ml.x_locator import XLocator
 
 DEFAULT_DATALOADER_KWARGS: dict[str, Any] = {
     "pin_memory": torch.cuda.is_available(),
@@ -102,10 +103,17 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         self.train_size = train_size
         self.train_query_ids = None
         self.val_query_ids = None
+        self.x_locator = None
+        self.layer_name = kwargs.get('layer_name', 'raw')
 
     def setup(self, stage: str | None = None) -> None:
-        # Create QueryIDs from the query
+        # Create QueryIDs and XLocator from the query
         query_ids = QueryIDs.create(self.query)
+        self.x_locator = XLocator.create(
+            self.query.experiment,
+            measurement_name=self.query.measurement_name,
+            layer_name=self.layer_name,
+        )
         
         # Split data into train and validation sets if train_size < 1.0
         if self.train_size < 1.0:
@@ -121,13 +129,14 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
 
     def train_dataloader(self) -> DataLoader:
         assert self.train_query_ids is not None, "setup() must be called before train_dataloader()"
+        assert self.x_locator is not None, "setup() must be called before train_dataloader()"
         
-        # Create dataset with train query_ids
+        # Create dataset with train query_ids and x_locator
         train_dataset = ExperimentDataset(
-            self.query,
-            *self.dataset_args,
-            obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
+            x_locator=self.x_locator,
             query_ids=self.train_query_ids,
+            obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
+            *self.dataset_args,
             **self.dataset_kwargs,  # type: ignore[misc]
         )
         return experiment_dataloader(
@@ -136,13 +145,13 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         )
     
     def val_dataloader(self) -> DataLoader | None:
-        if self.val_query_ids is not None:
-            # Create dataset with validation query_ids
+        if self.val_query_ids is not None and self.x_locator is not None:
+            # Create dataset with validation query_ids and x_locator
             val_dataset = ExperimentDataset(
-                self.query,
-                *self.dataset_args,
-                obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
+                x_locator=self.x_locator,
                 query_ids=self.val_query_ids,
+                obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
+                *self.dataset_args,
                 **self.dataset_kwargs,  # type: ignore[misc]
             )
             return experiment_dataloader(

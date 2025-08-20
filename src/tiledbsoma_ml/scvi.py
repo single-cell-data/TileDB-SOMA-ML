@@ -19,6 +19,7 @@ DEFAULT_DATALOADER_KWARGS: dict[str, Any] = {
     "num_workers": max(((os.cpu_count() or 1) // 2), 1),
 }
 
+
 class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
     """PyTorch Lightning DataModule for training scVI models from SOMA data.
 
@@ -71,7 +72,6 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
             **DEFAULT_DATALOADER_KWARGS,
             **(dataloader_kwargs or {}),
         }
-        print(dataloader_kwargs)
         self.batch_column_names = (
             batch_column_names
             if batch_column_names is not None
@@ -103,8 +103,6 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
             **self.dataset_kwargs,  # type: ignore[misc]
         )
 
-    # Seems to just remove unsupported args and call the pytorch DataLoader, shouldn't have anything different happening here
-    # This is where it initiates multi_processing though
     def train_dataloader(self) -> DataLoader:
         return experiment_dataloader(
             self.train_dataset,

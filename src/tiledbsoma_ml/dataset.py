@@ -393,7 +393,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 use_eager_fetch=self.use_eager_fetch,
                 return_sparse_X=self.return_sparse_X,
                 # gpu shuffle params
-                gpu_shuffle=use_gpu_shuffle,
+                gpu_shuffle=False,
                 device=self.device,
                 seed=self.seed,
                 epoch=self.epoch,

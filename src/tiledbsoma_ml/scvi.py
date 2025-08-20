@@ -117,9 +117,9 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         
         # Split data into train and validation sets if train_size < 1.0
         if self.train_size < 1.0:
-            # Use QueryIDs.split() for efficient splitting
+            # Use QueryIDs.random_split() for efficient splitting
             val_size = 1.0 - self.train_size
-            self.train_query_ids, self.val_query_ids = query_ids.split(
+            self.train_query_ids, self.val_query_ids = query_ids.random_split(
                 self.train_size, val_size, seed=42
             )
         else:
@@ -167,7 +167,6 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
                 **self.dataloader_kwargs,
             )
         else:
-            # No validation data if train_size == 1.0
             return None
 
     def _add_batch_col(

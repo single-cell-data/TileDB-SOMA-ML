@@ -10,6 +10,7 @@ import attrs
 import numpy as np
 import pandas as pd
 from scipy import sparse
+import torch, os, time
 
 from tiledbsoma_ml._common import MiniBatch
 from tiledbsoma_ml._eager_iter import EagerIterator
@@ -27,6 +28,24 @@ class MiniBatchIterable(Iterable[MiniBatch]):
     use_eager_fetch: bool = True
     return_sparse_X: bool = False
 
+    gpu_shuffle: bool = False
+    gpu_shuffle_mode: str = "iobatch"
+    device: torch.device | None = None
+    seed: int | None = None
+    epoch: int = 0
+
+    def _gpu_perm(self, n: int) -> torch.Tensor:
+        """Deterministic permutation of range(n) seeded by (seed, epoch, pid)."""
+        base = int(self.seed or 0)
+        pid = os.getpid()
+        mixed = (base * 1315423911 + self.epoch * 2654435761 + pid) & 0xFFFFFFFF
+
+        gen_device = (self.device if (self.device is not None and getattr(self.device, "type", None) == "cuda") else "cpu")
+        g = torch.Generator(device=gen_device)
+        g.manual_seed(mixed)
+        return torch.randperm(n, generator=g, device=gen_device)
+
+
     def _iter(self) -> Iterator[MiniBatch]:
         batch_size = self.batch_size
         result: MiniBatch | None = None
@@ -34,6 +53,32 @@ class MiniBatchIterable(Iterable[MiniBatch]):
             assert X_io_batch.shape[0] == obs_io_batch.shape[0]
             iob_idx = 0  # current offset into io batch
             iob_len = X_io_batch.shape[0]
+
+            # GPU within-IO-batch shuffle (dense only)
+            if self.gpu_shuffle and self.gpu_shuffle_mode == "iobatch":
+                if self.return_sparse_X:
+                    logger.warning("GPU shuffle requested but return_sparse_X=True; leaving IO-batch order unchanged.")
+                else:
+                    perm = self._gpu_perm(iob_len)
+                    perm_cpu = perm.to("cpu", non_blocking=False).numpy()
+
+                    X_full = X_io_batch.slice_tonumpy(slice(0, iob_len))
+                    X_t = torch.from_numpy(X_full)
+                    if self.device is not None and getattr(self.device, "type", None) == "cuda":
+                        if not X_t.is_pinned():
+                            X_t = X_t.pin_memory()           # faster H2D
+                        X_t = X_t.to(self.device, non_blocking=True)
+                    X_t = X_t.index_select(0, perm).contiguous()
+                    X_cpu = X_t.to("cpu", non_blocking=False).numpy()
+
+                    obs_perm = obs_io_batch.iloc[perm_cpu].reset_index(drop=True)
+
+                    # Emit mini-batches from the permuted IO-batch
+                    for start in range(0, iob_len, self.batch_size):
+                        stop = min(start + self.batch_size, iob_len)
+                        yield (X_cpu[start:stop], obs_perm.iloc[start:stop].reset_index(drop=True))
+                    continue  # done with this IO-batch
+
 
             while iob_idx < iob_len:
                 if result is None:
@@ -76,6 +121,21 @@ class MiniBatchIterable(Iterable[MiniBatch]):
                     iob_idx += to_take
 
                 X, obs = result
+                
+                if self.gpu_shuffle and self.gpu_shuffle_mode == "minibatch" and not self.return_sparse_X:
+                    mb_n = X.shape[0]
+                    perm = self._gpu_perm(mb_n)
+                    perm_cpu = perm.to("cpu", non_blocking=False).numpy()
+
+                    X_t = torch.from_numpy(X)
+                    if self.device is not None and getattr(self.device, "type", None) == "cuda":
+                        if not X_t.is_pinned():
+                            X_t = X_t.pin_memory()
+                        X_t = X_t.to(self.device, non_blocking=True)
+                    X_t = X_t.index_select(0, perm).contiguous()
+                    X = X_t.to("cpu", non_blocking=False).numpy()
+                    obs = obs.iloc[perm_cpu].reset_index(drop=True)
+
                 assert X.shape[0] == obs.shape[0]
                 if X.shape[0] == batch_size:
                     yield result

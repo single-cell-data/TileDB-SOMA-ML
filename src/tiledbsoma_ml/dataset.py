@@ -11,7 +11,8 @@ import numpy as np
 import torch
 from attr import evolve
 from attrs import define, field
-from attrs.validators import gt
+from attrs.validators import and_, gt, instance_of
+from enum import Enum
 from tiledbsoma import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
@@ -31,6 +32,22 @@ DEFAULT_OBS_COLUMN_NAMES = ("soma_joinid",)
 DEFAULT_SHUFFLE_CHUNK_SIZE = 64
 DEFAULT_IO_BATCH_SIZE = 2**16
 
+
+class ShuffleMode(str, Enum):
+    """Shuffling backend selection."""
+    CPU = "cpu"
+    GPU_IOBATCH = "gpu_iobatch"          # Emulate CPU, shuffling at io batch level
+    GPU_MINIBATCH = "gpu_minibatch"    # Only shuffle the mini batch at the gpu
+
+def _shuffle_mode_converter(v) -> ShuffleMode:
+    if isinstance(v, ShuffleMode):
+        return v
+    if isinstance(v, str):
+        v = v.lower()
+        if v == "gpu":                 # Simplicity alias
+            return ShuffleMode.GPU_IOBATCH
+        return ShuffleMode(v)          # "cpu" | "gpu_iobatch" | "gpu_minibatch"
+    return ShuffleMode(v)
 
 @define
 class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
@@ -117,9 +134,11 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     """Names of ``obs`` columns to return."""
 
     # Configuration fields with defaults
-    batch_size: int = field(default=1, validator=gt(0))
+    batch_size: int = field(default=1024, validator=and_(instance_of(int), gt(0)))
     """Number of rows of ``X`` and ``obs`` data to yield in each |MiniBatch|."""
-    io_batch_size: int = field(default=DEFAULT_IO_BATCH_SIZE, validator=gt(0))
+    io_batch_size: int = field(
+        default=DEFAULT_IO_BATCH_SIZE, validator=and_(instance_of(int), gt(0))
+    )
     """Number of ``obs``/``X`` rows to fetch together, when reading from the provided |ExperimentAxisQuery|."""
     shuffle: bool = field(default=True)
     """Whether to shuffle the ``obs`` and ``X`` data being returned."""
@@ -132,6 +151,13 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     r"""When ``True``, return ``X`` data as a |csr_matrix| (by default, return |ndarray|\ s)."""
     use_eager_fetch: bool = field(default=True)
     """Pre-fetch one "IO batch" and one "mini batch"."""
+
+    # GPU Shuffle Config
+    shuffle_mode: ShuffleMode = field(default=ShuffleMode.CPU, converter=_shuffle_mode_converter)
+    """Whether to shuffle on cpu or gpu (and at what granularity). Only read when shuffle=True"""
+    device: Optional[torch.device] = field(default=None)
+    """Device to move X to; set to torch.device('cuda', N) to enable GPU shuffle."""
+    
 
     # Internal state
     epoch: int = field(default=0, init=False)
@@ -152,6 +178,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         seed: Optional[int] = None,
         return_sparse_X: bool = False,
         use_eager_fetch: bool = True,
+        shuffle_mode: ShuffleMode = ShuffleMode.CPU,
+        device: Optional[torch.device] = None,
     ):
         r"""Construct a new |ExperimentDataset|.
 
@@ -221,6 +249,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             In addition, when using shuffling in a distributed configuration (e.g., ``DDP``), you must provide a seed,
             ensuring that the same shuffle is used across all replicas.
         """
+
         if query and layer_name:
             if x_locator or query_ids:
                 raise ValueError(
@@ -253,6 +282,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             seed=seed,
             return_sparse_X=return_sparse_X,
             use_eager_fetch=use_eager_fetch,
+            shuffle_mode=shuffle_mode,
+            device=device,
         )
 
     def __attrs_post_init__(self) -> None:
@@ -260,13 +291,21 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
         obs_column_names = self.obs_column_names
         if not obs_column_names:
             raise ValueError("Must specify at least one value in `obs_column_names`")
-
         if self.shuffle:
             # Verify `io_batch_size` is a multiple of `shuffle_chunk_size`
             if self.io_batch_size % self.shuffle_chunk_size:
                 raise ValueError(
                     f"{self.io_batch_size=} is not a multiple of {self.shuffle_chunk_size=}"
                 )
+            
+            # Sanity Check for GPU Shuffle
+            if self.shuffle and self.shuffle_mode != ShuffleMode.CPU:
+                if self.device is None or getattr(self.device, "type", None) != "cuda":
+                    logger.warning(
+                        "GPU shuffle requested but `device` is not CUDA; defaulting to CPU within-IO shuffle."
+                    )
+                    object.__setattr__(self, "shuffle_mode", ShuffleMode.CPU)
+
 
         if self.seed is None:
             object.__setattr__(
@@ -331,7 +370,6 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             experimental
         """
         self._multiproc_check()
-
         worker_id, n_workers = get_worker_id_and_num()
         partition = Partition(
             rank=self.rank,
@@ -340,15 +378,23 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             n_workers=n_workers,
         )
         query_ids = self.query_ids.partitioned(partition)
-        if self.shuffle:
-            chunks = query_ids.shuffle_chunks(
+        use_gpu_shuffle = False
+        gpu_shuffle_mode = "none"
+        if self.shuffle and getattr(self.device, "type", None) == "cuda":
+            if self.shuffle_mode == ShuffleMode.GPU_IOBATCH:
+                use_gpu_shuffle = True
+                gpu_shuffle_mode = "iobatch"
+            elif self.shuffle_mode == ShuffleMode.GPU_MINIBATCH:
+                use_gpu_shuffle = True
+                gpu_shuffle_mode = "minibatch"
+        
+        if self.shuffle and self.shuffle_mode not in (ShuffleMode.GPU_MINIBATCH, ):
+            chunks = query_ids.shuffle_chunks( # provide shuffle chunk size of random chunks (upstream randomization)
                 shuffle_chunk_size=self.shuffle_chunk_size,
                 seed=self.seed,
             )
         else:
-            # In no-shuffle mode, all the `obs_joinids` can be treated as one "shuffle chunk",
-            # which IO-batches will stride over.
-            chunks = [query_ids.obs_joinids]
+            chunks = [query_ids.obs_joinids] # For no or just mini batch shuffling, provide sequential order of chunks
 
         with self.x_locator.open() as (X, obs):
             io_batch_iter = IOBatchIterable(
@@ -359,7 +405,8 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 X=X,
                 obs_column_names=self.obs_column_names,
                 seed=self.seed,
-                shuffle=self.shuffle,
+                # disable internal shuffling if we are shuffling with GPU
+                shuffle=(self.shuffle and not use_gpu_shuffle),
                 use_eager_fetch=self.use_eager_fetch,
             )
 
@@ -368,6 +415,12 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 batch_size=self.batch_size,
                 use_eager_fetch=self.use_eager_fetch,
                 return_sparse_X=self.return_sparse_X,
+                # gpu shuffle params
+                gpu_shuffle=use_gpu_shuffle,
+                gpu_shuffle_mode=gpu_shuffle_mode,   # "iobatch" | "minibatch"
+                device=self.device,
+                seed=self.seed,
+                epoch=self.epoch,
             )
 
         self.epoch += 1

@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Iterable, Iterator
 
 import attrs
 import numpy as np
 import pandas as pd
+import torch
 from scipy import sparse
-import torch, os, time
 
 from tiledbsoma_ml._common import MiniBatch
 from tiledbsoma_ml._eager_iter import EagerIterator
@@ -40,11 +41,16 @@ class MiniBatchIterable(Iterable[MiniBatch]):
         pid = os.getpid()
         mixed = (base * 1315423911 + self.epoch * 2654435761 + pid) & 0xFFFFFFFF
 
-        gen_device = (self.device if (self.device is not None and getattr(self.device, "type", None) == "cuda") else "cpu")
+        gen_device = (
+            self.device
+            if (
+                self.device is not None and getattr(self.device, "type", None) == "cuda"
+            )
+            else "cpu"
+        )
         g = torch.Generator(device=gen_device)
         g.manual_seed(mixed)
         return torch.randperm(n, generator=g, device=gen_device)
-
 
     def _iter(self) -> Iterator[MiniBatch]:
         batch_size = self.batch_size
@@ -57,16 +63,21 @@ class MiniBatchIterable(Iterable[MiniBatch]):
             # GPU within-IO-batch shuffle (dense only)
             if self.gpu_shuffle and self.gpu_shuffle_mode == "iobatch":
                 if self.return_sparse_X:
-                    logger.warning("GPU shuffle requested but return_sparse_X=True; leaving IO-batch order unchanged.")
+                    logger.warning(
+                        "GPU shuffle requested but return_sparse_X=True; leaving IO-batch order unchanged."
+                    )
                 else:
                     perm = self._gpu_perm(iob_len)
                     perm_cpu = perm.to("cpu", non_blocking=False).numpy()
 
                     X_full = X_io_batch.slice_tonumpy(slice(0, iob_len))
                     X_t = torch.from_numpy(X_full)
-                    if self.device is not None and getattr(self.device, "type", None) == "cuda":
+                    if (
+                        self.device is not None
+                        and getattr(self.device, "type", None) == "cuda"
+                    ):
                         if not X_t.is_pinned():
-                            X_t = X_t.pin_memory()           # faster H2D
+                            X_t = X_t.pin_memory()  # faster H2D
                         X_t = X_t.to(self.device, non_blocking=True)
                     X_t = X_t.index_select(0, perm).contiguous()
                     X_cpu = X_t.to("cpu", non_blocking=False).numpy()
@@ -76,9 +87,11 @@ class MiniBatchIterable(Iterable[MiniBatch]):
                     # Emit mini-batches from the permuted IO-batch
                     for start in range(0, iob_len, self.batch_size):
                         stop = min(start + self.batch_size, iob_len)
-                        yield (X_cpu[start:stop], obs_perm.iloc[start:stop].reset_index(drop=True))
+                        yield (
+                            X_cpu[start:stop],
+                            obs_perm.iloc[start:stop].reset_index(drop=True),
+                        )
                     continue  # done with this IO-batch
-
 
             while iob_idx < iob_len:
                 if result is None:
@@ -121,14 +134,21 @@ class MiniBatchIterable(Iterable[MiniBatch]):
                     iob_idx += to_take
 
                 X, obs = result
-                
-                if self.gpu_shuffle and self.gpu_shuffle_mode == "minibatch" and not self.return_sparse_X:
+
+                if (
+                    self.gpu_shuffle
+                    and self.gpu_shuffle_mode == "minibatch"
+                    and not self.return_sparse_X
+                ):
                     mb_n = X.shape[0]
                     perm = self._gpu_perm(mb_n)
                     perm_cpu = perm.to("cpu", non_blocking=False).numpy()
 
                     X_t = torch.from_numpy(X)
-                    if self.device is not None and getattr(self.device, "type", None) == "cuda":
+                    if (
+                        self.device is not None
+                        and getattr(self.device, "type", None) == "cuda"
+                    ):
                         if not X_t.is_pinned():
                             X_t = X_t.pin_memory()
                         X_t = X_t.to(self.device, non_blocking=True)

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+from enum import Enum
 from typing import Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -12,7 +13,6 @@ import torch
 from attr import evolve
 from attrs import define, field
 from attrs.validators import and_, gt, instance_of
-from enum import Enum
 from tiledbsoma import ExperimentAxisQuery
 from torch.utils.data import IterableDataset
 
@@ -35,19 +35,22 @@ DEFAULT_IO_BATCH_SIZE = 2**16
 
 class ShuffleMode(str, Enum):
     """Shuffling backend selection."""
+
     CPU = "cpu"
-    GPU_IOBATCH = "gpu_iobatch"          # Emulate CPU, shuffling at io batch level
-    GPU_MINIBATCH = "gpu_minibatch"    # Only shuffle the mini batch at the gpu
+    GPU_IOBATCH = "gpu_iobatch"  # Emulate CPU, shuffling at io batch level
+    GPU_MINIBATCH = "gpu_minibatch"  # Only shuffle the mini batch at the gpu
+
 
 def _shuffle_mode_converter(v) -> ShuffleMode:
     if isinstance(v, ShuffleMode):
         return v
     if isinstance(v, str):
         v = v.lower()
-        if v == "gpu":                 # Simplicity alias
+        if v == "gpu":  # Simplicity alias
             return ShuffleMode.GPU_IOBATCH
-        return ShuffleMode(v)          # "cpu" | "gpu_iobatch" | "gpu_minibatch"
+        return ShuffleMode(v)  # "cpu" | "gpu_iobatch" | "gpu_minibatch"
     return ShuffleMode(v)
+
 
 @define
 class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
@@ -153,11 +156,15 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
     """Pre-fetch one "IO batch" and one "mini batch"."""
 
     # GPU Shuffle Config
-    shuffle_mode: ShuffleMode = field(default=ShuffleMode.CPU, converter=_shuffle_mode_converter)
-    """Whether to shuffle on cpu or gpu (and at what granularity). Only read when shuffle=True"""
+    shuffle_mode: ShuffleMode = field(
+        default=ShuffleMode.CPU, converter=_shuffle_mode_converter
+    )
+    """Whether to shuffle on cpu or gpu (and at what granularity).
+
+    Only read when shuffle=True
+    """
     device: Optional[torch.device] = field(default=None)
     """Device to move X to; set to torch.device('cuda', N) to enable GPU shuffle."""
-    
 
     # Internal state
     epoch: int = field(default=0, init=False)
@@ -297,7 +304,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 raise ValueError(
                     f"{self.io_batch_size=} is not a multiple of {self.shuffle_chunk_size=}"
                 )
-            
+
             # Sanity Check for GPU Shuffle
             if self.shuffle and self.shuffle_mode != ShuffleMode.CPU:
                 if self.device is None or getattr(self.device, "type", None) != "cuda":
@@ -305,7 +312,6 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                         "GPU shuffle requested but `device` is not CUDA; defaulting to CPU within-IO shuffle."
                     )
                     object.__setattr__(self, "shuffle_mode", ShuffleMode.CPU)
-
 
         if self.seed is None:
             object.__setattr__(
@@ -387,14 +393,16 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
             elif self.shuffle_mode == ShuffleMode.GPU_MINIBATCH:
                 use_gpu_shuffle = True
                 gpu_shuffle_mode = "minibatch"
-        
-        if self.shuffle and self.shuffle_mode not in (ShuffleMode.GPU_MINIBATCH, ):
-            chunks = query_ids.shuffle_chunks( # provide shuffle chunk size of random chunks (upstream randomization)
+
+        if self.shuffle and self.shuffle_mode not in (ShuffleMode.GPU_MINIBATCH,):
+            chunks = query_ids.shuffle_chunks(  # provide shuffle chunk size of random chunks (upstream randomization)
                 shuffle_chunk_size=self.shuffle_chunk_size,
                 seed=self.seed,
             )
         else:
-            chunks = [query_ids.obs_joinids] # For no or just mini batch shuffling, provide sequential order of chunks
+            chunks = [
+                query_ids.obs_joinids
+            ]  # For no or just mini batch shuffling, provide sequential order of chunks
 
         with self.x_locator.open() as (X, obs):
             io_batch_iter = IOBatchIterable(
@@ -417,7 +425,7 @@ class ExperimentDataset(IterableDataset[MiniBatch]):  # type: ignore[misc]
                 return_sparse_X=self.return_sparse_X,
                 # gpu shuffle params
                 gpu_shuffle=use_gpu_shuffle,
-                gpu_shuffle_mode=gpu_shuffle_mode,   # "iobatch" | "minibatch"
+                gpu_shuffle_mode=gpu_shuffle_mode,  # "iobatch" | "minibatch"
                 device=self.device,
                 seed=self.seed,
                 epoch=self.epoch,

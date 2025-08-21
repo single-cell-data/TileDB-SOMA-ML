@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 from enum import Enum
-from typing import Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -41,7 +41,7 @@ class ShuffleMode(str, Enum):
     GPU_MINIBATCH = "gpu_minibatch"  # Only shuffle the mini batch at the gpu
 
 
-def _shuffle_mode_converter(v) -> ShuffleMode:
+def _shuffle_mode_converter(v: Any) -> ShuffleMode:
     if isinstance(v, ShuffleMode):
         return v
     if isinstance(v, str):

@@ -190,23 +190,29 @@ def add_sparse_array(
 def flatten_joinids(batches: List[MiniBatch]) -> List[int]:
     return [int(i) for _, obs in batches for i in obs["soma_joinid"].tolist()]
 
+
 def minibatch_is_contiguous(ids: List[int]) -> bool:
     if len(ids) <= 1:
         return True
     ids_sorted = sorted(ids)
     return ids_sorted[-1] - ids_sorted[0] + 1 == len(ids_sorted)
 
+
 def assert_gpu_minibatch_no_upstream_mixing(batches: List[MiniBatch]) -> None:
-    """Each minibatch should be a contiguous slice; slices increase strictly. Test for gpu_minibatch shuffling."""
+    """Each minibatch should be a contiguous slice; slices increase strictly.
+
+    Test for gpu_minibatch shuffling.
+    """
     prev_max = -1
     for _, obs in batches:
         ids = [int(i) for i in obs["soma_joinid"].tolist()]
         assert minibatch_is_contiguous(ids), f"Non-contiguous minibatch: {ids}"
         ids_sorted = sorted(ids)
-        assert ids_sorted[0] > prev_max, (
-            f"Detected upstream mixing: start={ids_sorted[0]} <= prev_max={prev_max}"
-        )
+        assert (
+            ids_sorted[0] > prev_max
+        ), f"Detected upstream mixing: start={ids_sorted[0]} <= prev_max={prev_max}"
         prev_max = ids_sorted[-1]
+
 
 def assert_gpu_iobatch_invariants(
     batches: List[MiniBatch],
@@ -217,7 +223,9 @@ def assert_gpu_iobatch_invariants(
     # batch sizes (all should be full except possibly tail)
     for i, (_, obs) in enumerate(batches):
         if i < len(batches) - 1:
-            assert len(obs) == batch_size, f"Non-tail minibatch size {len(obs)} != {batch_size}"
+            assert (
+                len(obs) == batch_size
+            ), f"Non-tail minibatch size {len(obs)} != {batch_size}"
         else:
             assert 1 <= len(obs) <= batch_size
 
@@ -228,10 +236,9 @@ def assert_gpu_iobatch_invariants(
         if not minibatch_is_contiguous(ids):
             non_contig += 1
     if len(batches) >= 4:  # avoid tiny outliers
-        assert non_contig >= int(len(batches) * min_noncontig_ratio), (
-            "Low dispersion in IO-batch GPU shuffle; check upstream shuffle chunk selection if the problem persists."
-        )
-
+        assert non_contig >= int(
+            len(batches) * min_noncontig_ratio
+        ), "Low dispersion in IO-batch GPU shuffle; check upstream shuffle chunk selection if the problem persists."
 
 
 @contextmanager

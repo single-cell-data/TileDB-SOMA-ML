@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Sequence, Tuple, Union
 
 import pandas as pd
-from pytest import fixture
+from pytest import fixture, skip
 from somacore import AxisQuery
 from tiledbsoma import Experiment, Measurement
 from tiledbsoma._collection import Collection
@@ -29,12 +29,12 @@ from ._utils import (
     add_dataframe,
     add_sparse_array,
     assert_batches_equal,
+    assert_gpu_iobatch_invariants,
+    assert_gpu_minibatch_no_upstream_mixing,
     default,
+    flatten_joinids,
     mock_distributed,
     pytorch_x_value_gen,
-    flatten_joinids,
-    assert_gpu_minibatch_no_upstream_mixing,
-    assert_gpu_iobatch_invariants,
 )
 
 
@@ -198,14 +198,24 @@ def check(
 
 
 @fixture
-def check_gpu(ds: ExperimentDataset, batches: List[MiniBatch], verify_dataset_shape: bool, var_range: int | range):
+def check_gpu(
+    ds: ExperimentDataset,
+    batches: List[MiniBatch],
+    verify_dataset_shape: bool,
+    var_range: int | range,
+):
     import torch as _torch
+
     if not _torch.cuda.is_available():
-        pytest.skip("CUDA required for GPU shuffle tests")
+        skip("CUDA required for GPU shuffle tests")
 
     # shape sanity if requested
     if verify_dataset_shape:
-        assert ds.shape[1] == (var_range if isinstance(var_range, int) else var_range.stop - var_range.start)
+        assert ds.shape[1] == (
+            var_range
+            if isinstance(var_range, int)
+            else var_range.stop - var_range.start
+        )
 
     n = len(ds.query_ids.obs_joinids)
     flat = flatten_joinids(batches)
@@ -218,7 +228,11 @@ def check_gpu(ds: ExperimentDataset, batches: List[MiniBatch], verify_dataset_sh
         return
 
     # Normalize enum/string
-    mode = ds.shuffle_mode if isinstance(ds.shuffle_mode, ShuffleMode) else ShuffleMode(str(ds.shuffle_mode))
+    mode = (
+        ds.shuffle_mode
+        if isinstance(ds.shuffle_mode, ShuffleMode)
+        else ShuffleMode(str(ds.shuffle_mode))
+    )
     if mode == ShuffleMode.GPU_MINIBATCH:
         assert_gpu_minibatch_no_upstream_mixing(batches)
     elif mode == ShuffleMode.GPU_IOBATCH:

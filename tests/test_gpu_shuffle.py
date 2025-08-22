@@ -3,18 +3,25 @@ from pytest import fixture
 
 from tests._utils import param, parametrize
 
+from tiledbsoma_ml._common import MiniBatch
 from tiledbsoma_ml.dataloader import experiment_dataloader
+from tiledbsoma_ml.dataset import ExperimentDataset
 
 @fixture
-def dataloader(ds, num_workers):
+def dataloader(ds: ExperimentDataset, num_workers: int):
+    """Wrap an |ExperimentDataset| fixture in a |DataLoader|, for use in tests."""
     yield experiment_dataloader(ds, num_workers=num_workers)
 
-@fixture
-def batch_iter(dataloader):
-    return iter(dataloader)
 
 @fixture
-def batches(batch_iter):
+def batch_iter(dataloader: DataLoader) -> Iterator[MiniBatch]:
+    """Iterator over a |DataLoader|'s |MiniBatch|'s."""
+    return iter(dataloader)
+
+
+@fixture
+def batches(batch_iter: Iterator[MiniBatch]) -> List[MiniBatch]:
+    """List of a |DataLoader|'s |MiniBatch|'s."""
     return list(batch_iter)
 
 

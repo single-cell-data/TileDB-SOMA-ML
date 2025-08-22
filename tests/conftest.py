@@ -203,6 +203,7 @@ def check_gpu(
     batches: List[MiniBatch],
     verify_dataset_shape: bool,
     var_range: int | range,
+    num_workers: int,
 ):
     import torch as _torch
 
@@ -236,7 +237,7 @@ def check_gpu(
     if mode == ShuffleMode.GPU_MINIBATCH:
         assert_gpu_minibatch_no_upstream_mixing(batches)
     elif mode == ShuffleMode.GPU_IOBATCH:
-        assert_gpu_iobatch_invariants(batches, ds.batch_size)
+        assert_gpu_iobatch_invariants(batches, ds.batch_size, num_workers=num_workers)
     else:
         # CPU mode: leave to existing `check` in CPU test files
         pass

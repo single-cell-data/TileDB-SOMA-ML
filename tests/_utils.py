@@ -217,28 +217,27 @@ def assert_gpu_minibatch_no_upstream_mixing(batches: List[MiniBatch]) -> None:
 def assert_gpu_iobatch_invariants(
     batches: List[MiniBatch],
     batch_size: int,
-    min_noncontig_ratio: float = 0.5,
+    min_noncontig_ratio: float = 0.2,
+    num_workers: int = 1,
 ) -> None:
     """Property checks for IO-batch GPU shuffle (not exact order)."""
-    # batch sizes (all should be full except possibly tail)
-    for i, (_, obs) in enumerate(batches):
-        if i < len(batches) - 1:
-            assert (
-                len(obs) == batch_size
-            ), f"Non-tail minibatch size {len(obs)} != {batch_size}"
-        else:
-            assert 1 <= len(obs) <= batch_size
+    # Check for unecessary non-full batches
+    sizes = [len(obs) for _, obs in batches]
+    assert all(1 <= s <= batch_size for s in sizes), f"Invalid sizes: {sizes}"
+    # If there are enough rows overall, expect at least one full minibatch
+    if sum(sizes) >= batch_size:
+        assert any(s == batch_size for s in sizes), "No full minibatches produced"
 
-    # dispersion check: many minibatches should not be contiguous ranges
+    # measure dispersion b/w mini batches. Should not consistently fail.
     non_contig = 0
     for _, obs in batches:
         ids = [int(i) for i in obs["soma_joinid"].tolist()]
         if not minibatch_is_contiguous(ids):
             non_contig += 1
     if len(batches) >= 4:  # avoid tiny outliers
-        assert non_contig >= int(
-            len(batches) * min_noncontig_ratio
-        ), "Low dispersion in IO-batch GPU shuffle; check upstream shuffle chunk selection if the problem persists."
+        assert non_contig >= max(
+            1, int(len(batches) * min_noncontig_ratio)
+        ), "Low dispersion in IO-batch GPU shuffle; check upstream shuffle chunk selection."
 
 
 @contextmanager

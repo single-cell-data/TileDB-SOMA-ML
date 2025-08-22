@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from enum import Enum
 from typing import Any, Sequence
 
 import pandas as pd
@@ -20,6 +21,13 @@ DEFAULT_DATALOADER_KWARGS: dict[str, Any] = {
     "persistent_workers": True,
     "num_workers": max(((os.cpu_count() or 1) // 2), 1),
 }
+
+
+class DatasetSplit(Enum):
+    """Enum for dataset splits."""
+
+    TRAIN = "train"
+    VAL = "val"
 
 
 class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
@@ -134,35 +142,23 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
             self.train_query_ids = query_ids
             self.val_query_ids = None
 
-    def train_dataloader(self) -> DataLoader:
-        assert (
-            self.train_query_ids is not None
-        ), "setup() must be called before train_dataloader()"
-        assert (
-            self.x_locator is not None
-        ), "setup() must be called before train_dataloader()"
+    def _create_dataloader(self, split: DatasetSplit) -> DataLoader | None:
+        """Create a dataloader for the specified dataset split.
 
-        # Filter out query and layer_name from dataset_kwargs since we're using x_locator and query_ids
-        filtered_kwargs = {
-            k: v
-            for k, v in self.dataset_kwargs.items()
-            if k not in ("query", "layer_name")
+        Args:
+            split: The dataset split (TRAIN or VAL)
+
+        Returns:
+            DataLoader for the specified split, or None if the split doesn't exist
+        """
+        # Get the appropriate query_ids based on split
+        query_ids_map = {
+            DatasetSplit.TRAIN: self.train_query_ids,
+            DatasetSplit.VAL: self.val_query_ids,
         }
 
-        # Create dataset with train query_ids and x_locator
-        train_dataset = ExperimentDataset(
-            x_locator=self.x_locator,
-            query_ids=self.train_query_ids,
-            obs_column_names=list(self.batch_column_names),
-            **filtered_kwargs,
-        )
-        return experiment_dataloader(
-            train_dataset,
-            **self.dataloader_kwargs,
-        )
-
-    def val_dataloader(self) -> DataLoader | None:
-        if self.val_query_ids is None or self.x_locator is None:
+        query_ids = query_ids_map.get(split)
+        if query_ids is None or self.x_locator is None:
             return None
 
         # Filter out query and layer_name from dataset_kwargs since we're using x_locator and query_ids
@@ -172,17 +168,38 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
             if k not in ("query", "layer_name")
         }
 
-        # Create dataset with validation query_ids and x_locator
-        val_dataset = ExperimentDataset(
+        # Create dataset with appropriate query_ids
+        dataset = ExperimentDataset(
             x_locator=self.x_locator,
-            query_ids=self.val_query_ids,
+            query_ids=query_ids,
             obs_column_names=list(self.batch_column_names),
             **filtered_kwargs,
         )
         return experiment_dataloader(
-            val_dataset,
+            dataset,
             **self.dataloader_kwargs,
         )
+
+    def train_dataloader(self) -> DataLoader:
+        """Create the training dataloader.
+
+        Returns:
+            DataLoader for training data
+
+        Raises:
+            AssertionError: If setup() hasn't been called
+        """
+        loader = self._create_dataloader(DatasetSplit.TRAIN)
+        assert loader is not None, "setup() must be called before train_dataloader()"
+        return loader
+
+    def val_dataloader(self) -> DataLoader | None:
+        """Create the validation dataloader.
+
+        Returns:
+            DataLoader for validation data, or None if no validation split exists
+        """
+        return self._create_dataloader(DatasetSplit.VAL)
 
     def _add_batch_col(
         self, obs_df: pd.DataFrame, inplace: bool = False

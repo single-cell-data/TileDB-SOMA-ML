@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from typing import Any, Sequence
 
-import numpy as np
 import pandas as pd
 import torch
 from lightning import LightningDataModule
@@ -68,11 +67,11 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
 
         dataloader_kwargs: dict, optional
         Keyword arguments passed to `tiledbsoma_ml.experiment_dataloader()`, e.g. `num_workers`.
-        
+
         train_size: float, optional
         Fraction of data to use for training (between 0 and 1). Default is 1.0 (use all data for training).
         If less than 1.0, the remaining data will be used for validation.
-        
+
         seed: int, optional
         Random seed for deterministic train/validation split. Default is 42.
         """
@@ -107,10 +106,10 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
         self.batch_encoder = LabelEncoder().fit(self.batch_labels)
         self.train_size = train_size
         self.seed = seed
-        self.train_query_ids = None
-        self.val_query_ids = None
-        self.x_locator = None
-        self.layer_name = kwargs.get('layer_name', 'raw')
+        self.train_query_ids: QueryIDs | None = None
+        self.val_query_ids: QueryIDs | None = None
+        self.x_locator: XLocator | None = None
+        self.layer_name = kwargs.get("layer_name", "raw")
 
     def setup(self, stage: str | None = None) -> None:
         # Create QueryIDs and XLocator from the query
@@ -120,60 +119,70 @@ class SCVIDataModule(LightningDataModule):  # type: ignore[misc]
             measurement_name=self.query.measurement_name,
             layer_name=self.layer_name,
         )
-        
+
         # Split data into train and validation sets if train_size < 1.0
         if self.train_size < 1.0:
             # Use QueryIDs.random_split() for efficient splitting
             val_size = 1.0 - self.train_size
-            self.train_query_ids, self.val_query_ids = query_ids.random_split(
+            train_ids, val_ids = query_ids.random_split(
                 self.train_size, val_size, seed=self.seed
             )
+            self.train_query_ids = train_ids
+            self.val_query_ids = val_ids
         else:
             # Use all data for training
             self.train_query_ids = query_ids
             self.val_query_ids = None
 
     def train_dataloader(self) -> DataLoader:
-        assert self.train_query_ids is not None, "setup() must be called before train_dataloader()"
-        assert self.x_locator is not None, "setup() must be called before train_dataloader()"
-        
+        assert (
+            self.train_query_ids is not None
+        ), "setup() must be called before train_dataloader()"
+        assert (
+            self.x_locator is not None
+        ), "setup() must be called before train_dataloader()"
+
         # Filter out query and layer_name from dataset_kwargs since we're using x_locator and query_ids
-        filtered_kwargs = {k: v for k, v in self.dataset_kwargs.items() 
-                          if k not in ('query', 'layer_name')}
-        
+        filtered_kwargs = {
+            k: v
+            for k, v in self.dataset_kwargs.items()
+            if k not in ("query", "layer_name")
+        }
+
         # Create dataset with train query_ids and x_locator
         train_dataset = ExperimentDataset(
             x_locator=self.x_locator,
             query_ids=self.train_query_ids,
-            obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
-            *self.dataset_args,
-            **filtered_kwargs,  # type: ignore[misc]
+            obs_column_names=list(self.batch_column_names),
+            **filtered_kwargs,
         )
         return experiment_dataloader(
             train_dataset,
             **self.dataloader_kwargs,
         )
-    
+
     def val_dataloader(self) -> DataLoader | None:
-        if self.val_query_ids is not None and self.x_locator is not None:
-            # Filter out query and layer_name from dataset_kwargs since we're using x_locator and query_ids
-            filtered_kwargs = {k: v for k, v in self.dataset_kwargs.items() 
-                              if k not in ('query', 'layer_name')}
-            
-            # Create dataset with validation query_ids and x_locator
-            val_dataset = ExperimentDataset(
-                x_locator=self.x_locator,
-                query_ids=self.val_query_ids,
-                obs_column_names=self.batch_column_names,  # type: ignore[arg-type]
-                *self.dataset_args,
-                **filtered_kwargs,  # type: ignore[misc]
-            )
-            return experiment_dataloader(
-                val_dataset,
-                **self.dataloader_kwargs,
-            )
-        else:
+        if self.val_query_ids is None or self.x_locator is None:
             return None
+
+        # Filter out query and layer_name from dataset_kwargs since we're using x_locator and query_ids
+        filtered_kwargs = {
+            k: v
+            for k, v in self.dataset_kwargs.items()
+            if k not in ("query", "layer_name")
+        }
+
+        # Create dataset with validation query_ids and x_locator
+        val_dataset = ExperimentDataset(
+            x_locator=self.x_locator,
+            query_ids=self.val_query_ids,
+            obs_column_names=list(self.batch_column_names),
+            **filtered_kwargs,
+        )
+        return experiment_dataloader(
+            val_dataset,
+            **self.dataloader_kwargs,
+        )
 
     def _add_batch_col(
         self, obs_df: pd.DataFrame, inplace: bool = False

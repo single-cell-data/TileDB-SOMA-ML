@@ -11,10 +11,11 @@ import attrs
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.types as pat
 from tiledbsoma import DataFrame, IntIndexer, SparseNDArray
 
 from tiledbsoma_ml._common import NDArrayJoinId
-from tiledbsoma_ml._csr import CSR_IO_Buffer
+from tiledbsoma_ml._csr import CSR_IO_Buffer, smallest_uint_dtype, coo_scatter_to_csr
 from tiledbsoma_ml._eager_iter import EagerIterator
 from tiledbsoma_ml._query_ids import Chunks
 from tiledbsoma_ml._utils import batched
@@ -25,14 +26,63 @@ IOBatch = Tuple[CSR_IO_Buffer, pd.DataFrame]
 (|pd.DataFrame|)."""
 
 
+def _np_dtype_from_arrow(t: pa.DataType) -> np.dtype:
+    # Fast, no-copy dtype mapping for common numeric types
+    # Might be worth creating a preset dictionary with these as keys instead
+    if pat.is_float16(t): return np.dtype(np.float16)
+    if pat.is_float32(t): return np.dtype(np.float32)
+    if pat.is_float64(t): return np.dtype(np.float64)
+    if pat.is_int8(t):    return np.dtype(np.int8)
+    if pat.is_int16(t):   return np.dtype(np.int16)
+    if pat.is_int32(t):   return np.dtype(np.int32)
+    if pat.is_int64(t):   return np.dtype(np.int64)
+    if pat.is_uint8(t):   return np.dtype(np.uint8)
+    if pat.is_uint16(t):  return np.dtype(np.uint16)
+    if pat.is_uint32(t):  return np.dtype(np.uint32)
+    if pat.is_uint64(t):  return np.dtype(np.uint64)
+    if pat.is_boolean(t): return np.dtype(np.bool_)
+    # Fallback allocate small array and return its datatype
+    return np.asarray(pa.array([], type=t)).dtype
+
+def _col_to_numpy(col: pa.ChunkedArray) -> np.ndarray:
+    """
+    Return a NumPy view/copy for an Arrow column:
+    - zero-copy if the column has exactly one chunk and supports it,
+    - otherwise a single contiguous NumPy array (copy).
+    """
+    if isinstance(col, pa.ChunkedArray):
+        if col.num_chunks == 1:
+            arr = col.chunk(0)
+            try:
+                return arr.to_numpy(zero_copy_only=True)  
+            except TypeError:
+                return arr.to_numpy()
+        return col.to_numpy(zero_copy_only=False)
+    # Not chunked -> treat as Array
+    try:
+        return col.to_numpy(zero_copy_only=True)
+    except TypeError:
+        return col.to_numpy()
+
+
+def _iter_col_numpy(col: pa.ChunkedArray):
+    """Yield NumPy arrays for each chunk; zero-copy when possible."""
+    if isinstance(col, pa.ChunkedArray):
+        for i in range(col.num_chunks):
+            arr = col.chunk(i)
+            try:
+                yield arr.to_numpy(zero_copy_only=True)
+            except TypeError:
+                yield arr.to_numpy()
+    else:
+        try:
+            yield col.to_numpy(zero_copy_only=True)
+        except TypeError:
+            yield col.to_numpy()
+
+
 @attrs.define(frozen=True)
 class IOBatchIterable(Iterable[IOBatch]):
-    """Given a list of ``obs_joinid`` |Chunks|, re-chunk them into (optionally shuffled) |IOBatch|'s".
-
-    An |IOBatch| is a tuple consisting of a batch of rows from the ``X`` |SparseNDArray|, as well as the corresponding
-    rows from the ``obs`` |DataFrame|. The ``X`` rows are returned in an optimized |CSR_IO_Buffer|.
-    """
-
     chunks: Chunks
     io_batch_size: int
     obs: DataFrame
@@ -45,20 +95,14 @@ class IOBatchIterable(Iterable[IOBatch]):
 
     @property
     def io_batch_ids(self) -> Iterable[Tuple[int, ...]]:
-        """Re-chunk ``obs_joinids`` according to the desired ``io_batch_size``."""
-        return batched(
-            (joinid for chunk in self.chunks for joinid in chunk),
-            self.io_batch_size,
-        )
+        return batched((joinid for chunk in self.chunks for joinid in chunk),
+                       self.io_batch_size)
 
     def __iter__(self) -> Iterator[IOBatch]:
-        """Emit |IOBatch|'s."""
-        # Because obs/var IDs have been partitioned/split/shuffled upstream of this class, this RNG does not need to be
-        # identical across sub-processes, but seeding is supported anyway, for testing/reproducibility.
         X = self.X
         context = X.context
 
-        # only build rng if we shuffle
+        counts_buf = np.zeros(self.io_batch_size, dtype=np.int64)
         shuffle_rng = np.random.default_rng(self.seed) if self.shuffle else None
 
         obs_column_names = (
@@ -66,80 +110,93 @@ class IOBatchIterable(Iterable[IOBatch]):
             if "soma_joinid" in self.obs_column_names
             else ["soma_joinid", *self.obs_column_names]
         )
-        # NOTE: `.astype("int64")` works around the `np.int64` singleton failing reference-equality after cross-process
-        # SerDes.
-        var_joinids = np.asarray(
-            self.var_joinids, dtype=np.int64
-        )  # as array only typecasts if needed
+
+        var_joinids = np.asarray(self.var_joinids, dtype=np.int64)
         var_indexer = IntIndexer(var_joinids, context=context)
 
         for obs_coords in self.io_batch_ids:
             st_time = time.perf_counter()
 
-            if shuffle_rng is None:
-                obs_order = np.fromiter(
-                    obs_coords, dtype=np.int64, count=len(obs_coords)
-                )
-            else:
-                np.array(obs_coords)
-                obs_order = shuffle_rng.permuted(obs_coords)
+            obs_order = (np.fromiter(obs_coords, dtype=np.int64, count=len(obs_coords))
+                        if shuffle_rng is None
+                        else shuffle_rng.permuted(obs_coords))
 
             obs_indexer = IntIndexer(obs_order, context=context)
-            logger.debug(
-                f"Retrieving next SOMA IO batch of length {len(obs_coords)}..."
-            )
+            logger.debug(f"Retrieving next SOMA IO batch of length {len(obs_coords)}...")
 
-            # To maximize opportunities for concurrency, when in eager_fetch mode,
-            # create the X read iterator first, as the eager iterator will begin
-            # the read-ahead immediately. Then proceed to fetch obs DataFrame.
-            # This matters most on latent backing stores, e.g., S3.
-            X_tbl_iter: Iterator[pa.Table] = X.read(
-                coords=(obs_coords, self.var_joinids)
-            ).tables()
-
-            def make_io_buffer(
-                X_tbl: pa.Table,
-                obs_coords: NDArrayJoinId,
-                var_coords: NDArrayJoinId,
-                obs_indexer: IntIndexer,
-            ) -> CSR_IO_Buffer:
-                """This function provides a GC after we throw off (large) garbage."""
-                m = CSR_IO_Buffer.from_ijd(
-                    obs_indexer.get_indexer(X_tbl["soma_dim_0"]),
-                    var_indexer.get_indexer(X_tbl["soma_dim_1"]),
-                    X_tbl["soma_data"].to_numpy(),
-                    shape=(len(obs_coords), len(var_coords)),
-                )
-                gc.collect(generation=0)
-                return m
-
-            _io_buf_iter: Iterator[CSR_IO_Buffer] = (
-                make_io_buffer(
-                    X_tbl=X_tbl,
-                    obs_coords=np.array(obs_coords),
-                    var_coords=self.var_joinids,
-                    obs_indexer=obs_indexer,
-                )
-                for X_tbl in X_tbl_iter
-            )
+            # First read X
+            tables = X.read(coords=(obs_coords, self.var_joinids)).tables()
             if self.use_eager_fetch:
-                _io_buf_iter = EagerIterator(_io_buf_iter, pool=X.context.threadpool)
+                tables = EagerIterator(tables, pool=X.context.threadpool)
+            # Read/Materialize only once
+            tables = list(tables)
 
-            # Now that X read is potentially in progress (in eager mode), go fetch obs data
-            # fmt: off
             obs_io_batch = (
                 self.obs.read(coords=(obs_coords,), column_names=obs_column_names)
-                .concat()
-                .to_pandas()
-                .set_index("soma_joinid")
-                .reindex(obs_order, copy=False)
-                .reset_index()  # demote "soma_joinid" to a column
-                [self.obs_column_names]
-            )  # fmt: on
+                .concat().to_pandas()
+                .set_index("soma_joinid").reindex(obs_order, copy=False)
+                .reset_index()[self.obs_column_names]
+            )
 
-            X_io_batch = CSR_IO_Buffer.merge(tuple(_io_buf_iter))
+            # Count
+            n_rows = len(obs_coords)
+            n_cols = len(var_joinids)
+            counts_buf[:n_rows].fill(0)
+            total_nnz = 0
+            data_dtype = None
 
-            del obs_indexer, obs_coords, obs_order, _io_buf_iter
+            # Pull from the dictionary for datatype
+            if tables:
+                data_dtype = np.asarray(
+                    pa.array([], type=tables[0].schema.field("soma_data").type)
+                ).dtype
+
+            for tbl in tables:
+                # row ids per chunk -> bincount
+                for Ai_chunk in _iter_col_numpy(tbl["soma_dim_0"]):
+                    Ai = obs_indexer.get_indexer(Ai_chunk)
+                    counts_buf[:n_rows] += np.bincount(Ai, minlength=n_rows)
+                    total_nnz += Ai.shape[0]
+
+            if total_nnz == 0:
+                X_io_batch = CSR_IO_Buffer.from_pjd(
+                    np.zeros((n_rows + 1,), dtype=smallest_uint_dtype(0)),
+                    np.zeros((0,), dtype=smallest_uint_dtype(n_cols)),
+                    np.zeros((0,), dtype=np.float32),
+                    shape=(n_rows, n_cols),
+                )
+                del obs_indexer, obs_coords, obs_order, tables
+                gc.collect()
+                tm = time.perf_counter() - st_time
+                logger.debug(
+                    f"Retrieved SOMA IO batch, took {tm:.2f}sec, {X_io_batch.shape[0]/tm:0.1f} samples/sec"
+                )
+                yield X_io_batch, obs_io_batch
+                continue
+
+            # Allocate final CSR once
+            indptr = np.empty((n_rows + 1,), dtype=smallest_uint_dtype(int(total_nnz)))
+            indptr[0] = 0
+            np.cumsum(counts_buf[:n_rows], out=indptr[1:])
+            indices = np.empty((total_nnz,), dtype=smallest_uint_dtype(n_cols))
+            data    = np.empty((total_nnz,), dtype=data_dtype)
+            offsets = indptr[:-1].copy()
+
+            # Scatter
+            for tbl in tables:
+                # Iterate chunks in lockstep. We assume SOMA returns aligned chunking across columns.
+                iter_Ai = _iter_col_numpy(tbl["soma_dim_0"])
+                iter_Aj = _iter_col_numpy(tbl["soma_dim_1"])
+                iter_Ad = _iter_col_numpy(tbl["soma_data"])
+                for Ai_chunk, Aj_chunk, Ad_chunk in zip(iter_Ai, iter_Aj, iter_Ad):
+                    Ai = obs_indexer.get_indexer(Ai_chunk)
+                    Aj = var_indexer.get_indexer(Aj_chunk).astype(indices.dtype, copy=False)
+                    Ad = Ad_chunk  # already NumPy
+                    coo_scatter_to_csr(Ai, Aj, Ad, offsets, indices, data)
+
+            X_io_batch = CSR_IO_Buffer.from_pjd(indptr, indices, data, shape=(n_rows, n_cols))
+
+            del obs_indexer, obs_coords, obs_order, tables
             gc.collect()
 
             tm = time.perf_counter() - st_time

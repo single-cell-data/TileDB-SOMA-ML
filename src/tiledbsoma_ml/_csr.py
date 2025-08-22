@@ -284,3 +284,26 @@ def _csr_sort_indices(Bp: _CSRIdxArray, Bj: _CSRIdxArray, Bd: NDArrayNumber) -> 
         order = np.argsort(Bj[row_start:row_end])
         Bj[row_start:row_end] = Bj[row_start:row_end][order]
         Bd[row_start:row_end] = Bd[row_start:row_end][order]
+
+
+@numba.njit(nogil=True)
+def coo_scatter_to_csr(
+    Ai: _CSRIdxArray,
+    Aj: _CSRIdxArray,
+    Ad: NDArrayNumber,
+    Bp_offsets: _CSRIdxArray,  # mutable copy of indptr[:-1]
+    Bj: _CSRIdxArray,
+    Bd: NDArrayNumber,
+) -> None:
+    """
+    Scatter a COO shard directly into an pre allocated CSR's (indices, data),
+    incrementing write offsets in-place.
+    Ai, Aj, Ad must already be remapped to [0..n_rows) / [0..n_cols).
+    """
+    nnz = len(Ai)
+    for n in range(nnz):
+        r = Ai[n]
+        dst = Bp_offsets[r]
+        Bj[dst] = Aj[n]
+        Bd[dst] = Ad[n]
+        Bp_offsets[r] = dst + 1

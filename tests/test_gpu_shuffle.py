@@ -3,6 +3,20 @@ from pytest import fixture
 
 from tests._utils import param, parametrize
 
+from tiledbsoma_ml.dataloader import experiment_dataloader
+
+@fixture
+def dataloader(ds, num_workers):
+    yield experiment_dataloader(ds, num_workers=num_workers)
+
+@fixture
+def batch_iter(dataloader):
+    return iter(dataloader)
+
+@fixture
+def batches(batch_iter):
+    return list(batch_iter)
+
 
 @fixture
 def check(check_gpu):

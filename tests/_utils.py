@@ -187,6 +187,59 @@ def add_sparse_array(
     a.write(tensor)
 
 
+def flatten_joinids(batches: List[MiniBatch]) -> List[int]:
+    return [int(i) for _, obs in batches for i in obs["soma_joinid"].tolist()]
+
+
+def minibatch_is_contiguous(ids: List[int]) -> bool:
+    if len(ids) <= 1:
+        return True
+    ids_sorted = sorted(ids)
+    return ids_sorted[-1] - ids_sorted[0] + 1 == len(ids_sorted)
+
+
+def assert_gpu_minibatch_no_upstream_mixing(batches: List[MiniBatch]) -> None:
+    """Each minibatch should be a contiguous slice; slices increase strictly.
+
+    Test for gpu_minibatch shuffling.
+    """
+    prev_max = -1
+    for _, obs in batches:
+        ids = [int(i) for i in obs["soma_joinid"].tolist()]
+        assert minibatch_is_contiguous(ids), f"Non-contiguous minibatch: {ids}"
+        ids_sorted = sorted(ids)
+        assert (
+            ids_sorted[0] > prev_max
+        ), f"Detected upstream mixing: start={ids_sorted[0]} <= prev_max={prev_max}"
+        prev_max = ids_sorted[-1]
+
+
+def assert_gpu_iobatch_invariants(
+    batches: List[MiniBatch],
+    batch_size: int,
+    min_noncontig_ratio: float = 0.2,
+    num_workers: int = 1,
+) -> None:
+    """Property checks for IO-batch GPU shuffle (not exact order)."""
+    # Check for unecessary non-full batches
+    sizes = [len(obs) for _, obs in batches]
+    assert all(1 <= s <= batch_size for s in sizes), f"Invalid sizes: {sizes}"
+    # If there are enough rows overall, expect at least one full minibatch
+    if sum(sizes) >= batch_size:
+        assert any(s == batch_size for s in sizes), "No full minibatches produced"
+
+    # measure dispersion b/w mini batches. Should not consistently fail.
+    non_contig = 0
+    for _, obs in batches:
+        ids = [int(i) for i in obs["soma_joinid"].tolist()]
+        if not minibatch_is_contiguous(ids):
+            non_contig += 1
+    if len(batches) >= 4:  # avoid tiny outliers
+        assert non_contig >= max(
+            1, int(len(batches) * min_noncontig_ratio)
+        ), "Low dispersion in IO-batch GPU shuffle; check upstream shuffle chunk selection."
+
+
 @contextmanager
 def mock_dist_is_initialized():
     with patch("torch.distributed.is_initialized") as mock_dist_is_initialized:

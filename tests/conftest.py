@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Sequence, Tuple, Union
 
 import pandas as pd
-from pytest import fixture
+from pytest import fixture, skip
 from somacore import AxisQuery
 from tiledbsoma import Experiment, Measurement
 from tiledbsoma._collection import Collection
@@ -20,6 +20,7 @@ from tiledbsoma_ml.dataset import (
     DEFAULT_IO_BATCH_SIZE,
     DEFAULT_OBS_COLUMN_NAMES,
     DEFAULT_SHUFFLE_CHUNK_SIZE,
+    ShuffleMode,
 )
 
 from ._utils import (
@@ -28,7 +29,10 @@ from ._utils import (
     add_dataframe,
     add_sparse_array,
     assert_batches_equal,
+    assert_gpu_iobatch_invariants,
+    assert_gpu_minibatch_no_upstream_mixing,
     default,
+    flatten_joinids,
     mock_distributed,
     pytorch_x_value_gen,
 )
@@ -80,6 +84,8 @@ worker_id = default(0)
 num_workers = default(1)
 seed = default(None)
 verify_dataset_shape = default(True)
+shuffle_mode = default("cpu")
+device = default(None)
 
 
 @fixture
@@ -99,6 +105,8 @@ def ds(
     num_workers: int,
     # `seed=False` is shorthand for `shuffle=False`, used alongside mappings from seed values to expected batch values.
     seed: int | bool | None,
+    shuffle_mode: str,
+    device,
 ) -> ExperimentDataset:
     """|ExperimentDataset| for testing, constructed from ``soma_experiment`` and other ``fixture`` args.
 
@@ -127,6 +135,8 @@ def ds(
             batch_size=batch_size,
             return_sparse_X=return_sparse_X,
             use_eager_fetch=use_eager_fetch,
+            shuffle_mode=shuffle_mode,
+            device=device,
         )
         yield ds
 
@@ -185,3 +195,49 @@ def check(
     if verify_dataset_shape:
         assert ds.shape == (len(expected_batches), var_range)
     assert_batches_equal(batches, expected_batches, batch_size, return_sparse_X)
+
+
+@fixture
+def check_gpu(
+    ds: ExperimentDataset,
+    batches: List[MiniBatch],
+    verify_dataset_shape: bool,
+    var_range: int | range,
+    num_workers: int,
+):
+    import torch as _torch
+
+    if not _torch.cuda.is_available():
+        skip("CUDA required for GPU shuffle tests")
+
+    # shape sanity if requested
+    if verify_dataset_shape:
+        assert ds.shape[1] == (
+            var_range
+            if isinstance(var_range, int)
+            else var_range.stop - var_range.start
+        )
+
+    n = len(ds.query_ids.obs_joinids)
+    flat = flatten_joinids(batches)
+    assert all(0 <= i < n for i in flat), f"Out-of-range ids in stream: {flat}"
+    assert len(set(flat)) == len(flat), "Duplicate ids detected in stream"
+
+    if not ds.shuffle:
+        # fully sequential
+        assert flat == sorted(flat)
+        return
+
+    # Normalize enum/string
+    mode = (
+        ds.shuffle_mode
+        if isinstance(ds.shuffle_mode, ShuffleMode)
+        else ShuffleMode(str(ds.shuffle_mode))
+    )
+    if mode == ShuffleMode.GPU_MINIBATCH:
+        assert_gpu_minibatch_no_upstream_mixing(batches)
+    elif mode == ShuffleMode.GPU_IOBATCH:
+        assert_gpu_iobatch_invariants(batches, ds.batch_size, num_workers=num_workers)
+    else:
+        # CPU mode: leave to existing `check` in CPU test files
+        pass
